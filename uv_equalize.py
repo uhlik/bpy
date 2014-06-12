@@ -28,9 +28,9 @@ bl_info = {"name": "UV Equalize",
            "category": "UV", }
 
 
-# - Use when tileable texture needs to be aplied on all objects and its scale should be the same across them.
+# - Use when tileable texture needs to be applied on all objects and its scale should be the same across them.
 # - Beware, active UV on each object will be repacked, in active object as well.
-# - Available in Object menu of 3d wiev while in object mode.
+# - Available in Object menu of 3d view while in object mode.
 # - To enable, more than two mesh objects must be selected, one must be active.
 
 
