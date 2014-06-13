@@ -19,7 +19,7 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 0),
+           "version": (0, 1, 1),
            "blender": (2, 69, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
@@ -47,6 +47,12 @@ from mathutils import Vector
 #   2 select single vertex on boundary ring
 #   3 hit "U" and select "Tube UV Unwrap"
 
+# changelog:
+# 2014.06.13 fixed accidential freeze on messy geometry
+#            fixed first loop vertex order (also on messy geometry)
+#            uv creation part completely rewritten from scratch
+# 2014.06.12 first release
+
 
 def tube_unwrap(operator, context):
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -67,58 +73,50 @@ def tube_unwrap(operator, context):
     
     def get_seam_and_rings(vert):
         if(vert.is_boundary):
-            def get_next_boundary_vertex_clockwise_along_seam(vert):
-                lf = vert.link_faces
-                fa = lf[0]
-                fb = lf[1]
-                a = 0
-                b = 0
-                for i, v in enumerate(fa.verts):
-                    if(v.is_boundary and v is not vert):
-                        a = (i, v)
-                for i, v in enumerate(fb.verts):
-                    if(v.is_boundary and v is not vert):
-                        b = (i, v)
-                if(a > b):
-                    return a[1]
-                return b[1]
-            
-            # here i need to decide in which direction loop over vertices
-            # how to do it?
-            # get adjacent faces, by position of start vertex and other boundary vertices, determine in which side face normal points, and then decide..
-            
             def get_boundary_edge_loop(vert):
-                if(vert.is_boundary):
-                    def get_boundary_neighbours(v):
-                        es = [e for e in v.link_edges]
-                        be = []
-                        for e in es:
-                            if(e.is_boundary):
-                                be.append(e)
-                        vs = []
-                        for e in be:
-                            for ev in e.verts:
-                                if(ev.index != v.index):
-                                    vs.append(ev)
-                        vs = list(set(vs))
-                        return vs
-                    
-                    def walk_verts(v, path):
-                        path.append(v)
-                        bn = get_next_boundary_vertex_clockwise_along_seam(v)
-                        if(bn != path[0] and bn not in path):
-                            path = walk_verts(bn, path)
-                        return path
-                    
-                    verts = walk_verts(vert, [])
-                    return verts
-                return []
+                def get_next_boundary_vertices(vert):
+                    lf = vert.link_faces
+                    fa = lf[0]
+                    fb = lf[1]
+                    a = None
+                    b = None
+                    for i, v in enumerate(fa.verts):
+                        if(v.is_boundary and v is not vert):
+                            a = v
+                    for i, v in enumerate(fb.verts):
+                        if(v.is_boundary and v is not vert):
+                            b = v
+                    return a, b
+                
+                def walk_verts(v, path):
+                    path.append(v)
+                    a, b = get_next_boundary_vertices(v)
+                    if(len(path) == 1):
+                        # i need a second vert, decide one direction..
+                        path = walk_verts(a, path)
+                    if(a in path):
+                        if(b not in path):
+                            path = walk_verts(b, path)
+                        else:
+                            return path
+                    elif(b in path):
+                        if(a not in path):
+                            path = walk_verts(a, path)
+                        else:
+                            return path
+                    else:
+                        raise RuntimeError("Something very bad happened. Please contact support immediately.")
+                    return path
+                
+                verts = walk_verts(vert, [])
+                return verts
             
             boundary_ring = get_boundary_edge_loop(vert)
             
             if(len(bm.verts) % len(boundary_ring) != 0):
+                # abort
                 operator.report({'ERROR'}, "This is not a simple tube. Number of vertices != number of rings * number of ring vertices.")
-                return False
+                return (None, None)
             num_loops = int(len(bm.verts) / len(boundary_ring))
             
             def is_in_rings(vert, rings):
@@ -157,6 +155,9 @@ def tube_unwrap(operator, context):
             return (seam, rings)
     
     seam, rings = get_seam_and_rings(vert)
+    if(seam is None or rings is None):
+        # abort
+        return False
     
     def walk_face_ring(vert, ring, next_vert, next_ring):
         edges = []
@@ -247,54 +248,19 @@ def tube_unwrap(operator, context):
     
     uv_lay = make_uvmap(bm, "UVMap")
     
-    def make_uvs(face_rings, w, h, scale_ratio, uv_lay, vert, seam, rings):
-        def common_edge(fa, fb):
-            for e in fa.edges:
-                if(e in fb.edges):
-                    return e
-            return None
-        
-        def opposite_edge(f, e):
-            for le in f.edges:
-                if(e.verts[0] not in le.verts and e.verts[1] not in le.verts):
-                    return le
-            return None
-        
+    def make_uvs(uv_lay, scale_ratio, w, h, rings, seam, ):
         def get_edge(av, bv):
             for e in bm.edges:
                 if(av in e.verts and bv in e.verts):
                     return e
             return None
         
-        # get starting vertex and the next one in rings
-        # get edge between them
-        # get the only face with this edge (is boundary)
-        # on this face determine order of loops..
-        # put into list of indices and use them in assigning loop uv coordinates
-        def get_first_poly_order():
-            a = vert
-            b = rings[0][1]
-            c = None
-            d = seam[1]
-            
-            e = get_edge(a, b)
-            # there should be just one..
-            f = e.link_faces[0]
-            for v in f.verts:
-                if(v != a and v != b and v != d):
-                    c = v
-                    break
-            vo = [a, b, c, d]
-            lo = []
-            for i, v in enumerate(vo):
-                for j, l in enumerate(f.loops):
-                    if(l.vert == v):
-                        lo.append(j)
-            return lo
+        def get_face(verts):
+            a = set(verts[0].link_faces)
+            b = a.intersection(verts[1].link_faces, verts[2].link_faces, verts[3].link_faces)
+            return list(b)[0]
         
-        lo = get_first_poly_order()
-        
-        def get_lo(vo, f):
+        def get_face_loops(f, vo):
             lo = []
             for i, v in enumerate(vo):
                 for j, l in enumerate(f.loops):
@@ -304,77 +270,39 @@ def tube_unwrap(operator, context):
         
         x = 0
         y = 0
-        for j, fr in enumerate(face_rings):
-            # not sure if following is 100% correct..
-            if(w == 0):
-                # circumference <= length
-                fw = 1 / len(rings[0])
-                fh = get_edge(seam[j], seam[j + 1]).calc_length() * scale_ratio
-            else:
-                # circumference > length
-                fw = w
-                fh = get_edge(seam[j], seam[j + 1]).calc_length() * scale_ratio
-            
-            for i in range(len(fr)):
-                f = fr[i]
-                fi = i + 1
-                if(fi >= len(fr)):
-                    fi = 0
-                
-                f.loops[lo[0]][uv_lay].uv = Vector((x, y))
-                x += fw
-                f.loops[lo[1]][uv_lay].uv = Vector((x, y))
-                y += fh
-                f.loops[lo[2]][uv_lay].uv = Vector((x, y))
-                x -= fw
-                f.loops[lo[3]][uv_lay].uv = Vector((x, y))
-                
-                # next face loops order:
-                nextr = (i == len(fr) - 1)
-                if(nextr):
-                    # next ring, first face, common edge is on the top of current face
-                    if(j != len(face_rings) - 1):
-                        # it is not the last ring
-                        
-                        # get faces and common edge
-                        ff = face_rings[j][0]
-                        nf = face_rings[j + 1][0]
-                        ce = common_edge(ff, nf)
-                        # sort current face vertices by desired uv order
-                        sv = []
-                        for l in lo:
-                            sv.append(ff.verts[l])
-                        # build vertex order from next face
-                        nfsv = [None] * 4
-                        nfsv[0] = sv[3]
-                        nfsv[1] = sv[2]
-                        # get connecting edge from second vertex in order
-                        cne = None
-                        for e in nf.edges:
-                            if(sv[2] in e.verts and sv[3] not in e.verts):
-                                cne = e
-                                break
-                        for v in cne.verts:
-                            if(v not in nfsv):
-                                nfsv[2] = v
-                        # put last remaining vertex
-                        for v in nf.verts:
-                            if(v not in nfsv):
-                                nfsv[3] = v
-                        # convert vertex order to loop order
-                        nlo = get_lo(nfsv, nf)
-                        # swap
-                        lo = nlo
-                        
-                    else:
-                        # it is the last ring, no need to do anything
-                        pass
+        for ir, ring in enumerate(rings):
+            if(len(rings) > ir + 1):
+                if(w == 0):
+                    # circumference <= length
+                    fw = 1 / len(rings[0])
+                    fh = get_edge(seam[ir], seam[ir + 1]).calc_length() * scale_ratio
                 else:
-                    # same ring, just next face, common edge is on right in current face
-                    # lets presume that loop order is the same in all faces in ring
-                    # we'll see if thas's right decision..
-                    pass
-                
+                    # circumference > length
+                    fw = w
+                    fh = get_edge(seam[ir], seam[ir + 1]).calc_length() * scale_ratio
+            
+            for iv, vert in enumerate(ring):
+                if(len(rings) > ir + 1):
+                    next_ring = rings[ir + 1]
+                    # d - c
+                    # |   |
+                    # a - b
+                    if(len(ring) == iv + 1):
+                        poly = (vert, ring[0], next_ring[0], next_ring[iv])
+                    else:
+                        poly = (vert, ring[iv + 1], next_ring[iv + 1], next_ring[iv])
+                    
+                    face = get_face(poly)
+                    loops = get_face_loops(face, poly)
+                    
+                    face.loops[loops[0]][uv_lay].uv = Vector((x, y))
+                    x += fw
+                    face.loops[loops[1]][uv_lay].uv = Vector((x, y))
+                    y += fh
+                    face.loops[loops[2]][uv_lay].uv = Vector((x, y))
+                    x -= fw
+                    face.loops[loops[3]][uv_lay].uv = Vector((x, y))
+                    
                 x += fw
                 y -= fh
             x = 0
@@ -382,7 +310,7 @@ def tube_unwrap(operator, context):
             fw = 0
             fh = 0
     
-    make_uvs(face_rings, w, h, scale_ratio, uv_lay, vert, seam, rings)
+    make_uvs(uv_lay, scale_ratio, w, h, rings, seam, )
     
     def mark_seam(seam):
         def get_edge(av, bv):
