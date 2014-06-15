@@ -19,7 +19,7 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 1),
+           "version": (0, 1, 2),
            "blender": (2, 69, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
@@ -48,19 +48,17 @@ from mathutils import Vector
 #   3 hit "U" and select "Tube UV Unwrap"
 
 # changelog:
-# 2014.06.13 fixed accidential freeze on messy geometry
+# 2014.06.16 got rid of changing edit/object mode
+# 2014.06.13 fixed accidental freeze on messy geometry
 #            fixed first loop vertex order (also on messy geometry)
 #            uv creation part completely rewritten from scratch
 # 2014.06.12 first release
 
 
 def tube_unwrap(operator, context):
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
     ob = context.active_object
     me = ob.data
-    bm = bmesh.new()
-    bm.from_mesh(me)
+    bm = bmesh.from_edit_mesh(me)
     
     vert = bm.select_history.active
     if(not vert):
@@ -328,10 +326,7 @@ def tube_unwrap(operator, context):
     mark_seam(seam)
     me.show_edge_seams = True
     
-    bm.to_mesh(me)
-    bm.free()
-    
-    bpy.ops.object.mode_set(mode='EDIT')
+    bmesh.update_edit_mesh(me)
     
     return True
 
@@ -350,7 +345,6 @@ class TubeUVUnwrapOperator(bpy.types.Operator):
     def execute(self, context):
         r = tube_unwrap(self, context)
         if(r is False):
-            bpy.ops.object.mode_set(mode='EDIT')
             return {'CANCELLED'}
         return {'FINISHED'}
 
