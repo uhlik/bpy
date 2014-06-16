@@ -19,8 +19,8 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 2),
-           "blender": (2, 69, 0),
+           "version": (0, 1, 3),
+           "blender": (2, 70, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
            "wiki_url": "",
@@ -41,6 +41,8 @@ from mathutils import Vector
 #   - Distances of vertices in next tube ring are averaged.
 #   - UV is scaled to fit area.
 #   - Seam will be marked on mesh automatically.
+#   - Mesh must have at least 3 rings to be unwrapped. Simple cylinder with two
+#     boundary rings will not work. Add a loop cut between them.
 
 # usage:
 #   1 tab to Edit mode
@@ -48,6 +50,7 @@ from mathutils import Vector
 #   3 hit "U" and select "Tube UV Unwrap"
 
 # changelog:
+# 2014.06.16 fail nicely when encountered 2 ring cylinder
 # 2014.06.16 got rid of changing edit/object mode
 # 2014.06.13 fixed accidental freeze on messy geometry
 #            fixed first loop vertex order (also on messy geometry)
@@ -109,7 +112,12 @@ def tube_unwrap(operator, context):
                 verts = walk_verts(vert, [])
                 return verts
             
-            boundary_ring = get_boundary_edge_loop(vert)
+            try:
+                boundary_ring = get_boundary_edge_loop(vert)
+            except RuntimeError:
+                # abort
+                operator.report({'ERROR'}, "Mesh with only two rings both boundary detected. Add a loop cut between in order to make unwrap work.")
+                return (None, None)
             
             if(len(bm.verts) % len(boundary_ring) != 0):
                 # abort
