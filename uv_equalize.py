@@ -19,7 +19,7 @@
 bl_info = {"name": "UV Equalize",
            "description": "Equalizes scale of UVs of selected objects to active object.",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 0),
+           "version": (0, 1, 1),
            "blender": (2, 70, 0),
            "location": "View3d > Object > UV Equalize",
            "warning": "",
@@ -34,10 +34,34 @@ bl_info = {"name": "UV Equalize",
 # - To enable, more than two mesh objects must be selected, one must be active.
 
 
+# changelog:
+# 2014.06.16 uuid windows workaround
+# 2014.06.12 first release
+
+
 import bpy
 import bmesh
 from bpy.props import FloatProperty, BoolProperty
 import math
+
+
+# http://blender.stackexchange.com/a/7670
+
+# uuid module causes an error messagebox on windows.
+#
+# using a dirty workaround to preload uuid without ctypes,
+# until blender gets compiled with vs2013
+def uuid_workaround():
+    import platform
+    if platform.system() == "Windows":
+        import ctypes
+        CDLL = ctypes.CDLL
+        ctypes.CDLL = None
+        import uuid
+        ctypes.CDLL = CDLL
+
+
+uuid_workaround()
 import uuid
 
 
