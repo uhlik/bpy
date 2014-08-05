@@ -19,10 +19,10 @@
 bl_info = {"name": "Time Tracker",
            "description": "Track time spent in blender. Writes data to .csv and provides summary sorted by project (directory name).",
            "author": "Jakub Uhlik",
-           "version": (0, 0, 6),
+           "version": (0, 0, 7),
            "blender": (2, 71, 0),
            "location": "",
-           "warning": "Not tested on Windows and Linux.",
+           "warning": "It should work, but it is not tested on Windows and Linux.",
            "wiki_url": "",
            "tracker_url": "",
            "category": "System", }
@@ -33,6 +33,8 @@ import datetime
 import csv
 import platform
 import subprocess
+import time
+import shutil
 
 import bpy
 from bpy.app.handlers import persistent
@@ -42,6 +44,12 @@ class Runtime():
     start = datetime.datetime.now()
     path_message = ""
     summary_message = ""
+    modified = -1
+    summary = None
+    level = -1
+    update_last = -1
+    # fire update on data change and only once in minute
+    update_step = 60
 
 
 class Utils():
@@ -68,6 +76,7 @@ class Utils():
     def find_handlers():
         l = -1
         s = -1
+        u = -1
         h = bpy.app.handlers
         for i in range(len(h.load_post)):
             if(h.load_post[i].__name__ == "TIME_TRACKER_load_handler"):
@@ -75,7 +84,10 @@ class Utils():
         for i in range(len(h.save_post)):
             if(h.save_post[i].__name__ == "TIME_TRACKER_save_handler"):
                 s = i
-        return l, s
+        for i in range(len(h.scene_update_post)):
+            if(h.scene_update_post[i].__name__ == "TIME_TRACKER_update_handler"):
+                u = i
+        return l, s, u
 
 
 def summary():
@@ -88,7 +100,17 @@ def summary():
     else:
         Runtime.summary_message = ""
     
-    # read csv
+    # get modified time of csv
+    tm = os.path.getmtime(p)
+    
+    if(tm != Runtime.modified or prefs.level != Runtime.level):
+        # if it differs, read csv..
+        Runtime.modified = tm
+        Runtime.level = prefs.level
+    else:
+        # return already parsed results
+        return Runtime.summary
+    
     db = []
     with open(p) as f:
         reader = csv.reader(f)
@@ -135,13 +157,16 @@ def summary():
             proj = '/'
         a.append([proj, Utils.format_time(s), d])
     
-    # sort by time length
-    a.sort(key=lambda v: v[2])
+    # sort by project name
+    a.sort(key=lambda v: v[0])
     
     # and make strings
     r = []
     for i, l in enumerate(a):
         r.append(["project '{0}' - total time: {1}".format(l[0], l[1]), l[2]])
+    
+    # store results, so it will not be calculated on each ui redraw
+    Runtime.summary = r
     
     return r
 
@@ -190,6 +215,16 @@ def update(self, context):
     prefs.csv_path = current
 
 
+def scene_update_update(self, context):
+    # great function name, isn't it?
+    prefs = Utils.get_preferences()
+    if(prefs.scene_update):
+        _, _, u = Utils.find_handlers()
+        h = bpy.app.handlers
+        if(u == -1):
+            h.scene_update_post.append(TIME_TRACKER_update_handler)
+
+
 class TimeTrackerPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
     
@@ -220,6 +255,10 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
     summary = bpy.props.BoolProperty(name="Show Summary",
                                      description="When enabled, shows tracked data bellow in simple format (project name - total time spent).",
                                      default=False, )
+    scene_update = bpy.props.BoolProperty(name="Track Scene Update",
+                                          description="Track time spent on files closed without saving every 60 seconds.",
+                                          update=scene_update_update,
+                                          default=False, )
     
     def draw(self, context):
         l = self.layout
@@ -227,6 +266,7 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
         s = r.split(percentage=0.75)
         c = s.column()
         c.prop(self, "enabled")
+        c.prop(self, "scene_update")
         c = s.column()
         c.operator("wm.time_tracker_clear_data", )
         r = l.row()
@@ -308,6 +348,15 @@ def TIME_TRACKER_save_handler(null):
     track("save")
 
 
+@persistent
+def TIME_TRACKER_update_handler(null):
+    t = time.time()
+    if(t < Runtime.update_last + Runtime.update_step):
+        return
+    Runtime.update_last = t
+    track("update")
+
+
 def start():
     prefs = Utils.get_preferences()
     p = prefs.csv_path
@@ -318,13 +367,15 @@ def start():
             f.write("{0}\n".format(prefs.csv_first_line))
     
     # set handlers
-    l, s = Utils.find_handlers()
+    l, s, u = Utils.find_handlers()
     h = bpy.app.handlers
     if(l == -1):
         h.load_post.append(TIME_TRACKER_load_handler)
     if(s == -1):
-        # or 'bpy.app.handlers.save_pre' ?
         h.save_post.append(TIME_TRACKER_save_handler)
+    if(prefs.scene_update):
+        if(u == -1):
+            h.scene_update_post.append(TIME_TRACKER_update_handler)
 
 
 def track(e):
@@ -337,20 +388,56 @@ def track(e):
     d = n - Runtime.start
     h, t = os.path.split(p)
     
-    l = "{0},{1},{2},{3},{4},{5}\n".format(Utils.format_stamp(n), e, d.seconds, Utils.format_time(d.seconds), t, p, )
+    '''
+    if(e == 'update'):
+        # rewrite last record if it was load
+        with open(prefs.csv_path, mode='r', encoding='utf-8') as f:
+            ls = f.readlines()
+            last = ls[-1:][0].rstrip('\n')
+            lls = last.split(",")
+            
+            if(lls[1] == 'update'):
+                # modify last update entry
+                l = "{0},{1},{2},{3},{4},{5}\n".format(lls[0], lls[1], d.seconds, Utils.format_time(d.seconds), lls[4], lls[5], )
+                lines = ls[:]
+                lines[len(lines) - 1] = l
+                
+                # safer overwriting..
+                tmpp = "{}.tmp".format(prefs.csv_path)
+                with open(tmpp, mode='w', encoding='utf-8') as f:
+                    f.write("".join(lines))
+                if(os.path.exists(prefs.csv_path)):
+                    os.remove(prefs.csv_path)
+                shutil.move(tmpp, prefs.csv_path)
+            else:
+                # write update entry
+                l = "{0},{1},{2},{3},{4},{5}\n".format(Utils.format_stamp(n), e, d.seconds, Utils.format_time(d.seconds), t, p, )
+                with open(prefs.csv_path, mode='a', encoding='utf-8') as f:
+                    f.write(l)
+    else:
+        # log file load and save
+        l = "{0},{1},{2},{3},{4},{5}\n".format(Utils.format_stamp(n), e, d.seconds, Utils.format_time(d.seconds), t, p, )
+        with open(prefs.csv_path, mode='a', encoding='utf-8') as f:
+            f.write(l)
+        Runtime.start = n
+    '''
     
+    # log file load, save and update
+    l = "{0},{1},{2},{3},{4},{5}\n".format(Utils.format_stamp(n), e, d.seconds, Utils.format_time(d.seconds), t, p, )
     with open(prefs.csv_path, mode='a', encoding='utf-8') as f:
         f.write(l)
     Runtime.start = n
 
 
 def stop():
-    l, s = Utils.find_handlers()
+    l, s, u = Utils.find_handlers()
     h = bpy.app.handlers
     if(l != -1):
         del h.load_post[l]
     if(s != -1):
         del h.save_post[s]
+    if(u != -1):
+        del h.scene_update_post[u]
 
 
 def register():
