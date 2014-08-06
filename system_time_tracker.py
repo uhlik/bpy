@@ -19,7 +19,7 @@
 bl_info = {"name": "Time Tracker",
            "description": "Track time spent in blender. Writes data to .csv and provides summary sorted by project (directory name).",
            "author": "Jakub Uhlik",
-           "version": (0, 0, 7),
+           "version": (0, 0, 8),
            "blender": (2, 71, 0),
            "location": "",
            "warning": "It should work, but it is not tested on Windows and Linux.",
@@ -63,6 +63,15 @@ class Utils():
         return '{:02}:{:02}:{:02}'.format(d // 3600, d % 3600 // 60, d % 60)
     
     @staticmethod
+    def format_time_summary(d):
+        return '{:02}h {:02}m'.format(d // 3600, d % 3600 // 60)
+    
+    @staticmethod
+    def format_time_summary_seconds(d):
+        # http://stackoverflow.com/a/13409708
+        return '{:02}h {:02}m {:02}s'.format(d // 3600, d % 3600 // 60, d % 60)
+    
+    @staticmethod
     def get_default_csv_path():
         return os.path.join(os.path.dirname(os.path.realpath(__file__)), "{0}.csv".format(os.path.splitext(os.path.split(os.path.realpath(__file__))[1])[0]))
     
@@ -103,13 +112,13 @@ def summary():
     # get modified time of csv
     tm = os.path.getmtime(p)
     
-    if(tm != Runtime.modified or prefs.level != Runtime.level):
-        # if it differs, read csv..
-        Runtime.modified = tm
-        Runtime.level = prefs.level
-    else:
-        # return already parsed results
-        return Runtime.summary
+    if(Runtime.summary is not None):
+        if(tm == Runtime.modified and prefs.level == Runtime.level):
+            # return already parsed results
+            return Runtime.summary
+    
+    Runtime.modified = tm
+    Runtime.level = prefs.level
     
     db = []
     with open(p) as f:
@@ -155,7 +164,10 @@ def summary():
         if(proj == ''):
             # substitute no directory by '/'
             proj = '/'
-        a.append([proj, Utils.format_time(s), d])
+        if(prefs.debug_show_seconds_in_summary):
+            a.append([proj, Utils.format_time_summary_seconds(s), d])
+        else:
+            a.append([proj, Utils.format_time_summary(s), d])
     
     # sort by project name
     a.sort(key=lambda v: v[0])
@@ -163,7 +175,7 @@ def summary():
     # and make strings
     r = []
     for i, l in enumerate(a):
-        r.append(["project '{0}' - total time: {1}".format(l[0], l[1]), l[2]])
+        r.append(["project '{0}': {1}".format(l[0], l[1]), l[2]])
     
     # store results, so it will not be calculated on each ui redraw
     Runtime.summary = r
@@ -218,11 +230,19 @@ def update(self, context):
 def scene_update_update(self, context):
     # great function name, isn't it?
     prefs = Utils.get_preferences()
+    Runtime.update_step = prefs.update_interval
+    # force summary update
+    Runtime.summary = None
     if(prefs.scene_update):
         _, _, u = Utils.find_handlers()
         h = bpy.app.handlers
         if(u == -1):
             h.scene_update_post.append(TIME_TRACKER_update_handler)
+    else:
+        _, _, u = Utils.find_handlers()
+        h = bpy.app.handlers
+        if(u != -1):
+            del h.scene_update_post[u]
 
 
 class TimeTrackerPreferences(bpy.types.AddonPreferences):
@@ -245,7 +265,9 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
     level = bpy.props.IntProperty(name="Project Directory Level",
                                   description="Which level is considered as project directory. 0 is current directory, 1 is directory enclosing current directory, etc.",
                                   default=0,
-                                  min=0, )
+                                  min=0,
+                                  # 100 nested sub directories should be enough
+                                  max=100, )
     csv_path = bpy.props.StringProperty(name="CSV Path",
                                         description="Location of .csv with tracking data.",
                                         default=Utils.get_default_csv_path(),
@@ -255,10 +277,25 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
     summary = bpy.props.BoolProperty(name="Show Summary",
                                      description="When enabled, shows tracked data bellow in simple format (project name - total time spent).",
                                      default=False, )
+    
+    # advanced options
+    show_advanced = bpy.props.BoolProperty(name="Show Advanced Options",
+                                           description="",
+                                           default=False, )
     scene_update = bpy.props.BoolProperty(name="Track Scene Update",
-                                          description="Track time spent on files closed without saving every 60 seconds.",
+                                          description="Track time spent on files closed without saving using scene_update_post handler.",
                                           update=scene_update_update,
-                                          default=False, )
+                                          default=True, )
+    update_interval = bpy.props.IntProperty(name="Update Interval In Seconds",
+                                            description="Interval at which scene_update_post handler is processed.",
+                                            update=scene_update_update,
+                                            default=60,
+                                            min=1,
+                                            max=60 * 10, )
+    debug_show_seconds_in_summary = bpy.props.BoolProperty(name="Show Seconds In Summary",
+                                                           description="",
+                                                           update=scene_update_update,
+                                                           default=False, )
     
     def draw(self, context):
         l = self.layout
@@ -266,7 +303,6 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
         s = r.split(percentage=0.75)
         c = s.column()
         c.prop(self, "enabled")
-        c.prop(self, "scene_update")
         c = s.column()
         c.operator("wm.time_tracker_clear_data", )
         r = l.row()
@@ -288,13 +324,23 @@ class TimeTrackerPreferences(bpy.types.AddonPreferences):
             if(len(a) == 0):
                 r = l.row()
                 r.label("No data tracked yet.", icon='ERROR', )
-            for i in a:
+            else:
                 r = l.row()
-                s = r.split(percentage=0.75)
-                c = s.column()
-                c.label(i[0], icon='TIME', )
-                c = s.column()
-                c.operator("wm.time_tracker_show_project_directory", ).directory = i[1]
+                b = r.box()
+                for i in a:
+                    r = b.row()
+                    s = r.split(percentage=0.75)
+                    c = s.column()
+                    c.label(i[0], icon='TIME', )
+                    c = s.column()
+                    c.operator("wm.time_tracker_show_project_directory", ).directory = i[1]
+        r = l.row()
+        r.prop(self, "show_advanced")
+        if(self.show_advanced):
+            r = l.row()
+            r.prop(self, "debug_show_seconds_in_summary")
+            r.prop(self, "scene_update")
+            r.prop(self, "update_interval")
 
 
 class WM_OT_time_tracker_show_project_directory(bpy.types.Operator):
