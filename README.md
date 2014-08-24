@@ -84,3 +84,8 @@ Linux: `$HOME/.config/blender/2.71/scripts/presets/opengl_lights_presets/`
 Running them from text editor is also perfectly fine, but you have to save it as preset to make them available.
 
 [BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
+
+changelog:
+
+* 2014.08.24 added defaults, created when no presets are available
+* 2014.08.19 first release
