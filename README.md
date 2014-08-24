@@ -75,14 +75,6 @@ Simple and effective access to Solid OpenGL Lights for your viewport. Comes with
 
 ![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gl-lights.gif)
 
-ps. Also comes with a few presets. [Here](https://raw.githubusercontent.com/uhlik/bpy/master/opengl_lights_presets/default.py), [here](https://raw.githubusercontent.com/uhlik/bpy/master/opengl_lights_presets/mshade3.py) and [here](https://raw.githubusercontent.com/uhlik/bpy/master/opengl_lights_presets/mshade5.py). Last two are roughly converted my favourite Sculptris materials.
-Put them to:
-OSX: `/Users/{user}/Library/Application Support/Blender/2.71/scripts/presets/opengl_lights_presets/`  
-Windows: `C:\Documents and Settings\{username}\AppData\Roaming\Blender Foundation\Blender\2.71\scripts\presets\opengl_lig hts_presets\`  
-Linux: `$HOME/.config/blender/2.71/scripts/presets/opengl_lights_presets/`  
-
-Running them from text editor is also perfectly fine, but you have to save it as preset to make them available.
-
 [BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
 
 changelog:
