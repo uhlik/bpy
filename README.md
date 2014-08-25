@@ -79,5 +79,6 @@ Simple and effective access to Solid OpenGL Lights for your viewport. Comes with
 
 changelog:
 
+* 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
 * 2014.08.19 first release
