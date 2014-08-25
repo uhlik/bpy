@@ -19,7 +19,7 @@
 bl_info = {"name": "OpenGL Lights",
            "description": "Quick access to Solid OpenGL Lights with preset functionality",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 0),
+           "version": (0, 3, 1),
            "blender": (2, 70, 0),
            "location": "View3d > Properties > OpenGL Lights",
            "warning": "",
