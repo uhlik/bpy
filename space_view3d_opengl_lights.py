@@ -28,6 +28,7 @@ bl_info = {"name": "OpenGL Lights",
            "category": "3D View", }
 
 # changelog:
+# 2014.08.26 one more preset
 # 2014.08.25 even more presets
 # 2014.08.25 more presets
 # 2014.08.24 added defaults, created when no presets are available
