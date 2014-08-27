@@ -20,30 +20,28 @@ changelog:
 
 ## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/uv_tube_unwrap.py)
 
-UV unwrap tube like meshes (all quads, no caps, fixed number of vertices in each ring)
+UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
 
 notes:
 
-* Works only on tube like meshes, all quads, no caps, fixed number of vertices in each ring. Best example of such mesh is mesh circle extruded several times or beveled curve converted to mesh.
-* Result is right-angled UV for easy texturing
-* Single selected vertex on boundary ring is required before running operator. This vertex marks loop, along which tube will be cut.
-* Distances of vertices in next tube ring are averaged.
-* UV is scaled to fit area.
-* Seam will be marked on mesh automatically.
-* Mesh must have at least 3 rings to be unwrapped. Simple cylinder with two boundary rings will not work. Add a loop cut between them.
+* Works only on tube-like part of meah, this is defined by selection. Tube-like mesh is: all quads, no caps, fixed number of vertices in each ring. Best example of such mesh is mesh circle extruded several times or beveled curve converted to mesh. There must be active vertex on one of the boundary loops. Active vertex defined where seam will be placed.
+* Result is right-angled UV for easy texturing, scaled to with square, distances of each ring is average of edge length and are releative to each other
 
 usage:
 
 1. tab to Edit mode
-2. select single vertex on boundary ring
-3. hit "U" and select "Tube UV Unwrap"
+2. select part of model which you want to unwrap, tube type explained above
+3. make sure there is an active vertex on selection boundary
+4. hit "U" and select "Tube UV Unwrap"
+5. optionally select 'Mark Seams' or 'Flip' in operator properties
 
-![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube.gif)
+![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube2.gif)
 
 [BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
 
 changelog:
 
+* 0.2.0 almost full rewrite, now it works on selection only, any mesh will work, if selection comply to requirements
 * 0.1.3 fail nicely when encountered 2 ring cylinder
 * 0.1.2 got rid of changing edit/object mode
 * 0.1.1 fixed accidental freeze on messy geometry, fixed first loop vertex order (also on messy geometry), uv creation part completely rewritten from scratch
