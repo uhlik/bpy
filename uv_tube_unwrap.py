@@ -19,7 +19,7 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 0),
+           "version": (0, 2, 1),
            "blender": (2, 70, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
@@ -45,9 +45,12 @@ from mathutils import Vector
 #   2 select part of model which you want to unwrap, tube type explained above
 #   3 make sure there is an active vertex on selection boundary
 #   4 hit "U" and select "Tube UV Unwrap"
-#   5 optionally select 'Mark Seams' or 'Flip' in operator properties
+#   5 optionally select 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
 
 # changelog:
+# 2014.08.27 new option, 'Rectangular': if true, all faces will be rectangular,
+#            if false, horizontal edges will be scaled proportionally and whole
+#            island will be centered in layout (just a by-product)
 # 2014.08.27 almost full rewrite, now it works on selection only,
 #            any mesh will work, if selection comply to requirements
 # 2014.06.16 fail nicely when encountered 2 ring cylinder
@@ -70,7 +73,7 @@ class SelectionError(Exception):
     pass
 
 
-def tube_unwrap(operator, context, mark_seams, flip, ):
+def tube_unwrap(operator, context, mark_seams, flip, rectangular, ):
     ob = context.active_object
     me = ob.data
     bm = bmesh.from_edit_mesh(me)
@@ -427,6 +430,7 @@ def tube_unwrap(operator, context, mark_seams, flip, ):
     for ring in rings:
         r = [bm.verts[v.index] for v in ring]
         rs.append(r)
+    rings2 = rings
     rings = rs
     
     # make uv, scale it correctly
@@ -477,13 +481,20 @@ def tube_unwrap(operator, context, mark_seams, flip, ):
                     face = get_face(poly)
                     loops = get_face_loops(face, poly)
                     
-                    face.loops[loops[0]][uv_lay].uv = Vector((x, y))
+                    luv = face.loops[loops[0]][uv_lay]
+                    luv.uv = Vector((x, y))
+                    
                     x += fw
-                    face.loops[loops[1]][uv_lay].uv = Vector((x, y))
+                    luv = face.loops[loops[1]][uv_lay]
+                    luv.uv = Vector((x, y))
+                    
                     y += fh
-                    face.loops[loops[2]][uv_lay].uv = Vector((x, y))
+                    luv = face.loops[loops[2]][uv_lay]
+                    luv.uv = Vector((x, y))
+                    
                     x -= fw
-                    face.loops[loops[3]][uv_lay].uv = Vector((x, y))
+                    luv = face.loops[loops[3]][uv_lay]
+                    luv.uv = Vector((x, y))
                     
                 x += fw
                 y -= fh
@@ -493,6 +504,44 @@ def tube_unwrap(operator, context, mark_seams, flip, ):
             fh = 0
     
     make_uvs(uv_lay, scale_ratio, w, h, rings, seam, )
+    
+    def remap(v, min1, max1, min2, max2):
+        def clamp(v, vmin, vmax):
+            if(vmax <= vmin):
+                raise ValueError("Maximum value is smaller than or equal to minimum.")
+            if(v <= vmin):
+                return vmin
+            if(v >= vmax):
+                return vmax
+            return v
+        
+        def normalize(v, vmin, vmax):
+            return (v - vmin) / (vmax - vmin)
+        
+        def interpolate(nv, vmin, vmax):
+            return vmin + (vmax - vmin) * nv
+        
+        v = clamp(v, min1, max1)
+        r = interpolate(normalize(v, min1, max1), min2, max2)
+        r = clamp(r, min2, max2)
+        return r
+    
+    if(not rectangular):
+        for i, r in enumerate(rings2):
+            ring = rings[i]
+            for v in ring:
+                for l in v.link_loops:
+                    l[uv_lay].uv.x += (1.0 - (w * len(r))) / 2
+        
+        for i, r in enumerate(rings2):
+            c = calc_circumference(r)
+            cw = c * scale_ratio
+            ring = rings[i]
+            for v in ring:
+                for l in v.link_loops:
+                    l[uv_lay].uv.x = remap(l[uv_lay].uv.x, 0.0, 1.0, 0.0 + ((1.0 - cw) / 2), 1.0 - ((1.0 - cw) / 2))
+                    # l[uv_lay].uv.x = remap(l[uv_lay].uv.x, 0.0, w * len(r), 0.0 + ((1.0 - cw) / 2), 1.0 - ((1.0 - cw) / 2))
+                    # l[uv_lay].uv.x = remap(l[uv_lay].uv.x, 0.0, w * len(r), 0.0, 1.0 - (1.0 - cw))
     
     # mark seams, both boundary rings and seam between them
     if(mark_seams):
@@ -550,6 +599,7 @@ class TubeUVUnwrapOperator(bpy.types.Operator):
     
     mark_seams = bpy.props.BoolProperty(name="Mark seams", description="Marks seams around all island edges.", default=True, )
     flip = bpy.props.BoolProperty(name="Flip", description="Flip unwrapped island.", default=False, )
+    rectangular = bpy.props.BoolProperty(name="Rectangular", description="If checked, all quads will be rectangular, otherwise each ring will be scaled proportionally.", default=True, )
     
     @classmethod
     def poll(cls, context):
@@ -564,7 +614,7 @@ class TubeUVUnwrapOperator(bpy.types.Operator):
         print_errors = False
         
         try:
-            r = tube_unwrap(self, context, self.mark_seams, self.flip, )
+            r = tube_unwrap(self, context, self.mark_seams, self.flip, self.rectangular, )
         except UnsuitableMeshError as e:
             self.report({'ERROR'}, str(e))
             if(print_errors):
@@ -591,6 +641,8 @@ class TubeUVUnwrapOperator(bpy.types.Operator):
         r.prop(self, "mark_seams")
         r = c.row()
         r.prop(self, "flip")
+        r = c.row()
+        r.prop(self, "rectangular")
 
 
 def menu_func(self, context):
