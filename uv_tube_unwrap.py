@@ -48,6 +48,7 @@ from mathutils import Vector
 #   5 optionally select 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
 
 # changelog:
+# 2014.08.28 fixed maximum recursion depth exceeded error on large meshes
 # 2014.08.27 new option, 'Rectangular': if true, all faces will be rectangular,
 #            if false, horizontal edges will be scaled proportionally and whole
 #            island will be centered in layout (just a by-product)
