@@ -19,7 +19,7 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 1),
+           "version": (0, 2, 2),
            "blender": (2, 70, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
@@ -120,22 +120,45 @@ def tube_unwrap(operator, context, mark_seams, flip, rectangular, ):
     def get_neighbours(v):
         r = []
         for le in v.link_edges:
-            a = le.verts[0]
-            b = le.verts[1]
-            if(a == v):
-                r.append(b)
-            else:
-                r.append(a)
+            # a = le.verts[0]
+            # b = le.verts[1]
+            # if(a == v):
+            #     r.append(b)
+            # else:
+            #     r.append(a)
+            # hmm, better to read docs thoroughly, didn't know about this until now..
+            r.append(le.other_vert(v))
         return r
     
+    # recursion limit will be reached on larger meshes
+    '''
     def walk(v, l):
         linked.append(v)
         ns = get_neighbours(v)
         for n in ns:
             if(n not in linked):
                 walk(n, linked)
+
+    walk(active2, linked)
+    '''
+    
+    # changed to iteration, it is a bit slow i think, searching for element in list twice in row and removing from list by value..
+    def walk(v, linked):
+        ok = True
+        other = [v, ]
+        while(ok):
+            v = other[0]
+            linked.append(v)
+            other.remove(v)
+            ns = get_neighbours(v)
+            for n in ns:
+                if(n not in linked and n not in other):
+                    other.append(n)
+            if(len(other) == 0):
+                ok = False
     
     walk(active2, linked)
+    
     if(len(linked) != len(bm2.verts)):
         raise UnsuitableMeshError("Mesh or selection is not continuous.")
     
