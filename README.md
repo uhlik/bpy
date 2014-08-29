@@ -24,16 +24,16 @@ UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each
 
 notes:
 
-* Works only on tube-like part of meah, this is defined by selection. Tube-like mesh is: all quads, no caps, fixed number of vertices in each ring. Best example of such mesh is mesh circle extruded several times or beveled curve converted to mesh. There must be active vertex on one of the boundary loops. Active vertex defined where seam will be placed.
-* Result is right-angled UV for easy texturing, scaled to with square, distances of each ring is average of edge length and are releative to each other
+* Works only on tube-like parts of mesh defined by selection and active vertex (therefore you must be in vertex selection mode) and the selection must have a start and an end ring. Tube-like mesh is: all quads, no caps, fixed number of vertices in each ring. (Best example of such mesh is mesh circle extruded several times or beveled curve (not cyclic) converted to mesh.) There must be an active vertex on one of the boundary loops in selection. This active vertex define place where mesh will be 'cut' - where seam will be placed.
+* Result is rectangular UV for easy texturing, scaled to fit square, horizontal and vertical distances between vertices are averaged and proportional to each other. 
 
 usage:
 
 1. tab to Edit mode
-2. select part of model which you want to unwrap, tube type explained above
-3. make sure there is an active vertex on selection boundary
+2. select part of mesh you want to unwrap, tube type explained above
+3. make sure your selection has boundaries and there is an active vertex on one border of selection
 4. hit "U" and select "Tube UV Unwrap"
-5. optionally select 'Mark Seams' or 'Flip' in operator properties
+5. optionally check/uncheck 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
 
 ![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube2.gif)
 
