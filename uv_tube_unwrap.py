@@ -19,7 +19,7 @@
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 2),
+           "version": (0, 2, 3),
            "blender": (2, 70, 0),
            "location": "Edit mode > Mesh > UV Unwrap... > Tube UV Unwrap",
            "warning": "",
@@ -32,22 +32,25 @@ import bmesh
 from mathutils import Vector
 
 # notes:
-#   - Works only on tube-like part of meah, this is defined by selection.
-#     Tube-like mesh is: all quads, no caps, fixed number of vertices in each ring.
-#     Best example of such mesh is mesh circle extruded several times or beveled
-#     curve converted to mesh. There must be active vertex on one of the boundary
-#     loops. Active vertex defined where seam will be placed.
-#   - Result is right-angled UV for easy texturing, scaled to with square,
-#     distances of each ring is average of edge length and are releative to each other
+#   - Works only on tube-like parts of mesh defined by selection and active vertex
+#   (therefore you must be in vertex selection mode) and the selection must have a start
+#   and an end ring. Tube-like mesh is: all quads, no caps, fixed number of vertices
+#   in each ring. (Best example of such mesh is mesh circle extruded several times
+#   or beveled curve (not cyclic) converted to mesh.) There must be an active vertex
+#   on one of the boundary loops in selection. This active vertex define place where
+#   mesh will be 'cut' - where seam will be placed.
+#   - Result is rectangular UV for easy texturing, scaled to fit square, horizontal
+#   and vertical distances between vertices are averaged and proportional to each other.
 
 # usage:
 #   1 tab to Edit mode
-#   2 select part of model which you want to unwrap, tube type explained above
-#   3 make sure there is an active vertex on selection boundary
+#   2 select part of mesh you want to unwrap, tube type explained above
+#   3 make sure your selection has boundaries and there is an active vertex on one border of selection
 #   4 hit "U" and select "Tube UV Unwrap"
-#   5 optionally select 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
+#   5 optionally check/uncheck 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
 
 # changelog:
+# 2014.08.29 clarified docs (i hope so)
 # 2014.08.28 fixed maximum recursion depth exceeded error on large meshes
 # 2014.08.27 new option, 'Rectangular': if true, all faces will be rectangular,
 #            if false, horizontal edges will be scaled proportionally and whole
