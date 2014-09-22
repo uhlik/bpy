@@ -19,10 +19,10 @@
 bl_info = {"name": "Time Tracker",
            "description": "Track time spent in blender. Writes data to .csv and provides summary sorted by project (directory name).",
            "author": "Jakub Uhlik",
-           "version": (0, 0, 8),
+           "version": (0, 1, 0),
            "blender": (2, 71, 0),
            "location": "",
-           "warning": "It should work, but it is not tested on Windows and Linux.",
+           "warning": "",
            "wiki_url": "",
            "tracker_url": "",
            "category": "System", }
@@ -486,10 +486,24 @@ def stop():
         del h.scene_update_post[u]
 
 
+class WM_PT_time_tracker_panel(bpy.types.Panel):
+    bl_label = 'Time Tracker'
+    bl_space_type = 'VIEW_3D'
+    bl_context = "scene"
+    bl_region_type = 'UI'
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        prefs = Utils.get_preferences()
+        l = self.layout
+        l.prop(prefs, 'enabled', toggle=True, text='Enabled', )
+
+
 def register():
     bpy.utils.register_class(TimeTrackerPreferences)
     bpy.utils.register_class(WM_OT_time_tracker_show_project_directory)
     bpy.utils.register_class(WM_OT_time_tracker_clear_data)
+    bpy.utils.register_class(WM_PT_time_tracker_panel)
     Runtime.start = datetime.datetime.now()
     start()
 
@@ -499,6 +513,7 @@ def unregister():
     bpy.utils.unregister_class(TimeTrackerPreferences)
     bpy.utils.unregister_class(WM_OT_time_tracker_show_project_directory)
     bpy.utils.unregister_class(WM_OT_time_tracker_clear_data)
+    bpy.utils.unregister_class(WM_PT_time_tracker_panel)
 
 
 if __name__ == '__main__':
