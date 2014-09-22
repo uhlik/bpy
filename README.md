@@ -61,6 +61,7 @@ Here you can enable / disable logging, clear data collected so far, set custom d
 
 changelog:
 
+* 0.1.0 added simple ui
 * 0.0.8 ui tweaks, more advanced options, minor bugfixes
 * 0.0.7 fixed performance and sorting, added tracking of files which were closed without saving once a minute (can be enabled in preferences: check Track Scene Update)
 * 0.0.6 first release
