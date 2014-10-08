@@ -33,7 +33,7 @@ usage:
 2. select part of mesh you want to unwrap, tube type explained above
 3. make sure your selection has boundaries and there is an active vertex on one border of selection
 4. hit "U" and select "Tube UV Unwrap"
-5. optionally check/uncheck 'Mark Seams', 'Flip' or 'Rectangular' in operator properties
+5. optionally check/uncheck 'Mark Seams' or 'Flip' in operator properties
 
 ![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube2.gif)
 
@@ -41,6 +41,7 @@ usage:
 
 changelog:
 
+* 0.2.4 removed redundant and buggy parts
 * 0.2.0 almost full rewrite, now it works on selection only, any mesh will work, if selection comply to requirements
 * 0.1.3 fail nicely when encountered 2 ring cylinder
 * 0.1.2 got rid of changing edit/object mode
