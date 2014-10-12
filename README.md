@@ -13,6 +13,7 @@ Equalizes scale of UVs of selected objects to active object.
 
 changelog:
 
+* 0.1.2 fixed different uv names bug
 * 0.1.1 uuid windows workaround
 * 0.1.0 first release
 

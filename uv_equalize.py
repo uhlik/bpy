@@ -19,7 +19,7 @@
 bl_info = {"name": "UV Equalize",
            "description": "Equalizes scale of UVs of selected objects to active object.",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 1),
+           "version": (0, 1, 2),
            "blender": (2, 70, 0),
            "location": "View3d > Object > UV Equalize",
            "warning": "",
@@ -35,6 +35,7 @@ bl_info = {"name": "UV Equalize",
 
 
 # changelog:
+# 2014.10.12 fixed different uv names bug
 # 2014.06.16 uuid windows workaround
 # 2014.06.12 first release
 
@@ -165,6 +166,7 @@ def equalize(operator, context, rotate, margin, use_active, ):
         if(o != po):
             c = duplicate(po)
             activate_object(o)
+            c.data.uv_textures.active.name = o.data.uv_textures.active.name
             c.select = True
             bpy.ops.object.join()
             
