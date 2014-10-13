@@ -7,7 +7,7 @@
 #
 #  This program is distributed in the hope that it will be useful,
 #  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 #  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
@@ -19,7 +19,7 @@
 bl_info = {"name": "UV Equalize",
            "description": "Equalizes scale of UVs of selected objects to active object.",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 2),
+           "version": (0, 2, 0),
            "blender": (2, 70, 0),
            "location": "View3d > Object > UV Equalize",
            "warning": "",
@@ -29,12 +29,12 @@ bl_info = {"name": "UV Equalize",
 
 
 # - Use when tileable texture needs to be applied on all objects and its scale should be the same across them.
-# - Beware, active UV on each object will be repacked, in active object as well.
 # - Available in Object menu of 3d view while in object mode.
 # - To enable, more than two mesh objects must be selected, one must be active.
 
 
 # changelog:
+# 2014.10.13 complete rewrite, now it is pure math
 # 2014.10.12 fixed different uv names bug
 # 2014.06.16 uuid windows workaround
 # 2014.06.12 first release
@@ -43,77 +43,22 @@ bl_info = {"name": "UV Equalize",
 import bpy
 import bmesh
 from bpy.props import FloatProperty, BoolProperty
+from mathutils import Vector
 import math
 
 
-# http://blender.stackexchange.com/a/7670
-
-# uuid module causes an error messagebox on windows.
-#
-# using a dirty workaround to preload uuid without ctypes,
-# until blender gets compiled with vs2013
-def uuid_workaround():
-    import platform
-    if platform.system() == "Windows":
-        import ctypes
-        CDLL = ctypes.CDLL
-        ctypes.CDLL = None
-        import uuid
-        ctypes.CDLL = CDLL
-
-
-uuid_workaround()
-import uuid
-
-
-def add_object(n, d):
-    """Add object of name n and with data d."""
-    so = bpy.context.scene.objects
-    for i in so:
-        i.select = False
-    o = bpy.data.objects.new(n, d)
-    so.link(o)
-    o.select = True
-    if(so.active is None or so.active.mode == 'OBJECT'):
-        so.active = o
-    return o
-
-
-def activate_object(o):
-    """Set object o as active."""
-    bpy.ops.object.select_all(action='DESELECT')
-    sc = bpy.context.scene
-    o.select = True
-    sc.objects.active = o
-
-
-def duplicate(o):
-    """Duplicate object and return it, how cools is that?"""
-    activate_object(o)
-    p = [ob.name for ob in bpy.data.objects]
-    bpy.ops.object.duplicate(linked=False)
-    a = [ob.name for ob in bpy.data.objects]
-    d = list(set(a) - set(p))
-    c = bpy.data.objects[d[0]]
-    return c
-
-
-def delete_mesh_object(o):
-    """Delete mesh object and remove mesh data."""
-    m = o.data
-    bpy.context.scene.objects.unlink(o)
-    bpy.data.objects.remove(o)
-    m.user_clear()
-    bpy.data.meshes.remove(m)
-
-
-def equalize(operator, context, rotate, margin, use_active, ):
-    # objects we will operate on..
-    so = [o for o in context.selected_objects]
-    aco = context.active_object
+def equalize(operator, context, use_pack, rotate, margin, use_active, ):
+    def activate_object(o):
+        bpy.ops.object.select_all(action='DESELECT')
+        sc = bpy.context.scene
+        o.select = True
+        sc.objects.active = o
     
-    # some more sophisticated checks
-    for o in so:
+    ao = context.scene.objects.active
+    obs = [ob for ob in context.scene.objects if ob.name != ao.name and ob.select]
+    
+    # some checks
+    for o in obs:
         if(o.type != 'MESH'):
             operator.report({'ERROR'}, "Object {} is not a mesh.".format(o.name))
             return False
@@ -121,146 +66,93 @@ def equalize(operator, context, rotate, margin, use_active, ):
             operator.report({'ERROR'}, "Object {} has no uv map.".format(o.name))
             return False
     
-    # uuid as name for one quad test object
-    uid = str(uuid.uuid1())
+    cache = {}
     
-    # determine some reasonably small size like 1% of average area
-    def get_sc(o):
+    def calc_areas(o):
+        # cache
+        k = o.name
+        try:
+            mesh_area = cache[k][0]
+            uv_area = cache[k][1]
+            return mesh_area, uv_area
+        except:
+            pass
+        # prepare
         bm = bmesh.new()
         bm.from_mesh(o.data)
-        a = sum([f.calc_area() for f in bm.faces]) / len(bm.faces)
-        sc = (a / 100) * 1
+        bm.transform(o.matrix_world)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        # mesh
+        mesh_area = sum([f.calc_area() for f in bm.faces])
+        # uv
+        uv_layer = bm.loops.layers.uv.active
+        tas = []
+        for f in bm.faces:
+            locs = []
+            for l in f.loops:
+                x, y = l[uv_layer].uv
+                locs.append((x, y, ))
+            a = Vector((locs[0][0], locs[0][1], 0.0))
+            b = Vector((locs[1][0], locs[1][1], 0.0))
+            c = Vector((locs[2][0], locs[2][1], 0.0))
+            ab = b - a
+            ac = c - a
+            cr = ab.cross(ac)
+            a = cr.length * 0.5
+            tas.append(a)
+        uv_area = sum(tas)
+        # cleanup
         bm.free()
-        return sc
+        # cache
+        cache[k] = (mesh_area, uv_area, )
+        return mesh_area, uv_area
     
-    if(use_active):
-        # just for active object
-        sc = get_sc(aco)
+    if(not use_active):
+        obs.append(ao)
+        oms = []
+        ouvs = []
+        for o in obs:
+            om, ouv = calc_areas(o)
+            oms.append(om)
+            ouvs.append(ouv)
+        aom = sum(oms) / len(oms)
+        aouv = sum(ouvs) / len(ouvs)
     else:
-        # average all..
-        sc = sum([get_sc(o) for o in so]) / len(so)
-    # add object of known size, one quad polygon
-    # with so small area that will not have much influence..
-    pme = bpy.data.meshes.new(uid)
-    pdt = ([(1 * sc, 1 * sc, 0),
-            (1 * sc, -1 * sc, 0),
-            (-1 * sc, -1 * sc, 0),
-            (-1 * sc, 1 * sc, 0)],
-           [],
-           [(0, 3, 2, 1, ), ], )
-    pme.from_pydata(*pdt)
-    po = add_object(uid, pme)
-    activate_object(po)
-    # and add vertex group which will become very handy soon
-    vg = po.vertex_groups.new(uid)
-    vg.add([0, 1, 2, 3], 1.0, 'REPLACE')
-    # add uv, since it is one quad, it should add something "fully unwrapped" :)
-    # no need to mess with it some more than this..
-    pme.uv_textures.new("UVMap")
+        aom, aouv = calc_areas(ao)
     
-    # 1) join copy of test object to all
-    # 2) uv average scale and pack
-    # 3) calculate how long is one edge of the polygon just added
-    db = []
-    for o in so:
-        if(o != po):
-            c = duplicate(po)
-            activate_object(o)
-            c.data.uv_textures.active.name = o.data.uv_textures.active.name
-            c.select = True
-            bpy.ops.object.join()
-            
+    for o in obs:
+        activate_object(o)
+        # average and pack islands
+        if(use_pack):
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.select_all(action='SELECT')
             bpy.ops.uv.average_islands_scale()
             bpy.ops.uv.pack_islands(rotate=rotate, margin=margin, )
             bpy.ops.object.mode_set(mode='OBJECT')
-            
-            # calculate length of side of test polygon
-            # after edit mode it is pure magic..
-            me = o.data
-            vg = o.vertex_groups[uid]
-            pv = []
-            for v in me.vertices:
-                if(len(v.groups) > 0):
-                    gs = [g.group for g in v.groups]
-                    if(vg.index in gs):
-                        pv.append(v)
-            pi = [v.index for v in pv]
-            es = [e for e in me.edges if e.vertices[0] in pi]
-            a = me.vertices[es[0].vertices[0]]
-            b = me.vertices[es[0].vertices[1]]
-            ls = me.loops
-            for l in ls:
-                if(l.vertex_index == a.index):
-                    al = l
-                if(l.vertex_index == b.index):
-                    bl = l
-            uvd = me.uv_layers.active.data
-            a = uvd[al.index].uv
-            b = uvd[bl.index].uv
-            d = math.sqrt(((a[0] - b[0]) ** 2) + ((a[1] - b[1]) ** 2))
-            
-            e = [o, d, ]
-            db.append(e)
-    
-    # get d of active object
-    for o, d in db:
-        if(o == aco):
-            e = d
-            break
-    
-    if(not use_active):
-        # restore old functionality
-        db.sort(key=lambda v: v[1])
-        aco = db[len(db) - 1][0]
-        e = db[len(db) - 1][1]
-    
-    # transform UVs and cleanup
-    for o, d in db:
-        activate_object(o)
-        # ugly operators ahead..
+        # transform uv
         bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.select_all(action='SELECT')
+        if(not use_pack):
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.select_all(action='SELECT')
         
         original_type = bpy.context.area.type
         bpy.context.area.type = "IMAGE_EDITOR"
         
-        if(o != aco):
-            # only not active objects
-            v = 1 / (d / e)
-            bpy.ops.transform.resize(value=(v, v, v))
+        om, ouv = calc_areas(o)
+        x = (aouv / aom) * om
+        v = x / ouv
+        v = math.sqrt(v)
         
+        bpy.ops.transform.resize(value=(v, v, v), )
         bpy.context.area.type = original_type
-        bpy.ops.mesh.select_all(action='DESELECT')
-        
-        # remove test polygon, find it by vertex group
-        # then remove vertex group as well
-        i = None
-        for g in o.vertex_groups:
-            if(g.name == uid):
-                i = g.index
-                break
-        o.vertex_groups.active_index = i
-        bpy.ops.object.vertex_group_select()
-        bpy.ops.object.vertex_group_remove(all=False)
-        bpy.ops.mesh.delete(type='VERT')
-        # select all for convenience..
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.select_all(action='SELECT')
         
         bpy.ops.object.mode_set(mode='OBJECT')
     
-    # remove test poly source
-    activate_object(po)
-    delete_mesh_object(po)
-    
     # activate the one which was not changed
-    activate_object(aco)
+    activate_object(ao)
     # reselect objects for convenience
-    for o in so:
+    for o in obs:
         o.select = True
     
     return True
@@ -272,16 +164,20 @@ class UVEqualize(bpy.types.Operator):
     bl_description = "Equalizes scale of UVs of selected objects to active object."
     bl_options = {'REGISTER', 'UNDO'}
     
+    use_active = BoolProperty(name="Use Active",
+                              description="Use active object as scale specimen. Otherwise will be used object with largest polygons after packing. This object will be packed to fit bounds.",
+                              default=True, )
+    use_pack = BoolProperty(name="Pack Islands",
+                            description="Average island scale and pack",
+                            default=False, )
     rotate = BoolProperty(name="Pack Islands Rotate",
                           description="Rotate islands for best fit",
                           default=True, )
     margin = FloatProperty(name="Pack Islands Margin",
                            description="Space between islands",
-                           min=0.0, max=1.0,
+                           min=0.0,
+                           max=1.0,
                            default=0.001, )
-    use_active = BoolProperty(name="Use Active",
-                              description="Use active object as scale specimen. Otherwise will be used object with largest polygons after packing. This object will be packed to fit bounds.",
-                              default=True, )
     
     @classmethod
     def poll(cls, context):
@@ -290,24 +186,25 @@ class UVEqualize(bpy.types.Operator):
         return (ao and ao.type == 'MESH' and len(so) > 1 and context.mode == 'OBJECT')
     
     def execute(self, context):
-        r = equalize(self, context, self.rotate, self.margin, self.use_active, )
+        r = equalize(self, context, self.use_pack, self.rotate, self.margin, self.use_active, )
         if(r is False):
             return {'CANCELLED'}
         return {'FINISHED'}
     
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
-    
     def draw(self, context):
-        layout = self.layout
-        c = layout.column()
-        r = c.row()
-        r.prop(self, "rotate")
-        r = c.row()
-        r.prop(self, "margin")
-        r = c.row()
+        l = self.layout
+        
+        r = l.row()
         r.prop(self, "use_active")
+        
+        r = l.row()
+        r.prop(self, "use_pack")
+        r = l.row()
+        r.prop(self, "rotate")
+        r.enabled = self.use_pack
+        r = l.row()
+        r.prop(self, "margin")
+        r.enabled = self.use_pack
 
 
 def menu_func(self, context):

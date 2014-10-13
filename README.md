@@ -3,16 +3,18 @@
 Equalizes scale of UVs of selected objects to active object.
 
 * Use when tileable texture needs to be applied on all objects and its scale should be the same across them.
-* Beware, active UV on each object will be repacked, in active object as well.
 * Available in Object menu of 3d view while in object mode.
 * To enable, more than two mesh objects must be selected, one must be active.
+* Default behavior is active object determines scale and all other objects will be adjusted. This can be overrided unchecking 'Use Active', then all objects will be averaged.
+* Island scale averaging and repacking is optional and will yeld better result.
 
-![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/x/eq.gif)
+![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/x/eq2.gif)
 
 [BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
 
 changelog:
 
+* 0.2.0 complete rewrite, now it is pure math
 * 0.1.2 fixed different uv names bug
 * 0.1.1 uuid windows workaround
 * 0.1.0 first release
