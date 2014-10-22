@@ -14,6 +14,7 @@ Equalizes scale of UVs of selected objects to active object.
 
 changelog:
 
+* 0.2.1 auto deselect non mesh objects
 * 0.2.0 complete rewrite, now it is pure math
 * 0.1.2 fixed different uv names bug
 * 0.1.1 uuid windows workaround
