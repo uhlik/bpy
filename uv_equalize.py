@@ -19,7 +19,7 @@
 bl_info = {"name": "UV Equalize",
            "description": "Equalizes scale of UVs of selected objects to active object.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 1),
+           "version": (0, 2, 2),
            "blender": (2, 70, 0),
            "location": "View3d > Object > UV Equalize",
            "warning": "",
@@ -34,6 +34,10 @@ bl_info = {"name": "UV Equalize",
 
 
 # changelog:
+# 2014.10.23 fixed bug which prevented script to work, operators are used for transforming uvs,
+#            but when in image editor is loaded 'Render Result', UV will not be displayed
+#            and therefore operators will not work.. it's one line fix, just set displayed
+#            image to None..
 # 2014.10.22 auto deselect non mesh objects
 # 2014.10.13 complete rewrite, now it is pure math
 # 2014.10.12 fixed different uv names bug
@@ -147,6 +151,9 @@ def equalize(operator, context, use_pack, rotate, margin, use_active, ):
         
         original_type = bpy.context.area.type
         bpy.context.area.type = "IMAGE_EDITOR"
+        # reset image inside editor, it might be Render Result and in this case,
+        # UV operators will not work because UVs will not be displayed..
+        bpy.context.area.spaces[0].image = None
         
         om, ouv = calc_areas(o)
         x = (aouv / aom) * om
