@@ -455,6 +455,8 @@ def tube_unwrap(operator, context, mark_seams, flip, ):
     uv_lay = make_uvmap(bm, "UVMap")
     
     # convert verts from bm2 to bm
+    if(bpy.app.version >= (2, 73, 0)):
+        bm.verts.ensure_lookup_table()
     seam = [bm.verts[v.index] for v in seam]
     rs = []
     for ring in rings:
