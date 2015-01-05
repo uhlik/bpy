@@ -14,6 +14,7 @@ Equalizes scale of UVs of selected objects to active object.
 
 changelog:
 
+* 0.2.3 better fix for bug fixed in previous version..
 * 0.2.2 fixed bug which prevented script to work, operators are used for transforming uvs, but when in image editor is loaded 'Render Result', UV will not be displayed and therefore operators will not work.. it's one line fix, just set displayed image to None..
 * 0.2.1 auto deselect non mesh objects
 * 0.2.0 complete rewrite, now it is pure math

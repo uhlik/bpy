@@ -19,7 +19,7 @@
 bl_info = {"name": "UV Equalize",
            "description": "Equalizes scale of UVs of selected objects to active object.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 2),
+           "version": (0, 2, 3),
            "blender": (2, 70, 0),
            "location": "View3d > Object > UV Equalize",
            "warning": "",
@@ -34,6 +34,7 @@ bl_info = {"name": "UV Equalize",
 
 
 # changelog:
+# 2015.01.05 better fix for bug fixed in previous version..
 # 2014.10.23 fixed bug which prevented script to work, operators are used for transforming uvs,
 #            but when in image editor is loaded 'Render Result', UV will not be displayed
 #            and therefore operators will not work.. it's one line fix, just set displayed
@@ -135,6 +136,12 @@ def equalize(operator, context, use_pack, rotate, margin, use_active, ):
     
     for o in obs:
         activate_object(o)
+        # store image assignments
+        pi = []
+        uv = o.data.uv_textures.active
+        for p in uv.data:
+            pi.append(p.image)
+        
         # average and pack islands
         if(use_pack):
             bpy.ops.object.mode_set(mode='EDIT')
@@ -164,6 +171,11 @@ def equalize(operator, context, use_pack, rotate, margin, use_active, ):
         bpy.context.area.type = original_type
         
         bpy.ops.object.mode_set(mode='OBJECT')
+        
+        # restore image assignments
+        uv = o.data.uv_textures.active
+        for i, p in enumerate(uv.data):
+            p.image = pi[i]
     
     # activate the one which was not changed
     activate_object(ao)
@@ -183,7 +195,7 @@ class UVEqualize(bpy.types.Operator):
     use_active = BoolProperty(name="Use Active",
                               description="Use active object as scale specimen. Otherwise will be used object with largest polygons after packing. This object will be packed to fit bounds.",
                               default=True, )
-    use_pack = BoolProperty(name="Pack Islands",
+    use_pack = BoolProperty(name="Average Scale and Pack Islands",
                             description="Average island scale and pack",
                             default=False, )
     rotate = BoolProperty(name="Pack Islands Rotate",
