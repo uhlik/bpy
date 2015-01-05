@@ -156,7 +156,7 @@ class OpenGLLightsProperties(bpy.types.PropertyGroup):
     @classmethod
     def register(cls):
         bpy.types.Scene.opengl_lights_properties = bpy.props.PointerProperty(type=cls)
-        cls.edit = bpy.props.BoolProperty(name="Edit", description="", default=False, )
+        cls.edit = bpy.props.BoolProperty(name="OGL Lights Editor", description="", default=False, )
     
     @classmethod
     def unregister(cls):
@@ -185,7 +185,7 @@ class VIEW3D_OT_opengl_lights_preset_add(AddPresetBase, bpy.types.Operator):
 
 class VIEW3D_MT_opengl_lights_presets(bpy.types.Menu):
     # http://blender.stackexchange.com/a/2509/2555
-    bl_label = "OpenGL Lights Presets"
+    bl_label = "OGL Lights Presets"
     bl_idname = "VIEW3D_MT_opengl_lights_presets"
     preset_subdir = "opengl_lights_presets"
     preset_operator = "script.execute_preset"
@@ -248,13 +248,63 @@ class VIEW3D_PT_opengl_lights_panel(bpy.types.Panel):
         row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMOUT').remove_active = True
 
 
+
+
+def ui_opengl_lights(self, context):
+    def opengl_lamp_buttons(column, lamp):
+        # from space_userpref.py
+        split = column.split(percentage=0.1)
+        split.prop(lamp, "use", text="", icon='OUTLINER_OB_LAMP' if lamp.use else 'LAMP_DATA')
+        col = split.column()
+        col.active = lamp.use
+        row = col.row()
+        #row.label(text="Diffuse:")
+        row.prop(lamp, "diffuse_color", text="")
+        row = col.row()
+        #row.label(text="Specular:")
+        row.prop(lamp, "specular_color", text="")
+        col = split.column()
+        col.active = lamp.use
+        col.prop(lamp, "direction", text="")
+
+    system = bpy.context.user_preferences.system
+    p = context.scene.opengl_lights_properties
+    layout = self.layout
+    #layout.separator()
+    #box = layout.box()   
+    col = layout.column_flow(align=True)
+    col.prop(p, "edit")
+    row = col.row(align=True)
+    row.menu("VIEW3D_MT_opengl_lights_presets", text=bpy.types.VIEW3D_MT_opengl_lights_presets.bl_label)
+    row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMIN')
+    row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMOUT').remove_active = True 
+    if(p.edit):
+        column = layout.column()
+
+        split = column.split(percentage=0.1)
+        #split.label()
+        #split.label(text="Colors:")
+        #split.label(text="Direction:")
+
+        lamp = system.solid_lights[0]
+        opengl_lamp_buttons(column, lamp)
+
+        lamp = system.solid_lights[1]
+        opengl_lamp_buttons(column, lamp)
+
+        lamp = system.solid_lights[2]
+        opengl_lamp_buttons(column, lamp)
+        
+        
 def register():
     setup()
     
     bpy.utils.register_class(OpenGLLightsProperties)
     bpy.utils.register_class(VIEW3D_OT_opengl_lights_preset_add)
     bpy.utils.register_class(VIEW3D_MT_opengl_lights_presets)
-    bpy.utils.register_class(VIEW3D_PT_opengl_lights_panel)
+    #bpy.utils.register_class(VIEW3D_PT_opengl_lights_panel)
+    
+    bpy.types.VIEW3D_PT_view3d_shading.append(ui_opengl_lights)
 
 
 def unregister():
