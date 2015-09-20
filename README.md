@@ -77,7 +77,7 @@ changelog:
 
 ## [OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_opengl_lights.py)
 
-Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean in simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
+Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
 
 ![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gll2.gif)
 
