@@ -121,7 +121,7 @@ def summary():
     Runtime.level = prefs.level
     
     db = []
-    with open(p) as f:
+    with open(p, encoding='utf-8', ) as f:
         reader = csv.reader(f)
         for i, r in enumerate(reader):
             if(i == 0):
