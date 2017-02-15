@@ -2,13 +2,13 @@
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files in format (x, y, z, nx, ny, nz, r(8bit), g(8bit), b(8bit), (alpha)) exported from Agisoft PhotoScan or MeshLab.
 
-* Add Empty object
+* Add an Empty object
 * Load and display point cloud at Properties (N) panel with Empty selected
 * Available options: auto loading of selected ply file, pixel point drawing or OpenGL smooth point, drawing enable/disable and reset button which resets all (except autoload)
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pc.gif)
 
-<!-- [BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons) -->
+[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
 
 changelog:
 
