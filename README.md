@@ -5,6 +5,8 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 * Add an Empty object
 * Load and display point cloud at Properties (N) panel with Empty selected
 * Available options: auto loading of selected ply file, pixel point drawing or OpenGL smooth point, drawing enable/disable and reset button which resets all (except autoload)
+* Transforming Empty transforms point cloud as well
+* Works reasonably fast with 4m points on my machine, 2 years old, not top of the line 
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pc.gif)
 
