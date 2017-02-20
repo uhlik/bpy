@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files in format (x, y, z, nx, ny, nz, r(8bit), g(8bit), b(8bit), (alpha)) exported from Agisoft PhotoScan or MeshLab.",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 0),
+           "version": (0, 2, 0),
            "blender": (2, 78, 0),
            "location": "View3d > Properties > Point Cloud Visualizer (with an Empty object active)",
            "warning": "",
@@ -32,17 +32,68 @@ import os
 import math
 import struct
 import uuid
+import numpy
+import random
 
 import bpy
 import bgl
 from mathutils import Matrix, Vector
-from bpy.props import PointerProperty, BoolProperty, StringProperty
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
 from bpy.types import PropertyGroup, Panel, Operator
 
 
 def log(msg, indent=0):
     m = "{0}> {1}".format("    " * indent, msg)
     print(m)
+
+
+def int_to_short_notation(n, precision=1, ):
+    if(round(n / 10 ** 12, precision) >= 1):
+        r = int(round(n / 10 ** 12, precision))
+        return '{}t'.format(r)
+    elif(round(n / 10 ** 9, precision) >= 1):
+        r = int(round(n / 10 ** 9, precision))
+        return '{}g'.format(r)
+    elif(round(n / 10 ** 6, precision) >= 1):
+        r = int(round(n / 10 ** 6, precision))
+        return '{}m'.format(r)
+    elif(round(n / 10 ** 3, precision) >= 1):
+        r = int(round(n / 10 ** 3, precision))
+        return '{}k'.format(r)
+    else:
+        r = round(n / 10 ** 3, precision)
+        if(r >= 0.1):
+            return '{}k'.format(r)
+        else:
+            return '{}'.format(n)
+
+
+def clamp(f, t, l):
+    if(f != 0 or t != 0):
+        # only when something is set
+        if(f != 0 and t == 0):
+            # from is set
+            f, _ = tuple(numpy.clip([f, t], 0, l))
+        elif(f == 0 and t != 0):
+            # to is set
+            _, t = tuple(numpy.clip([f, t], 0, l))
+        elif(f != 0 and t != 0):
+            # both are set
+            f, t = tuple(numpy.clip([f, t], 0, l))
+        else:
+            print("wtf?")
+            pass
+    
+    if(f > t):
+        # swap
+        a = f
+        f = t
+        t = a
+    
+    if(f == t and f != 0 and t != 0):
+        f = f - 1
+    
+    return f, t
 
 
 class BinPlyPointCloudTypes():
@@ -323,6 +374,7 @@ class PCVCache():
                 'drawing': False,
                 'matrix': None,
                 'matrix_buffer': None,
+                'display_percent': None,
                 'object': None, }
 
 
@@ -350,7 +402,8 @@ def PCV_draw_callback(self, context, ):
         if(PCVCache.cache[u]['smooth']):
             bgl.glEnable(bgl.GL_POINT_SMOOTH)
         
-        bgl.glDrawArrays(bgl.GL_POINTS, 0, c['length'])
+        l = int((c['length'] / 100) * c['display_percent'])
+        bgl.glDrawArrays(bgl.GL_POINTS, 0, l)
         
         bgl.glDisableClientState(bgl.GL_VERTEX_ARRAY)
         bgl.glDisableClientState(bgl.GL_COLOR_ARRAY)
@@ -417,6 +470,7 @@ class PCVReset(Operator):
         pcv.smooth = False
         pcv.draw = False
         pcv.uuid = ""
+        pcv.display_percent = 100.0
         
         if(u in PCVCache.cache):
             # if reseting duplicated object, do not remove cache, can be used by another object still in scene
@@ -446,7 +500,20 @@ class PCVLoader(Operator):
             return {'CANCELLED'}
         
         # load points
-        points = BinPlyPointCloudReader(p, BinPlyPointCloudInfo(p, True).creator, 0, 0, ).vertices
+        i = BinPlyPointCloudInfo(p, True)
+        c = i.creator
+        # l = i.vertices
+        # f = pcv.load_from
+        # t = pcv.load_to
+        # f, t = clamp(f, t, l)
+        # pcv.load_from = f
+        # pcv.load_to = t
+        # points = BinPlyPointCloudReader(p, c, f, f + t, ).vertices
+        points = BinPlyPointCloudReader(p, c, 0, 0, ).vertices
+        
+        rnd = random.Random()
+        # rnd.seed(seed)
+        random.shuffle(points, rnd.random)
         
         # process points
         vertices = []
@@ -481,6 +548,7 @@ class PCVLoader(Operator):
         d['matrix'] = m
         d['matrix_buffer'] = matrix_buffer
         d['object'] = o
+        d['display_percent'] = pcv.display_percent
         PCVCache.add(d)
         
         pcv.uuid = u
@@ -496,6 +564,7 @@ class PCVLoader(Operator):
             
         except Exception as e:
             self.report({'ERROR'}, 'Unable to load .ply file.')
+            # self.report({'ERROR'}, e)
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -538,6 +607,9 @@ class PCVPanel(Panel):
         r.operator('point_cloud_visualizer.auto_load', icon='FILESEL', text='', )
         
         sub.separator()
+        # r = sub.row(align=True, )
+        # r.prop(pcv, 'load_from')
+        # r.prop(pcv, 'load_to')
         r = sub.row(align=True, )
         r.operator('point_cloud_visualizer.load')
         r.prop(pcv, 'auto', toggle=True, icon='AUTO', icon_only=True, )
@@ -545,10 +617,14 @@ class PCVPanel(Panel):
             if(pcv.draw or pcv.uuid in PCVCache.cache):
                 sub.enabled = False
         
-        c = l.column()
+        # sub.separator()
+        c = l.column(align=True, )
         r = c.row(align=True, )
         r.prop(pcv, 'draw', toggle=True, )
         r.prop(pcv, 'smooth', toggle=True, icon='ANTIALIASED', icon_only=True, )
+        r = c.row(align=True, )
+        r.prop(pcv, 'display_percent')
+        # r.prop(pcv, 'display_max')
         c.enabled = False
         
         if(pcv.uuid != "" and pcv.uuid in PCVCache.cache):
@@ -558,27 +634,6 @@ class PCVPanel(Panel):
         c = l.column()
         r = c.row()
         if(pcv.uuid in PCVCache.cache):
-            
-            def int_to_short_notation(n, precision=1, ):
-                if(round(n / 10 ** 12, precision) >= 1):
-                    r = int(round(n / 10 ** 12, precision))
-                    return '{}t'.format(r)
-                elif(round(n / 10 ** 9, precision) >= 1):
-                    r = int(round(n / 10 ** 9, precision))
-                    return '{}g'.format(r)
-                elif(round(n / 10 ** 6, precision) >= 1):
-                    r = int(round(n / 10 ** 6, precision))
-                    return '{}m'.format(r)
-                elif(round(n / 10 ** 3, precision) >= 1):
-                    r = int(round(n / 10 ** 3, precision))
-                    return '{}k'.format(r)
-                else:
-                    r = round(n / 10 ** 3, precision)
-                    if(r >= 0.1):
-                        return '{}k'.format(r)
-                    else:
-                        return '{}'.format(n)
-            
             h, t = os.path.split(pcv.filepath)
             n = int_to_short_notation(PCVCache.cache[pcv.uuid]['length'], precision=1, )
             r.label("{}: {} points".format(t, n))
@@ -628,11 +683,19 @@ class PCVProperties(PropertyGroup):
             else:
                 PCVCache.cache[self.uuid]['drawing'] = False
     
+    def _percentage_update(self, context, ):
+        if(self.uuid != "" and self.uuid in PCVCache.cache):
+            PCVCache.cache[self.uuid]['display_percent'] = self.display_percent
+    
     filepath = StringProperty(name="PLY file", default="", description="", )
     auto = BoolProperty(name="Autoload", default=False, description="Load chosen file automatically", )
     uuid = StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE', }, )
     smooth = BoolProperty(name="GL_POINT_SMOOTH", default=False, description="Use GL_POINT_SMOOTH", update=_smooth_update, )
     draw = BoolProperty(name="Draw", default=False, description="Enable/disable drawing", update=_draw_update, )
+    # load_from = IntProperty(name="From", default=0, min=0, )
+    # load_to = IntProperty(name="To", default=0, min=0, )
+    display_percent = FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_percentage_update, )
+    # display_max = IntProperty(name="Max", default=0, min=0, )
     
     @classmethod
     def register(cls):
