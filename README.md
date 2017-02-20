@@ -14,6 +14,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 changelog:
 
+* 0.2.0 display percentage
 * 0.1.0 first release
 
 ***
