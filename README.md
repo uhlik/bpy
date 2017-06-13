@@ -1,4 +1,4 @@
-## [ZBrush Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
+## [Import ZBrush Wavefront OBJ](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
 
 Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (vertex colors).
 

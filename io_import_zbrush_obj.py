@@ -1,4 +1,4 @@
-bl_info = {"name": "ZBrush Wavefront (.obj)",
+bl_info = {"name": "Import ZBrush Wavefront OBJ",
            "description": "Import Wavefront OBJ exported from ZBrush with UV and polypaint (vertex colors).",
            "author": "Jakub Uhlik",
            "version": (0, 0, 1),
@@ -187,7 +187,7 @@ class ZBrushOBJReader():
 
 class ImportZBrushOBJ(Operator, ImportHelper):
     bl_idname = "import_mesh.zbrush_obj"
-    bl_label = 'Import ZBrush OBJ'
+    bl_label = 'Import ZBrush Wavefront OBJ'
     bl_options = {'PRESET', 'UNDO', }
     
     filename_ext = ".obj"
