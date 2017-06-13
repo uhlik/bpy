@@ -1,3 +1,16 @@
+## [ZBrush Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
+
+Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (vertex colors).
+
+* Super fast: mesh with 5M quads with uv and vcols imported in 2 minutes, the same mesh without uv and vcols in 1 minute on my machine
+* Available import options: with UV coords, with vertex colors, or both and global model scale
+
+changelog:
+
+* 0.1.0 first release
+
+***
+
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files in format (x, y, z, nx, ny, nz, r(8bit), g(8bit), b(8bit), (alpha)) exported from Agisoft PhotoScan or MeshLab.
