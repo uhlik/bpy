@@ -1,7 +1,7 @@
 bl_info = {"name": "Import ZBrush Wavefront OBJ",
            "description": "Import Wavefront OBJ exported from ZBrush with UV and polypaint (vertex colors).",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 0),
+           "version": (0, 1, 1),
            "blender": (2, 78, 0),
            "location": "File > Import > ZBrush Wavefront (.obj)",
            "warning": "",
