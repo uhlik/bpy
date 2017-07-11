@@ -93,6 +93,12 @@ class ZBrushOBJReader():
         def f(l):
             l = l[2:-1]
             ls = l.split(' ')
+            f = [int(i) - 1 for i in ls]
+            return f
+        
+        def ft(l):
+            l = l[2:-1]
+            ls = l.split(' ')
             ls = [i.split('/') for i in ls]
             f = []
             t = []
@@ -121,10 +127,11 @@ class ZBrushOBJReader():
         if(report_progress):
             prgr = PercentDone(len(ls), 1)
         
+        has_uv = None
+        
         for l in ls:
             if(report_progress):
                 prgr.step()
-            
             if(l.startswith('g ')):
                 groups.append(l[2:])
             elif(l.startswith('v ')):
@@ -133,10 +140,19 @@ class ZBrushOBJReader():
                 if(with_uv):
                     tverts.append(vt(l))
             elif(l.startswith('f ')):
-                a, b = f(l)
+                if(has_uv is None):
+                    if('/' not in l):
+                        has_uv = False
+                    else:
+                        has_uv = True
+                if(has_uv):
+                    a, b = ft(l)
+                else:
+                    a = f(l)
                 faces.append(a)
-                if(with_uv):
-                    tfaces.append(b)
+                if(has_uv):
+                    if(with_uv):
+                        tfaces.append(b)
             elif(l.startswith('#MRGB ')):
                 if(with_vcol):
                     vcols.extend(vc(l))
