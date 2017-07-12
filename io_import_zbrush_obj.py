@@ -71,7 +71,7 @@ def activate_object(obj):
 
 
 class ZBrushOBJReader():
-    def __init__(self, path, with_uv=True, with_vcol=True, with_polygroups=True, report_progress=False, ):
+    def __init__(self, path, with_uv=True, with_polypaint=True, with_polygroups=True, report_progress=False, ):
         log("{}:".format(self.__class__.__name__), 0, )
         name = os.path.splitext(os.path.split(path)[1])[0]
         
@@ -161,7 +161,7 @@ class ZBrushOBJReader():
                     if(with_polygroups):
                         groups[cg].extend(a)
             elif(l.startswith('#MRGB ')):
-                if(with_vcol):
+                if(with_polypaint):
                     vcols.extend(vc(l))
             else:
                 pass
@@ -207,10 +207,10 @@ class ZBrushOBJReader():
         self.name = name
         self.object = add_object(name, me)
         
-        log("making polygroups..", 1)
-        o = self.object
-        me = o.data
         if(len(groups) > 0):
+            log("making polygroups..", 1)
+            o = self.object
+            me = o.data
             for k, v in groups.items():
                 o.vertex_groups.new(k)
                 vg = o.vertex_groups[k]
@@ -227,14 +227,14 @@ class ImportZBrushOBJ(Operator, ImportHelper):
     check_extension = True
     
     with_uv = BoolProperty(name="UV Coords", default=True, )
-    with_vcol = BoolProperty(name="Vertex Colors", default=True, )
+    with_polypaint = BoolProperty(name="Polypaint", default=True, )
     with_polygroups = BoolProperty(name="Polygroups", default=False, )
     scale = FloatProperty(name="Scale", description="", default=1.0, precision=3, )
     
     def execute(self, context):
         t = time.time()
         p = os.path.realpath(self.filepath)
-        r = ZBrushOBJReader(p, with_uv=self.with_uv, with_vcol=self.with_vcol, with_polygroups=self.with_polygroups, report_progress=False, )
+        r = ZBrushOBJReader(p, with_uv=self.with_uv, with_polypaint=self.with_polypaint, with_polygroups=self.with_polygroups, report_progress=False, )
         o = r.object
         
         if(self.scale != 1.0):

@@ -9,6 +9,7 @@ Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (ver
 
 changelog:
 
+* 0.2.0 import polygroups as vertex groups
 * 0.1.0 first release
 
 ***
