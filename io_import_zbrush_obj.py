@@ -1,7 +1,7 @@
 bl_info = {"name": "Import ZBrush Wavefront OBJ",
            "description": "Import Wavefront OBJ exported from ZBrush with UV and polypaint (vertex colors).",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 0),
+           "version": (0, 2, 1),
            "blender": (2, 78, 0),
            "location": "File > Import > ZBrush Wavefront (.obj)",
            "warning": "",
@@ -134,10 +134,11 @@ class ZBrushOBJReader():
             if(report_progress):
                 prgr.step()
             if(l.startswith('g ')):
-                g = l[2:-1]
-                if(g not in groups):
-                    groups[g] = []
-                cg = g
+                if(with_polygroups):
+                    g = l[2:-1]
+                    if(g not in groups):
+                        groups[g] = []
+                    cg = g
             elif(l.startswith('v ')):
                 verts.append(v(l))
             elif(l.startswith('vt ')):
@@ -157,8 +158,8 @@ class ZBrushOBJReader():
                 if(has_uv):
                     if(with_uv):
                         tfaces.append(b)
-                if(cg is not None):
-                    if(with_polygroups):
+                if(with_polygroups):
+                    if(cg is not None):
                         groups[cg].extend(a)
             elif(l.startswith('#MRGB ')):
                 if(with_polypaint):
