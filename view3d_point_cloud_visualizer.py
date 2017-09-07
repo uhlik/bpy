@@ -17,9 +17,9 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {"name": "Point Cloud Visualizer",
-           "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files in format (x, y, z, nx, ny, nz, r(8bit), g(8bit), b(8bit), (alpha)) exported from Agisoft PhotoScan or MeshLab.",
+           "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 0),
+           "version": (0, 3, 0),
            "blender": (2, 78, 0),
            "location": "View3d > Properties > Point Cloud Visualizer (with an Empty object active)",
            "warning": "",
@@ -96,263 +96,126 @@ def clamp(f, t, l):
     return f, t
 
 
-class BinPlyPointCloudTypes():
-    # (application name, data format, total number of verts header line index)
-    PHOTOSCAN = ("PhotoScan", '<ffffffBBB', 2, )
-    MESHLAB = ("MeshLab", '<ffffffBBBB', 3, )
-    TEOPLIB = ("teoplib", '<ffffffBBB', 2, )
-    ALL = [PHOTOSCAN, MESHLAB, TEOPLIB, ]
-
-
-class BinPlyPointCloudInfo():
-    def __init__(self, path, verbose=True, ):
-        self.verbose = verbose
-        if(self.verbose):
-            log("BinPlyPointCloudInfo:", 0)
-        
-        if(os.path.exists(path) is False or os.path.isdir(path) is True):
-            raise OSError("did you point me to an imaginary file?")
-        self.path = path
-        self._read()
-    
-    def _read(self):
-        if(self.verbose):
-            log("read ply from: {0}".format(self.path), 1)
-        with open(self.path, 'rb') as ply:
-            self._header(ply)
-        
-        self._guess()
-        if(self.creator is not None):
-            if(self.verbose):
-                log("ply creator (guessed): {0}".format(self.creator[0]), 1)
-        else:
-            if(self.verbose):
-                log("ply creator: unknown", 1)
-        
-        self.vertices = self.elements['vertex']['num']
-        if(self.verbose):
-            log("vertices: {0}".format(self.vertices), 1)
-    
-    def _header(self, ply):
-        self.header = []
-        for line in ply:
-            ln = line.decode('ascii').rstrip()
-            if(ln == "end_header"):
-                self.header.append(ln)
-                break
-            self.header.append(ln)
-        
-        self.elements = {}
-        elm = None
-        for l in self.header:
-            if(l == "ply"):
-                pass
-            elif(l[:7] == "format "):
-                self.format = l
-            elif(l[:8] == "element "):
-                ls = l.split(" ")
-                self.elements[ls[1]] = {"num": int(ls[2])}
-                elm = self.elements[ls[1]]
-                elm["props"] = []
-            elif(l[:9] == "property "):
-                elm["props"].append(l[9:])
-            elif(l == "end_header"):
-                pass
-            else:
-                if(l[:8] == "comment "):
-                    pass
-                else:
-                    log("unknown header entry: {0}".format(l), 1)
-    
-    def _guess(self):
-        self.creator = None
-        
-        fmt = ''
-        if("binary_little_endian" in self.format):
-            fmt = '<'
-        else:
-            log("supported only binary little endian", 1)
-            return
-        
-        if(len(self.elements) == 1):
-            try:
-                props = self.elements['vertex']['props']
-                for p in props:
-                    sp = p.split(" ")
-                    if(sp[0] == "float"):
-                        fmt += ('f')
-                    elif(sp[0] == "uchar"):
-                        fmt += ('B')
-                    else:
-                        log("unimplemented format type: {0}".format(sp[0]), 1)
-                        return
-            except KeyError:
-                log("seems like this is not just point cloud ply.. (no vertices??!?!??!)", 1)
-                return
-        else:
-            if(len(self.elements) == 2 and 'face' in self.elements):
-                try:
-                    if(self.elements['face']['num'] == 0):
-                        pass
-                except:
-                    log("seems like this is not just point cloud ply.. (not only vertices)", 1)
-                
-                try:
-                    props = self.elements['vertex']['props']
-                    for p in props:
-                        sp = p.split(" ")
-                        if(sp[0] == "float"):
-                            fmt += ('f')
-                        elif(sp[0] == "uchar"):
-                            fmt += ('B')
-                        else:
-                            log("unimplemented format type: {0}".format(sp[0]), 1)
-                            return
-                except KeyError:
-                    log("seems like this is not just point cloud ply.. (no vertices??!?!??!)", 1)
-                    return
-                
-            else:
-                log("contains more elements than expected.. is it a point cloud ply?", 1)
-                return
-        
-        for i, l in enumerate(self.header):
-            if(l[:8] == "element "):
-                break
-        vchl = i
-        
-        for a in BinPlyPointCloudTypes.ALL:
-            if(a[1] == fmt and a[2] == vchl):
-                self.creator = a
-                break
-        
-        if(self.creator is None):
-            log("unidentified ply cretor", 1)
-    
-    def __repr__(self):
-        s = "BinPlyPointCloudInfo(path='{0}')"
-        return s.format(self.path)
-    
-    def __str__(self):
-        s = "BinPlyPointCloudInfo(path: '{0}', creator: {1}, vertices: {2}, )"
-        return s.format(self.path, self.creator, self.vertices, )
-
-
 class BinPlyPointCloudReader():
-    def __init__(self, path, creator, read_from=0, read_length=0, ):
-        log("BinPlyPointCloudReader:", 0)
-        
+    def __init__(self, path, ):
+        log("{}:".format(self.__class__.__name__), 0)
         if(os.path.exists(path) is False or os.path.isdir(path) is True):
             raise OSError("did you point me to an imaginary file? ('{0}')".format(path))
+        
         self.path = path
+        self._stream = open(self.path, "rb")
         
-        # ply file creator application
-        if(creator == BinPlyPointCloudTypes.PHOTOSCAN):
-            self.creator = BinPlyPointCloudTypes.PHOTOSCAN
-        elif(creator == BinPlyPointCloudTypes.MESHLAB):
-            self.creator = BinPlyPointCloudTypes.MESHLAB
-        elif(creator == BinPlyPointCloudTypes.TEOPLIB):
-            self.creator = BinPlyPointCloudTypes.TEOPLIB
-        else:
-            raise ValueError("unknown ply creator")
-        # ply data format
-        self.format = self.creator[1]
-        # ply header total number of vertices line number
-        self.header_line = self.creator[2]
+        log("reading header..", 1)
+        self._header()
+        log("reading data:", 1)
+        self._data()
         
-        # from which point start reading
-        if(read_from < 0):
-            raise ValueError("read_from '{0}' is less than zero".format(read_from))
-        self.read_from = read_from
+        self._stream.close()
         
-        # how many vertices to read from ply
-        if(read_length < 0):
-            raise ValueError("read_length '{0}' is less than zero".format(read_length))
-        self.read_length = read_length
+        props = ['x', 'y', 'z', 'red', 'green', 'blue', ]
+        es = self._elements
+        for e in es:
+            if(e['name'] == 'vertex'):
+                ps = e['properties']
+        q = []
+        for i, n in enumerate(props):
+            for j, p in enumerate(ps):
+                if(n == p[0]):
+                    q.append(j)
+        vd = self.data['vertex']
+        self.points = [(i[q[0]], i[q[1]], i[q[2]], i[q[3]], i[q[4]], i[q[5]], ) for i in vd]
         
-        # list of read vertices
-        self.vertices = []
-        # number of vertices in ply
-        self.total_num_verts = 0
-        
-        self._read_ply()
-    
-    def _read_ply(self):
-        log("read ply from: {0}".format(self.path), 1)
-        with open(self.path, 'rb') as ply:
-            self._header(ply)
-            log("ply file creator: {0}".format(self.creator[0]), 1)
-            log("total vertices: {0}".format(self.total_num_verts), 1)
-            self._vertices(ply)
         log("done.", 1)
     
-    def _header(self, ply):
-        header = []
-        for line in ply:
-            if(line.decode('ascii') == "end_header\n"):
-                header.append(line)
+    def _header(self):
+        raw = []
+        h = []
+        for l in self._stream:
+            raw.append(l)
+            t = l.decode('ascii')
+            h.append(t.rstrip())
+            if(t == "end_header\n"):
                 break
-            header.append(line)
         
-        l = 0
-        for i in header:
-            l += len(i)
-        ply.seek(0)
-        h = ply.read(l)
+        self._header_length = sum([len(i) for i in raw])
         
-        self.header_length = l
-        self.total_num_verts = int(header[self.header_line].decode('ascii').split(" ")[2])
+        _supported_version = '1.0'
+        _byte_order = {'binary_little_endian': '<',
+                       'binary_big_endian': '>',
+                       'ascii': None, }
+        _types = {'char': 'c',
+                  'uchar': 'B',
+                  'short': 'h',
+                  'ushort': 'H',
+                  'int': 'i',
+                  'uint': 'I',
+                  'float': 'f',
+                  'double': 'd', }
+        
+        _ply = False
+        _format = None
+        _endianness = None
+        _version = None
+        _comments = []
+        _elements = []
+        _current_element = None
+        
+        for i, l in enumerate(h):
+            if(i == 0 and l == 'ply'):
+                _ply = True
+                continue
+            if(l.startswith('format ')):
+                _format = l[7:]
+                a = _format.split(' ')
+                _endianness = _byte_order[a[0]]
+                _version = a[1]
+            if(l.startswith('comment ')):
+                _comments.append(l[8:])
+            if(l.startswith('element ')):
+                a = l.split(' ')
+                _elements.append({'name': a[1], 'properties': [], 'count': int(a[2]), })
+                _current_element = len(_elements) - 1
+            if(l.startswith('property ')):
+                a = l[9:].split(' ')
+                if(a[0] != 'list'):
+                    _elements[_current_element]['properties'].append((a[1], _types[a[0]]))
+                else:
+                    c = _types[a[2]]
+                    t = _types[a[2]]
+                    n = a[3]
+                    _elements[_current_element]['properties'].append((n, c, t))
+            if(i == len(h) - 1 and l == 'end_header'):
+                continue
+        
+        if(not _ply):
+            raise ValueError("not a ply file")
+        if(_version != _supported_version):
+            raise ValueError("unsupported ply file version")
+        if(_endianness is None):
+            raise ValueError("ascii ply files are not supported")
+        
+        self._endianness = _endianness
+        self._elements = _elements
     
-    def _vertices(self, ply):
-        sz = struct.calcsize(self.format)
-        n = self.total_num_verts
-        l = self.read_length
-        f = self.read_from
-        
-        if(f > n):
-            raise ValueError("read_from is more than total_num_verts")
-        if(f == n):
-            raise ValueError("read_from is equal to total_num_verts")
-        if(f + l > n):
-            # overflow..
-            log("no more than {0} verts available!".format(n - f), 1)
-            l = n - f
-            n = l
-        else:
-            # in range..
-            # from: 0, length: 0 = all
-            if(f == 0 and l == 0):
-                n = n
-            # from: a, length: 0 = all - a
-            if(f != 0 and l == 0):
-                n = n - f
-            # from: 0, length: b = all - b
-            if(f == 0 and l != 0):
-                n = l
-            # from: a, length: b = all - a - b
-            if(f != 0 and l != 0):
-                n = l
-        
-        # skip to read_from
-        s = struct.calcsize(self.format[:1] + (self.format[1:] * self.read_from))
-        ply.seek(self.header_length + s)
-        
-        # update self.read_length
-        self.read_length = n
-        
-        log("reading {0} vertices starting at {1}:".format(n, f), 1)
-        for i in range(n):
-            d = ply.read(sz)
-            v = struct.unpack(self.format, d)
-            self.vertices.append(v)
-    
-    def __repr__(self):
-        s = "BinPlyPointCloudReader(path='{0}', creator={1}, read_from={2}, read_length={3}, )"
-        return s.format(self.path, self.creator, self.read_from, self.read_length, )
-    
-    def __str__(self):
-        s = "BinPlyPointCloudInfo(path: '{0}')"
-        return s.format(self.path)
+    def _data(self):
+        self.data = {}
+        for i, d in enumerate(self._elements):
+            nm = d['name']
+            if(nm != 'vertex'):
+                # read only vertices
+                continue
+            a = []
+            f = self._endianness
+            f += ''.join([i[1] for i in d['properties']])
+            c = d['count']
+            sz = struct.calcsize(f)
+            log("reading {} {} elements..".format(c, nm), 2)
+            self._stream.seek(self._header_length)
+            for i in range(c):
+                r = self._stream.read(sz)
+                v = struct.unpack(f, r)
+                a.append(v)
+            self.data[nm] = a
 
 
 class PCVCache():
@@ -499,20 +362,9 @@ class PCVLoader(Operator):
             self.report({'WARNING'}, "File does not exist")
             return {'CANCELLED'}
         
-        # load points
-        i = BinPlyPointCloudInfo(p, True)
-        c = i.creator
-        # l = i.vertices
-        # f = pcv.load_from
-        # t = pcv.load_to
-        # f, t = clamp(f, t, l)
-        # pcv.load_from = f
-        # pcv.load_to = t
-        # points = BinPlyPointCloudReader(p, c, f, f + t, ).vertices
-        points = BinPlyPointCloudReader(p, c, 0, 0, ).vertices
+        points = BinPlyPointCloudReader(p).points
         
         rnd = random.Random()
-        # rnd.seed(seed)
         random.shuffle(points, rnd.random)
         
         # process points
@@ -521,8 +373,7 @@ class PCVLoader(Operator):
         for i, p in enumerate(points):
             v = Vector(p[:3])
             vertices.extend(v.to_tuple())
-            # ply from meshlab has also alpha value, throw it away..
-            c = [v / 255 for v in p[6:9]]
+            c = [v / 255 for v in p[3:]]
             colors.extend(c)
         
         # make buffers

@@ -16,7 +16,7 @@ changelog:
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
 
-Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files in format (x, y, z, nx, ny, nz, r(8bit), g(8bit), b(8bit), (alpha)) exported from Agisoft PhotoScan or MeshLab.
+Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range (8 bit).
 
 * Add an Empty object
 * Load and display point cloud at Properties (N) panel with Empty selected
@@ -30,6 +30,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 changelog:
 
+* 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
 * 0.2.0 display percentage
 * 0.1.0 first release
 
