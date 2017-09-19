@@ -1,16 +1,14 @@
-## [Import ZBrush Wavefront OBJ](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
+## [Fast Wavefront (.obj)](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
 
-Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (vertex colors).
+Import/Export single mesh as Wavefront OBJ.
 
-* Super fast: mesh with 5M quads with uv and vcols imported in 2 minutes, the same mesh without uv and vcols in 1 minute on my machine
-* Available import options: with UV coords, with vertex colors, or both and global model scale
+Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b). Export is ~3x faster than built-in obj exporter and import ~2x.
 
-[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?432068-Import-ZBrush-Wavefront-OBJ-with-vertex-colors)
+Comes with a few presets (created upon activation) for following workflow: import raw mesh obj from Agisoft PhotoScan, export raw mesh obj to ZBrush, import cleaned/uv unwrapped mesh obj from ZBrush, export cleaned mesh to Agisoft PhotoScan for texture generation.
 
 changelog:
 
-* 0.2.0 import polygroups as vertex groups
-* 0.1.0 first release
+* 0.1.1 first release
 
 ***
 
@@ -126,3 +124,19 @@ changelog:
 * 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
 * 2014.08.19 first release
+
+***
+
+## [Import ZBrush Wavefront OBJ](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
+
+Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (vertex colors).
+
+* Super fast: mesh with 5M quads with uv and vcols imported in 2 minutes, the same mesh without uv and vcols in 1 minute on my machine
+* Available import options: with UV coords, with vertex colors, or both and global model scale
+
+[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?432068-Import-ZBrush-Wavefront-OBJ-with-vertex-colors)
+
+changelog:
+
+* 0.2.0 import polygroups as vertex groups
+* 0.1.0 first release
