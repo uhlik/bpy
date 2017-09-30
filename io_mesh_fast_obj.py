@@ -679,7 +679,7 @@ def menu_func_import(self, context):
 
 
 def setup():
-    export_presets = {'photoscan_final': {'apply_modifiers': False, 'apply_transformation': False, 'convert_axes': True, 'triangulate': False, 'use_uv': True,
+    export_presets = {'photoscan_final': {'apply_modifiers': False, 'apply_transformation': False, 'convert_axes': False, 'triangulate': False, 'use_uv': True,
                       'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0, 'precision': 6, },
                       'zbrush_cleanup': {'apply_modifiers': False, 'apply_transformation': True, 'convert_axes': True, 'triangulate': False, 'use_uv': True,
                       'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0, 'precision': 6, }, }
