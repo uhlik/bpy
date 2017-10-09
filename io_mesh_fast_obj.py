@@ -680,15 +680,17 @@ def menu_func_import(self, context):
 
 def setup():
     export_presets = {'photoscan_final': {'apply_modifiers': False, 'apply_transformation': False, 'convert_axes': False, 'triangulate': False, 'use_uv': True,
-                      'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0, 'precision': 6, },
+                                          'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0,
+                                          'precision': 6, },
                       'zbrush_cleanup': {'apply_modifiers': False, 'apply_transformation': True, 'convert_axes': True, 'triangulate': False, 'use_uv': True,
-                      'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0, 'precision': 6, }, }
+                                         'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0,
+                                         'precision': 6, }, }
     import_presets = {'photoscan_raw': {'convert_axes': True, 'with_uv': False, 'with_shading': False, 'with_vertex_colors': False, 'use_vcols_mrgb': False,
-                      'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
+                                        'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
                       'zbrush_cleanup': {'convert_axes': True, 'with_uv': True, 'with_shading': False, 'with_vertex_colors': False, 'use_vcols_mrgb': False,
-                      'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
+                                         'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
                       'zbrush_with_vcols': {'convert_axes': True, 'with_uv': True, 'with_shading': False, 'with_vertex_colors': True, 'use_vcols_mrgb': True,
-                      'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, }, }
+                                            'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, }, }
     defines = ['import bpy', 'op = bpy.context.active_operator', '', ]
     
     # TODO: do this only when all presets are missing, if only some, assume it is intentional.. also skip when all default are missing, but some user defined are present.
