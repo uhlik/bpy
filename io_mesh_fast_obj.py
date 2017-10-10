@@ -365,23 +365,27 @@ class FastOBJReader():
             ls = f.readlines()
         
         def v(l, pl=2, ):
-            l = l[pl:-1]
+            l = l[pl:]
+            l = l.strip()
             a = l.split(' ')
             return (float(a[0]), float(a[1]), float(a[2]))
         
         def vt(l, pl=3, ):
-            l = l[pl:-1]
+            l = l[pl:]
+            l = l.strip()
             a = l.split(' ')
             return (float(a[0]), float(a[1]))
         
         def f(l):
-            l = l[2:-1]
+            l = l[2:]
+            l = l.strip()
             ls = l.split(' ')
             f = [int(i) - 1 for i in ls]
             return f
         
         def fn(l):
-            l = l[2:-1]
+            l = l[2:]
+            l = l.strip()
             ls = l.split(' ')
             ls = [i.split('/') for i in ls]
             f = []
@@ -390,7 +394,8 @@ class FastOBJReader():
             return f
         
         def ftn(l):
-            l = l[2:-1]
+            l = l[2:]
+            l = l.strip()
             ls = l.split(' ')
             ls = [i.split('/') for i in ls]
             f = []
@@ -402,7 +407,8 @@ class FastOBJReader():
         
         def vc_mrgb(l):
             r = []
-            l = l[6:-1]
+            l = l[6:]
+            l = l.strip()
             for i in range(0, len(l), 8):
                 v = l[i:i + 8]
                 c = (int(v[2:4], 16) / 255, int(v[4:6], 16) / 255, int(v[6:8], 16) / 255)
@@ -410,7 +416,8 @@ class FastOBJReader():
             return r
         
         def v_vc_ext(l, pl=2, ):
-            l = l[pl:-1]
+            l = l[pl:]
+            l = l.strip()
             a = l.split(' ')
             return (float(a[0]), float(a[1]), float(a[2]), float(a[3]), float(a[4]), float(a[5]))
         
@@ -437,7 +444,8 @@ class FastOBJReader():
                         shading_flag = True
             elif(l.startswith('g ')):
                 if(with_polygroups):
-                    g = l[2:-1]
+                    g = l[2:]
+                    g = g.strip()
                     if(g not in groups):
                         groups[g] = []
                     cg = g
