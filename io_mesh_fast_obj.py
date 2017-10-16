@@ -364,40 +364,30 @@ class FastOBJReader():
         with open(path, mode='r', encoding='utf-8') as f:
             ls = f.readlines()
         
-        def v(l, pl=2, ):
-            l = l[pl:]
-            l = l.strip()
-            a = l.split(' ')
-            return (float(a[0]), float(a[1]), float(a[2]))
+        def v(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
         
-        def vt(l, pl=3, ):
-            l = l[pl:]
-            l = l.strip()
-            a = l.split(' ')
-            return (float(a[0]), float(a[1]))
+        def vt(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
         
         def f(l):
-            l = l[2:]
-            l = l.strip()
-            ls = l.split(' ')
-            f = [int(i) - 1 for i in ls]
-            return f
+            a = l.split()[1:]
+            ls = map(int, a)
+            return tuple([i - 1 for i in ls])
         
         def fn(l):
-            l = l[2:]
-            l = l.strip()
-            ls = l.split(' ')
-            ls = [i.split('/') for i in ls]
+            a = l.split()[1:]
+            ls = [i.split('/') for i in a]
             f = []
             for i, p in enumerate(ls):
                 f.append(int(p[0]) - 1)
             return f
         
         def ftn(l):
-            l = l[2:]
-            l = l.strip()
-            ls = l.split(' ')
-            ls = [i.split('/') for i in ls]
+            a = l.split()[1:]
+            ls = [i.split('/') for i in a]
             f = []
             t = []
             for i, p in enumerate(ls):
@@ -415,11 +405,9 @@ class FastOBJReader():
                 r.append(c)
             return r
         
-        def v_vc_ext(l, pl=2, ):
-            l = l[pl:]
-            l = l.strip()
-            a = l.split(' ')
-            return (float(a[0]), float(a[1]), float(a[2]), float(a[3]), float(a[4]), float(a[5]))
+        def v_vc_ext(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
         
         groups = {}
         verts = []
