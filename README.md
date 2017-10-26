@@ -8,6 +8,7 @@ Comes with a few presets (created upon activation) for following workflow: impor
 
 changelog:
 
+* 0.1.2 import zbrush mask as vertex group
 * 0.1.1 first release
 
 ***
@@ -124,19 +125,3 @@ changelog:
 * 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
 * 2014.08.19 first release
-
-***
-
-## [Import ZBrush Wavefront OBJ](https://raw.githubusercontent.com/uhlik/bpy/master/io_import_zbrush_obj.py)
-
-Import Wavefront OBJ exported from ZBrush with UV coordinates and polypaint (vertex colors).
-
-* Super fast: mesh with 5M quads with uv and vcols imported in 2 minutes, the same mesh without uv and vcols in 1 minute on my machine
-* Available import options: with UV coords, with vertex colors, or both and global model scale
-
-[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?432068-Import-ZBrush-Wavefront-OBJ-with-vertex-colors)
-
-changelog:
-
-* 0.2.0 import polygroups as vertex groups
-* 0.1.0 first release

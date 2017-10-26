@@ -1,7 +1,7 @@
 bl_info = {"name": "Fast Wavefront (.obj)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b).",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 1),
+           "version": (0, 1, 2),
            "blender": (2, 78, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj)",
            "warning": "",
@@ -334,11 +334,11 @@ class FastOBJWriter():
 
 
 class FastOBJReader():
-    def __init__(self, path, convert_axes=True, with_uv=True, with_shading=True, with_vertex_colors=True, use_vcols_mrgb=True, use_vcols_ext=False, with_polygroups=True, global_scale=1.0, apply_conversion=False, ):
+    def __init__(self, path, convert_axes=True, with_uv=True, with_shading=True, with_vertex_colors=True, use_vcols_mrgb=True, use_mask_as_vertex_group=False, use_vcols_ext=False, with_polygroups=True, global_scale=1.0, apply_conversion=False, ):
         log("{}:".format(self.__class__.__name__), 0, )
         name = os.path.splitext(os.path.split(path)[1])[0]
         log("will import .obj at: {}".format(path), 1)
-        log_args_align = 25
+        log_args_align = 30
         
         t = time.time()
         
@@ -397,13 +397,15 @@ class FastOBJReader():
         
         def vc_mrgb(l):
             r = []
+            m = []
             l = l[6:]
             l = l.strip()
             for i in range(0, len(l), 8):
                 v = l[i:i + 8]
                 c = (int(v[2:4], 16) / 255, int(v[4:6], 16) / 255, int(v[6:8], 16) / 255)
                 r.append(c)
-            return r
+                m.append(int(v[0:2], 16) / 255)
+            return r, m
         
         def v_vc_ext(l):
             a = l.split()[1:]
@@ -417,6 +419,7 @@ class FastOBJReader():
         vcols = []
         shading = []
         shading_flag = None
+        mask = []
         
         log("parsing..", 1)
         parsef = None
@@ -472,7 +475,10 @@ class FastOBJReader():
             elif(l.startswith('#MRGB ')):
                 if(with_vertex_colors):
                     if(use_vcols_mrgb):
-                        vcols.extend(vc_mrgb(l))
+                        c, m = vc_mrgb(l)
+                        vcols.extend(c)
+                        if(use_mask_as_vertex_group):
+                            mask.extend(m)
             else:
                 pass
         
@@ -494,6 +500,7 @@ class FastOBJReader():
         
         log("{} {}".format("{}: ".format("with_vertex_colors").ljust(log_args_align, "."), with_vertex_colors), 1)
         log("{} {}".format("{}: ".format("use_vcols_mrgb").ljust(log_args_align, "."), use_vcols_mrgb), 1)
+        log("{} {}".format("{}: ".format("use_mask_as_vertex_group").ljust(log_args_align, "."), use_mask_as_vertex_group), 1)
         log("{} {}".format("{}: ".format("use_vcols_ext").ljust(log_args_align, "."), use_vcols_ext), 1)
         if(len(vcols) > 0):
             log("making vertex colors..", 1)
@@ -520,6 +527,15 @@ class FastOBJReader():
         log("adding to scene..", 1)
         self.name = name
         self.object = add_object(name, me)
+        if(len(mask) > 0):
+            log("making mask vertex group..", 1)
+            g = self.object.vertex_groups.new("mask")
+            indexes = [i for i in range(len(me.vertices))]
+            g.add(indexes, 0.0, 'REPLACE')
+            ind = g.index
+            for i, v in enumerate(me.vertices):
+                v.groups[ind].weight = mask[i]
+        
         if(convert_axes):
             if(not apply_conversion):
                 axis_forward = '-Z'
@@ -629,6 +645,7 @@ class ImportFastOBJ(Operator, ImportHelper):
     with_shading = BoolProperty(name="With Shading", default=False, description="Import face shading.", )
     with_vertex_colors = BoolProperty(name="With Vertex Colors", default=False, description="Import vertex colors, this is not part of official file format specification.", )
     use_vcols_mrgb = BoolProperty(name="VCols MRGB", default=True, description="Use ZBrush vertex colors style.", )
+    use_mask_as_vertex_group = BoolProperty(name="Mask as Vertex Group", default=False, description="Import ZBrush mask as vertex group.", )
     use_vcols_ext = BoolProperty(name="VCols Ext", default=False, description="Use 'Extended Vertex' vertex colors style.", )
     with_polygroups = BoolProperty(name="With Polygroups", default=False, description="", )
     global_scale = FloatProperty(name="Scale", default=1.0, precision=3, description="", )
@@ -644,6 +661,10 @@ class ImportFastOBJ(Operator, ImportHelper):
         
         c = sub.column()
         c.prop(self, 'use_vcols_mrgb')
+        r = c.row()
+        r.prop(self, 'use_mask_as_vertex_group')
+        if(self.with_vertex_colors and self.use_vcols_mrgb):
+            r.enabled = True
         c.prop(self, 'use_vcols_ext')
         c.enabled = self.with_vertex_colors
         
@@ -658,6 +679,7 @@ class ImportFastOBJ(Operator, ImportHelper):
              'with_shading': self.with_shading,
              'with_vertex_colors': self.with_vertex_colors,
              'use_vcols_mrgb': self.use_vcols_mrgb,
+             'use_mask_as_vertex_group': self.use_mask_as_vertex_group,
              'use_vcols_ext': self.use_vcols_ext,
              'with_polygroups': self.with_polygroups,
              'global_scale': self.global_scale,
@@ -682,11 +704,11 @@ def setup():
                                          'use_shading': False, 'use_vertex_colors': False, 'use_vcols_mrgb': False, 'use_vcols_ext': False, 'global_scale': 1.0,
                                          'precision': 6, }, }
     import_presets = {'photoscan_raw': {'convert_axes': True, 'with_uv': False, 'with_shading': False, 'with_vertex_colors': False, 'use_vcols_mrgb': False,
-                                        'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
+                                        'use_mask_as_vertex_group': False, 'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
                       'zbrush_cleanup': {'convert_axes': True, 'with_uv': True, 'with_shading': False, 'with_vertex_colors': False, 'use_vcols_mrgb': False,
-                                         'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
+                                         'use_mask_as_vertex_group': False, 'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, },
                       'zbrush_with_vcols': {'convert_axes': True, 'with_uv': True, 'with_shading': False, 'with_vertex_colors': True, 'use_vcols_mrgb': True,
-                                            'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, }, }
+                                            'use_mask_as_vertex_group': True, 'use_vcols_ext': False, 'with_polygroups': False, 'global_scale': 1.0, 'apply_conversion': False, }, }
     defines = ['import bpy', 'op = bpy.context.active_operator', '', ]
     
     # TODO: do this only when all presets are missing, if only some, assume it is intentional.. also skip when all default are missing, but some user defined are present.
