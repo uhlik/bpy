@@ -1,18 +1,3 @@
-## [Fast Wavefront (.obj)](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
-
-Import/Export single mesh as Wavefront OBJ.
-
-Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b). Export is ~3x faster than built-in obj exporter and import ~2x. It lacks some features, but saves quite a bit time when you need to move high resolution mesh from blender to ZBrush and back a few times per hour while cleaning up scans.
-
-Comes with a few presets (created upon activation) for following workflow: import raw mesh obj from Agisoft PhotoScan, export raw mesh obj to ZBrush, import cleaned/uv unwrapped mesh obj from ZBrush, export cleaned mesh to Agisoft PhotoScan for texture generation.
-
-changelog:
-
-* 0.1.2 import zbrush mask as vertex group
-* 0.1.1 first release
-
-***
-
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range (8 bit).
@@ -32,6 +17,37 @@ changelog:
 * 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
 * 0.2.0 display percentage
 * 0.1.0 first release
+
+***
+
+## [OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_opengl_lights.py)
+
+Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
+
+![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gll2.gif)
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
+
+changelog:
+
+* 2014.08.25 more presets
+* 2014.08.24 added defaults, created when no presets are available
+* 2014.08.19 first release
+
+***
+
+## [Fast Wavefront (.obj)](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
+
+Import/Export single mesh as Wavefront OBJ.
+
+Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b). Export is ~3x faster than built-in obj exporter and import ~2x. It lacks some features, but saves quite a bit time when you need to move high resolution mesh from blender to ZBrush and back a few times per hour while cleaning up scans.
+
+Comes with a few presets (created upon activation) for following workflow: import raw mesh obj from Agisoft PhotoScan, export raw mesh obj to ZBrush, import cleaned/uv unwrapped mesh obj from ZBrush, export cleaned mesh to Agisoft PhotoScan for texture generation.
+
+changelog:
+
+* 0.1.2 import zbrush mask as vertex group
+* 0.1.1 first release
 
 ***
 
@@ -109,19 +125,3 @@ changelog:
 * 0.0.8 ui tweaks, more advanced options, minor bugfixes
 * 0.0.7 fixed performance and sorting, added tracking of files which were closed without saving once a minute (can be enabled in preferences: check Track Scene Update)
 * 0.0.6 first release
-
-***
-
-## [OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_opengl_lights.py)
-
-Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
-
-![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gll2.gif)
-
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
-
-changelog:
-
-* 2014.08.25 more presets
-* 2014.08.24 added defaults, created when no presets are available
-* 2014.08.19 first release
