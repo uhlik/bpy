@@ -19,7 +19,7 @@
 bl_info = {"name": "OpenGL Lights",
            "description": "Quick access to Solid OpenGL Lights with preset functionality",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 2),
+           "version": (0, 5, 0),
            "blender": (2, 70, 0),
            "location": "View3d > Properties > OpenGL Lights",
            "warning": "",
@@ -27,12 +27,6 @@ bl_info = {"name": "OpenGL Lights",
            "tracker_url": "",
            "category": "3D View", }
 
-# changelog:
-# 2014.08.26 one more preset
-# 2014.08.25 even more presets
-# 2014.08.25 more presets
-# 2014.08.24 added defaults, created when no presets are available
-# 2014.08.19 first release
 
 import os
 
@@ -246,7 +240,16 @@ class VIEW3D_PT_opengl_lights_panel(bpy.types.Panel):
         layout = self.layout
         
         p = context.scene.opengl_lights_properties
-        layout.prop(p, "edit")
+        
+        r = layout.row(align=True)
+        r.prop(p, "edit", text="", toggle=True, icon="SETTINGS", )
+        
+        # col = r.column_flow(align=True)
+        col = r.column(align=True)
+        row = col.row(align=True)
+        row.menu("VIEW3D_MT_opengl_lights_presets", text=bpy.types.VIEW3D_MT_opengl_lights_presets.bl_label)
+        row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMIN')
+        row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMOUT').remove_active = True
         
         if(p.edit):
             column = layout.column()
@@ -265,12 +268,6 @@ class VIEW3D_PT_opengl_lights_panel(bpy.types.Panel):
             lamp = system.solid_lights[2]
             opengl_lamp_buttons(column, lamp)
         
-        col = layout.column_flow(align=True)
-        row = col.row(align=True)
-        row.menu("VIEW3D_MT_opengl_lights_presets", text=bpy.types.VIEW3D_MT_opengl_lights_presets.bl_label)
-        row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMIN')
-        row.operator("scene.opengl_lights_preset_add", text="", icon='ZOOMOUT').remove_active = True
-
 
 def register():
     setup()

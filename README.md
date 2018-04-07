@@ -30,6 +30,9 @@ Simple and effective access to Solid OpenGL Lights for your viewport. Comes with
 
 changelog:
 
+* 2018.04.07 new ui
+![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gllui.png)
+
 * 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
 * 2014.08.19 first release
