@@ -1,3 +1,11 @@
+### Contents:
+
+* [Point Cloud Visualizer](#point-cloud-visualizer)
+* [OpenGL Lights](#opengl-lights)
+* [Fast Wavefront (.obj)](#fast-wavefront)
+* [UV Equalize](#uv-equalize)
+* [Time Tracker](#time-tracker)
+
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range (8 bit).
@@ -40,7 +48,7 @@ changelog:
 
 ***
 
-## [Fast Wavefront (.obj)](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
+## [Fast Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
 
 Import/Export single mesh as Wavefront OBJ.
 
