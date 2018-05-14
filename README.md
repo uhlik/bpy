@@ -4,6 +4,7 @@
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront)
 * [UV Equalize](#uv-equalize)
+* [Tube UV Unwrap](#tube-uv-unwrap)
 * [Time Tracker](#time-tracker)
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
