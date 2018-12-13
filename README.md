@@ -3,11 +3,11 @@
 
 ### for blender 2.80
 
-* [Point Cloud Visualizer](#point-cloud-visualizer)
+* [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
 
 ### for blender 2.7x
 
-* [Point Cloud Visualizer](#point-cloud-visualizer-2.7x)
+* [Point Cloud Visualizer](#point-cloud-visualizer-27x)
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront)
 * [UV Equalize](#uv-equalize)
