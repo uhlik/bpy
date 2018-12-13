@@ -7,7 +7,7 @@
 
 ### for blender 2.7x
 
-* [Point Cloud Visualizer](#point-cloud-visualizer-27x)
+* [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-27x)
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront)
 * [UV Equalize](#uv-equalize)
@@ -37,7 +37,7 @@ changelog:
 
 ***
 
-## [Point Cloud Visualizer 2.7x](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py)
+## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py) (for blender 2.7x)
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
 
