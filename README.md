@@ -1,6 +1,13 @@
 ### Contents:
 
+
+### for blender 2.80
+
 * [Point Cloud Visualizer](#point-cloud-visualizer)
+
+### for blender 2.7x
+
+* [Point Cloud Visualizer](#point-cloud-visualizer-2.7x)
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront)
 * [UV Equalize](#uv-equalize)
@@ -9,15 +16,36 @@
 
 ***
 
-## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py)
+## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
-Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range (8 bit).
+Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
+
+* Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > 'Point Cloud Visualizer' panel, click file browser icon, select ply file, click 'Load PLY'. Click 'Draw' button to display point cloud, 'Erase' to hide point cloud. Adjust point size with 'Radius'.
+* Transforming parent object transforms point cloud as well.
+* Huge speed improvements compared to 2.7x version.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280ui.png)
+
+[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
+
+changelog:
+
+* 0.4.0 almost complete rewrite for blender 2.80, performance improvements using shaders, simplified ui
+* 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
+* 0.2.0 display percentage
+* 0.1.0 first release
+
+***
+
+## [Point Cloud Visualizer 2.7x](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py)
+
+Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
 
 * Add an Empty object
 * Load and display point cloud at Properties (N) panel with Empty selected
 * Available controls: auto loading of selected ply file, pixel point drawing or OpenGL smooth point, drawing enable/disable, percentage of displayed points and reset button which resets all (except autoload option)
 * Transforming Empty transforms point cloud as well
-* Works reasonably fast with 4m points on my machine, 2 years old, not top of the line 
+* Works reasonably fast with 4m points on my machine, 5 years old, not top of the line at its time
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pc.gif)
 
@@ -31,7 +59,7 @@ changelog:
 
 ***
 
-## [OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_opengl_lights.py)
+## [OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/space_view3d_opengl_lights.py)
 
 Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
 
@@ -51,7 +79,7 @@ changelog:
 
 ***
 
-## [Fast Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/io_mesh_fast_obj.py)
+## [Fast Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/io_mesh_fast_obj.py)
 
 Import/Export single mesh as Wavefront OBJ.
 
@@ -66,7 +94,7 @@ changelog:
 
 ***
 
-## [UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/uv_equalize.py)
+## [UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/uv_equalize.py)
 
 Equalizes scale of UVs of selected objects to active object.
 
@@ -92,7 +120,7 @@ changelog:
 
 ***
 
-## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/uv_tube_unwrap.py)
+## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/uv_tube_unwrap.py)
 
 UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
 
@@ -124,7 +152,7 @@ changelog:
 
 ***
 
-## [Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/system_time_tracker.py)
+## [Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/system_time_tracker.py)
 
 Simple time tracker inside blender. After you install and enable it, it will log loaded and saved files and time spent of file until it is saved. All ui is inside addon preferences.
 

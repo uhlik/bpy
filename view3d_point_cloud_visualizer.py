@@ -19,9 +19,9 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored.",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 0),
-           "blender": (2, 78, 0),
-           "location": "View3d > Properties > Point Cloud Visualizer (with an Empty object active)",
+           "version": (0, 4, 0),
+           "blender": (2, 80, 0),
+           "location": "View3d > Properties > Point Cloud Visualizer",
            "warning": "",
            "wiki_url": "",
            "tracker_url": "",
@@ -36,15 +36,16 @@ import numpy
 import random
 
 import bpy
-import bgl
-from mathutils import Matrix, Vector
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty
 from bpy.types import PropertyGroup, Panel, Operator
+import gpu
+from gpu_extras.batch import batch_for_shader
+from bpy.app.handlers import persistent
 
 
 def log(msg, indent=0):
     m = "{0}> {1}".format("    " * indent, msg)
-    print(m)
+    # print(m)
 
 
 def int_to_short_notation(n, precision=1, ):
@@ -66,34 +67,6 @@ def int_to_short_notation(n, precision=1, ):
             return '{}k'.format(r)
         else:
             return '{}'.format(n)
-
-
-def clamp(f, t, l):
-    if(f != 0 or t != 0):
-        # only when something is set
-        if(f != 0 and t == 0):
-            # from is set
-            f, _ = tuple(numpy.clip([f, t], 0, l))
-        elif(f == 0 and t != 0):
-            # to is set
-            _, t = tuple(numpy.clip([f, t], 0, l))
-        elif(f != 0 and t != 0):
-            # both are set
-            f, t = tuple(numpy.clip([f, t], 0, l))
-        else:
-            print("wtf?")
-            pass
-    
-    if(f > t):
-        # swap
-        a = f
-        f = t
-        t = a
-    
-    if(f == t and f != 0 and t != 0):
-        f = f - 1
-    
-    return f, t
 
 
 class BinPlyPointCloudReader():
@@ -218,8 +191,174 @@ class BinPlyPointCloudReader():
             self.data[nm] = a
 
 
-class PCVCache():
+vertex_shader = '''
+    in vec3 position;
+    in vec4 color;
+    uniform mat4 perspective_matrix;
+    uniform mat4 object_matrix;
+    uniform float point_size;
+    uniform float alpha_radius;
+    out vec4 f_color;
+    out float f_alpha_radius;
+    
+    void main()
+    {
+        gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+        gl_PointSize = point_size;
+        f_color = color;
+        f_alpha_radius = alpha_radius;
+    }
+'''
+
+fragment_shader = '''
+    in vec4 f_color;
+    in float f_alpha_radius;
+    out vec4 fragColor;
+    
+    void main()
+    {
+        float r = 0.0;
+        float delta = 0.0;
+        float alpha = 1.0;
+        vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+        r = dot(cxy, cxy);
+        if(r > f_alpha_radius){
+            discard;
+        }
+        fragColor = f_color * alpha;
+    }
+'''
+
+
+def load_ply_to_cache(context, operator=None, ):
+    pcv = context.object.point_cloud_visualizer
+    filepath = pcv.filepath
+    
+    points = []
+    try:
+        points = BinPlyPointCloudReader(filepath).points
+    except OSError as e:
+        if(operator is not None):
+            operator.report('ERROR', "Error reading file at {}".format(filepath))
+        else:
+            raise e
+    if(len(points) == 0):
+        operator.report('ERROR', "No vertices loaded from file at {}".format(filepath))
+        return False
+    
+    rnd = random.Random()
+    random.shuffle(points, rnd.random)
+    
+    vs = []
+    cs = []
+    for i, p in enumerate(points):
+        vs.append(tuple(p[:3]))
+        c = [v / 255 for v in p[3:]]
+        cs.append(tuple(c) + (1.0, ))
+    
+    u = str(uuid.uuid1())
+    o = context.object
+    
+    pcv.uuid = u
+    
+    d = PCVManager.new()
+    d['uuid'] = u
+    
+    d['stats'] = len(vs)
+    
+    shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
+    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+    
+    d['shader'] = shader
+    d['batch'] = batch
+    d['ready'] = True
+    d['object'] = o
+    d['name'] = o.name
+    
+    PCVManager.add(d)
+    
+    return True
+
+
+class PCVManager():
     cache = {}
+    handle = None
+    initialized = False
+    
+    @classmethod
+    def handler(cls):
+        bobjects = bpy.data.objects
+        
+        def draw(uuid):
+            pm = bpy.context.region_data.perspective_matrix
+            
+            ci = PCVManager.cache[uuid]
+            if(not bobjects.get(ci['name'])):
+                ci['kill'] = True
+                cls.gc()
+                return
+            if(not ci['draw']):
+                cls.gc()
+                return
+            
+            shader = ci['shader']
+            batch = ci['batch']
+            
+            o = ci['object']
+            pcv = o.point_cloud_visualizer
+            
+            shader.bind()
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            batch.draw(shader)
+            
+            ci['drawing'] = True
+        
+        for k, v in cls.cache.items():
+            if(v['ready'] and v['draw'] and not v['drawing']):
+                v['handle'] = bpy.types.SpaceView3D.draw_handler_add(draw, (v['uuid'], ), 'WINDOW', 'POST_VIEW')
+    
+    @classmethod
+    def gc(cls):
+        l = []
+        for k, v in cls.cache.items():
+            if(v['kill']):
+                l.append(k)
+                if(v['drawing']):
+                    bpy.types.SpaceView3D.draw_handler_remove(v['handle'], 'WINDOW')
+                    v['handle'] = None
+                    v['drawing'] = False
+            if(v['drawing'] and not v['draw']):
+                bpy.types.SpaceView3D.draw_handler_remove(v['handle'], 'WINDOW')
+                v['handle'] = None
+                v['drawing'] = False
+        for i in l:
+            del cls.cache[i]
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        cls.handle = bpy.types.SpaceView3D.draw_handler_add(cls.handler, (), 'WINDOW', 'POST_VIEW')
+        bpy.app.handlers.load_pre.append(watcher)
+        cls.initialized = True
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        for k, v in cls.cache.items():
+            v['kill'] = True
+        cls.gc()
+        
+        bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
+        cls.handle = None
+        
+        cls.initialized = False
+        
+        bpy.app.handlers.load_pre.remove(watcher)
     
     @classmethod
     def add(cls, data, ):
@@ -228,219 +367,156 @@ class PCVCache():
     @classmethod
     def new(cls):
         return {'uuid': None,
-                'path': None,
+                'shader': False,
+                'batch': False,
                 'ready': False,
-                'length': None,
-                'vertex_buffer': None,
-                'color_buffer': None,
-                'smooth': False,
+                'draw': False,
                 'drawing': False,
-                'matrix': None,
-                'matrix_buffer': None,
-                'display_percent': None,
+                'handle': None,
+                'kill': False,
+                'stats': None,
                 'object': None, }
 
 
-def PCV_draw_callback(self, context, ):
-    def draw_one(u):
-        c = PCVCache.cache[u]
-        # update matrix, every frame for now, it should be done better.. but it works well..
-        m = c['object'].matrix_world
-        matrix = []
-        for v in m.transposed():
-            matrix.extend(list(v.to_tuple()))
-        matrix_buffer = bgl.Buffer(bgl.GL_FLOAT, len(matrix), matrix)
-        c['matrix'] = m
-        c['matrix_buffer'] = matrix_buffer
-        
-        bgl.glPushMatrix()
-        bgl.glMultMatrixf(c['matrix_buffer'])
-        
-        bgl.glEnable(bgl.GL_DEPTH_TEST)
-        bgl.glEnableClientState(bgl.GL_VERTEX_ARRAY)
-        bgl.glVertexPointer(3, bgl.GL_FLOAT, 0, c['vertex_buffer'])
-        bgl.glEnableClientState(bgl.GL_COLOR_ARRAY)
-        bgl.glColorPointer(3, bgl.GL_FLOAT, 0, c['color_buffer'])
-        
-        if(PCVCache.cache[u]['smooth']):
-            bgl.glEnable(bgl.GL_POINT_SMOOTH)
-        
-        l = int((c['length'] / 100) * c['display_percent'])
-        bgl.glDrawArrays(bgl.GL_POINTS, 0, l)
-        
-        bgl.glDisableClientState(bgl.GL_VERTEX_ARRAY)
-        bgl.glDisableClientState(bgl.GL_COLOR_ARRAY)
-        
-        if(c['smooth']):
-            bgl.glDisable(bgl.GL_POINT_SMOOTH)
-        bgl.glDisable(bgl.GL_DEPTH_TEST)
-        
-        bgl.glPopMatrix()
-    
-    # draw each 'ready' and 'drawing' cloud from cache
-    for k, v in PCVCache.cache.items():
-        if(v['ready'] and v['drawing']):
-            draw_one(k)
-
-
-class PCVDraw(Operator):
-    bl_idname = "point_cloud_visualizer.draw"
-    bl_label = "Draw"
+class PCV_OT_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.deinit"
+    bl_label = "deinit"
     bl_description = ""
     
     @classmethod
     def poll(cls, context):
-        pcv = context.object.point_cloud_visualizer
-        if(pcv.uuid != "" and pcv.uuid in PCVCache.cache):
-            return PCVCache.cache[pcv.uuid]['ready']
-        return False
-    
-    def modal(self, context, event):
-        context.area.tag_redraw()
-        
-        c = 0
-        for k, v in PCVCache.cache.items():
-            if(v['drawing']):
-                c += 1
-        if(not c):
-            # remove only when number of drawing clouds is zero
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
-            return {'CANCELLED'}
-        
-        return {'PASS_THROUGH'}
-    
-    def invoke(self, context, event):
-        if(context.area.type == 'VIEW_3D'):
-            args = (self, context)
-            self._handle = bpy.types.SpaceView3D.draw_handler_add(PCV_draw_callback, args, 'WINDOW', 'POST_VIEW')
-            context.window_manager.modal_handler_add(self)
-            return {'RUNNING_MODAL'}
-        else:
-            self.report({'WARNING'}, "View3D not found, cannot run operator")
-            return {'CANCELLED'}
-
-
-class PCVReset(Operator):
-    bl_idname = "point_cloud_visualizer.reset"
-    bl_label = "Reset"
-    bl_description = "Reset"
+        return True
     
     def execute(self, context):
-        pcv = context.object.point_cloud_visualizer
-        u = pcv.uuid
-        
-        pcv.filepath = ""
-        pcv.smooth = False
-        pcv.draw = False
-        pcv.uuid = ""
-        pcv.display_percent = 100.0
-        
-        if(u in PCVCache.cache):
-            # if reseting duplicated object, do not remove cache, can be used by another object still in scene
-            if(context.object == PCVCache.cache[u]['object']):
-                del PCVCache.cache[u]
-        
+        PCVManager.deinit()
         return {'FINISHED'}
 
 
-class PCVLoader(Operator):
-    bl_idname = "point_cloud_visualizer.load"
-    bl_label = "Load Points"
-    bl_description = "Load Points"
+class PCV_OT_draw(Operator):
+    bl_idname = "point_cloud_visualizer.draw"
+    bl_label = "Draw"
+    bl_description = "Draw point cloud to viewport"
     
     @classmethod
     def poll(cls, context):
-        pcv = context.object.point_cloud_visualizer
-        if(pcv.filepath != ""):
-            return True
-        return False
-    
-    def load(self, context):
-        pcv = context.object.point_cloud_visualizer
-        p = os.path.abspath(bpy.path.abspath(pcv.filepath))
-        if(not os.path.exists(p)):
-            self.report({'WARNING'}, "File does not exist")
-            return {'CANCELLED'}
-        
-        points = BinPlyPointCloudReader(p).points
-        
-        rnd = random.Random()
-        random.shuffle(points, rnd.random)
-        
-        # process points
-        vertices = []
-        colors = []
-        for i, p in enumerate(points):
-            v = Vector(p[:3])
-            vertices.extend(v.to_tuple())
-            c = [v / 255 for v in p[3:]]
-            colors.extend(c)
-        
-        # make buffers
-        length = len(points)
-        vertex_buffer = bgl.Buffer(bgl.GL_FLOAT, len(vertices), vertices)
-        color_buffer = bgl.Buffer(bgl.GL_FLOAT, len(colors), colors)
-        
-        o = context.object
-        m = o.matrix_world
-        matrix = []
-        for v in m.transposed():
-            matrix.extend(list(v.to_tuple()))
-        matrix_buffer = bgl.Buffer(bgl.GL_FLOAT, len(matrix), matrix)
-        
-        d = PCVCache.new()
-        u = str(uuid.uuid1())
-        d['uuid'] = u
-        d['path'] = pcv.filepath
-        d['ready'] = True
-        d['length'] = length
-        d['vertex_buffer'] = vertex_buffer
-        d['color_buffer'] = color_buffer
-        d['matrix'] = m
-        d['matrix_buffer'] = matrix_buffer
-        d['object'] = o
-        d['display_percent'] = pcv.display_percent
-        PCVCache.add(d)
-        
-        pcv.uuid = u
+        return True
     
     def execute(self, context):
-        try:
-            self.load(context)
-            
-            # auto draw cloud
-            pcv = context.object.point_cloud_visualizer
-            pcv.draw = True
-            bpy.ops.point_cloud_visualizer.draw('INVOKE_DEFAULT')
-            
-        except Exception as e:
-            self.report({'ERROR'}, 'Unable to load .ply file.')
-            # self.report({'ERROR'}, e)
+        PCVManager.init()
+        
+        pcv = context.object.point_cloud_visualizer
+        cached = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                cached = True
+                if(v['ready']):
+                    if(not v['draw']):
+                        v['draw'] = True
+                else:
+                    # why is this here? if it is cached, it means it has been loaded already, so ready attribute is not even needed..
+                    # bpy.ops.point_cloud_visualizer.load_ply_to_cache('INVOKE_DEFAULT')
+                    v['draw'] = True
+        if(not cached):
+            if(pcv.filepath != ""):
+                pcv.uuid = ""
+                ok = load_ply_to_cache(context, self)
+                if(not ok):
+                    return {'CANCELLED'}
+                v = PCVManager.cache[pcv.uuid]
+                v['draw'] = True
+        
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_erase(Operator):
+    bl_idname = "point_cloud_visualizer.erase"
+    bl_label = "Erase"
+    bl_description = "Erase point cloud from viewport"
+    
+    @classmethod
+    def poll(cls, context):
+        return True
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        v['draw'] = False
+                        ok = True
+        if(not ok):
+            return {'CANCELLED'}
+        
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_load(Operator):
+    bl_idname = "point_cloud_visualizer.load_ply_to_cache"
+    bl_label = "Load PLY"
+    bl_description = "Load PLY"
+    
+    filename_ext = ".ply"
+    filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
+    filepath: StringProperty(name="File Path", default="", description="", maxlen=1024, subtype='FILE_PATH', )
+    order = ["filepath", ]
+    
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
+    def check(self, context):
+        return True
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = True
+        h, t = os.path.split(self.filepath)
+        n, e = os.path.splitext(t)
+        if(e != '.ply'):
+            ok = False
+        if(not ok):
+            self.report('ERROR', "File at '{}' seems not to be a PLY file.".format(self.filepath))
+            return {'CANCELLED'}
+        
+        pcv.filepath = self.filepath
+        
+        if(pcv.uuid != ""):
+            if(pcv.uuid in PCVManager.cache):
+                PCVManager.cache[pcv.uuid]['kill'] = True
+                PCVManager.gc()
+        
+        ok = load_ply_to_cache(context, self)
+        
+        if(not ok):
             return {'CANCELLED'}
         return {'FINISHED'}
 
 
-class PCVPanel(Panel):
-    bl_label = "Point Cloud Visualizer"
-    bl_idname = "PointCloudVisualizer"
+class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
-    bl_context = "scene"
     bl_region_type = 'UI'
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_category = "View"
+    bl_label = "Point Cloud Visualizer"
     
     @classmethod
     def poll(cls, context):
         o = context.active_object
-        if(o and o.type == 'EMPTY'):
+        if(o):
             return True
         return False
     
     def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
-        pcv = context.object.point_cloud_visualizer
         
-        # StringProperty subtype FILE_PATH file selector remake
+        # -------------- file selector
         def prop_name(cls, prop, colon=False, ):
             for p in cls.bl_rna.properties:
                 if(p.identifier == prop):
@@ -450,103 +526,55 @@ class PCVPanel(Panel):
             return ''
         
         r = sub.row(align=True, )
-        s = r.split(percentage=0.33)
-        s.label(prop_name(pcv, 'filepath', True, ))
-        s = s.split(percentage=1.0)
+        s = r.split(factor=0.33)
+        s.label(text=prop_name(pcv, 'filepath', True, ))
+        s = s.split(factor=1.0)
         r = s.row(align=True, )
-        r.prop(pcv, 'filepath', text='', )
-        r.operator('point_cloud_visualizer.auto_load', icon='FILESEL', text='', )
-        
-        sub.separator()
-        # r = sub.row(align=True, )
-        # r.prop(pcv, 'load_from')
-        # r.prop(pcv, 'load_to')
-        r = sub.row(align=True, )
-        r.operator('point_cloud_visualizer.load')
-        r.prop(pcv, 'auto', toggle=True, icon='AUTO', icon_only=True, )
-        if(pcv.uuid != ""):
-            if(pcv.draw or pcv.uuid in PCVCache.cache):
-                sub.enabled = False
-        
-        # sub.separator()
-        c = l.column(align=True, )
-        r = c.row(align=True, )
-        r.prop(pcv, 'draw', toggle=True, )
-        r.prop(pcv, 'smooth', toggle=True, icon='ANTIALIASED', icon_only=True, )
-        r = c.row(align=True, )
-        r.prop(pcv, 'display_percent')
-        # r.prop(pcv, 'display_max')
+        c = r.column(align=True)
+        c.prop(pcv, 'filepath', text='', )
         c.enabled = False
+        r.operator('point_cloud_visualizer.load_ply_to_cache', icon='FILEBROWSER', text='', )
+        # -------------- file selector
         
-        if(pcv.uuid != "" and pcv.uuid in PCVCache.cache):
-            if(PCVCache.cache[pcv.uuid]['ready']):
-                c.enabled = True
+        e = not (pcv.filepath == "")
+        r = sub.row(align=True)
+        r.operator('point_cloud_visualizer.draw', icon='HIDE_OFF', )
+        r.operator('point_cloud_visualizer.erase', icon='HIDE_ON', )
+        r.enabled = e
+        r = sub.row()
+        r.prop(pcv, 'alpha_radius')
+        r.enabled = e
         
-        c = l.column()
-        r = c.row()
-        if(pcv.uuid in PCVCache.cache):
+        if(pcv.uuid in PCVManager.cache):
+            r = sub.row()
             h, t = os.path.split(pcv.filepath)
-            n = int_to_short_notation(PCVCache.cache[pcv.uuid]['length'], precision=1, )
-            r.label("{}: {} points".format(t, n))
-        else:
-            r.label("n/a")
-        r.operator('point_cloud_visualizer.reset', icon='X', text='', )
+            n = int_to_short_notation(PCVManager.cache[pcv.uuid]['stats'], precision=1, )
+            r.label(text='{}: {} points'.format(t, n))
+        
+        if(pcv.debug):
+            sub.separator()
+            # sub.operator('point_cloud_visualizer.deinit')
+            sub.separator()
+            sub.label(text="PCV uuid: {}".format(pcv.uuid))
+            sub.label(text="PCVManager:")
+            sub.separator()
+            for k, v in PCVManager.cache.items():
+                sub.label(text="key: {}".format(k))
+                sub.label(text="uuid: {}".format(v['uuid']))
+                sub.label(text="ready: {}".format(v['ready']))
+                sub.label(text="draw: {}".format(v['draw']))
+                sub.label(text="drawing: {}".format(v['drawing']))
+                sub.label(text="handle: {}".format(v['handle']))
+                sub.label(text="----------------------")
 
 
-class PCVAutoLoadHelper():
-    filepath = StringProperty(name="File Path", default="", description="", maxlen=1024, subtype='FILE_PATH', )
-    order = ["filepath", ]
+class PCV_properties(PropertyGroup):
+    filepath: StringProperty(name="PLY file", default="", description="", )
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    point_size: FloatProperty(name="Size", default=1.0, min=0.001, max=100.0, precision=3, description="", )
+    alpha_radius: FloatProperty(name="Radius", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point radius", )
     
-    def invoke(self, context, event):
-        context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
-    
-    def check(self, context):
-        return True
-
-
-class PCVAutoLoad(Operator, PCVAutoLoadHelper, ):
-    bl_idname = "point_cloud_visualizer.auto_load"
-    bl_label = "Choose file"
-    bl_description = "Choose file"
-    
-    filename_ext = ".ply"
-    filter_glob = bpy.props.StringProperty(default="*.ply", options={'HIDDEN'}, )
-    
-    def execute(self, context):
-        pcv = context.object.point_cloud_visualizer
-        pcv.filepath = self.filepath
-        if(pcv.auto):
-            bpy.ops.point_cloud_visualizer.load('INVOKE_DEFAULT')
-        return {'FINISHED'}
-
-
-class PCVProperties(PropertyGroup):
-    def _smooth_update(self, context, ):
-        if(self.uuid != "" and self.uuid in PCVCache.cache):
-            PCVCache.cache[self.uuid]['smooth'] = self.smooth
-    
-    def _draw_update(self, context, ):
-        if(self.uuid != "" and self.uuid in PCVCache.cache):
-            if(self.draw):
-                PCVCache.cache[self.uuid]['drawing'] = True
-                bpy.ops.point_cloud_visualizer.draw('INVOKE_DEFAULT')
-            else:
-                PCVCache.cache[self.uuid]['drawing'] = False
-    
-    def _percentage_update(self, context, ):
-        if(self.uuid != "" and self.uuid in PCVCache.cache):
-            PCVCache.cache[self.uuid]['display_percent'] = self.display_percent
-    
-    filepath = StringProperty(name="PLY file", default="", description="", )
-    auto = BoolProperty(name="Autoload", default=False, description="Load chosen file automatically", )
-    uuid = StringProperty(default="", options={'HIDDEN', 'SKIP_SAVE', }, )
-    smooth = BoolProperty(name="GL_POINT_SMOOTH", default=False, description="Use GL_POINT_SMOOTH", update=_smooth_update, )
-    draw = BoolProperty(name="Draw", default=False, description="Enable/disable drawing", update=_draw_update, )
-    # load_from = IntProperty(name="From", default=0, min=0, )
-    # load_to = IntProperty(name="To", default=0, min=0, )
-    display_percent = FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_percentage_update, )
-    # display_max = IntProperty(name="Max", default=0, min=0, )
+    debug: BoolProperty(default=False, options={'HIDDEN', }, )
     
     @classmethod
     def register(cls):
@@ -557,12 +585,31 @@ class PCVProperties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
+@persistent
+def watcher(scene):
+    PCVManager.deinit()
+
+
+classes = (
+    PCV_properties,
+    PCV_PT_panel,
+    PCV_OT_load,
+    PCV_OT_draw,
+    PCV_OT_erase,
+    # PCV_OT_deinit,
+)
+
+
 def register():
-    bpy.utils.register_module(__name__)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
+    PCVManager.deinit()
+    
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
 
 
 if __name__ == "__main__":
