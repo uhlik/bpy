@@ -17,11 +17,11 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {"name": "Point Cloud Visualizer",
-           "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored.",
+           "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 4, 0),
+           "version": (0, 4, 1),
            "blender": (2, 80, 0),
-           "location": "View3d > Properties > Point Cloud Visualizer",
+           "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
            "wiki_url": "",
            "tracker_url": "",
@@ -503,6 +503,7 @@ class PCV_PT_panel(Panel):
     bl_region_type = 'UI'
     bl_category = "View"
     bl_label = "Point Cloud Visualizer"
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
