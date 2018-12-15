@@ -47,7 +47,7 @@ from bpy.app.handlers import persistent
 
 def log(msg, indent=0):
     m = "{0}> {1}".format("    " * indent, msg)
-    print(m)
+    # print(m)
 
 
 def int_to_short_notation(n, precision=1, ):
@@ -258,7 +258,7 @@ def load_ply_to_cache(context, operator=None, ):
     d = datetime.timedelta(seconds=time.time() - t)
     log("completed in {}.".format(d))
     
-    # # no need to shuffle because display percent is not yet implemented
+    # # TODO: no need to shuffle because display percent is not yet implemented
     # rnd = random.Random()
     # random.shuffle(points, rnd.random)
     
@@ -600,6 +600,12 @@ class PCV_properties(PropertyGroup):
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     point_size: FloatProperty(name="Size", default=1.0, min=0.001, max=100.0, precision=3, description="", )
     alpha_radius: FloatProperty(name="Radius", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point radius", )
+    
+    # # TODO: implement this
+    # def _display_percent_update(self, context, ):
+    #     pass
+    #
+    # display_percent = FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, )
     
     debug: BoolProperty(default=False, options={'HIDDEN', }, )
     
