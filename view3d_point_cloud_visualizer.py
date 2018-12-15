@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 4, 1),
+           "version": (0, 4, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -237,13 +237,13 @@ def load_ply_to_cache(context, operator=None, ):
     points = []
     try:
         points = BinPlyPointCloudReader(filepath).points
-    except OSError as e:
+    except Exception as e:
         if(operator is not None):
-            operator.report('ERROR', "Error reading file at {}".format(filepath))
+            operator.report({'ERROR'}, str(e))
         else:
             raise e
     if(len(points) == 0):
-        operator.report('ERROR', "No vertices loaded from file at {}".format(filepath))
+        operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
         return False
     
     rnd = random.Random()
@@ -481,7 +481,7 @@ class PCV_OT_load(Operator):
         if(e != '.ply'):
             ok = False
         if(not ok):
-            self.report('ERROR', "File at '{}' seems not to be a PLY file.".format(self.filepath))
+            self.report({'ERROR'}, "File at '{}' seems not to be a PLY file.".format(self.filepath))
             return {'CANCELLED'}
         
         pcv.filepath = self.filepath
