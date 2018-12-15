@@ -34,6 +34,8 @@ import struct
 import uuid
 import numpy
 import random
+import time
+import datetime
 
 import bpy
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty
@@ -45,7 +47,7 @@ from bpy.app.handlers import persistent
 
 def log(msg, indent=0):
     m = "{0}> {1}".format("    " * indent, msg)
-    # print(m)
+    print(m)
 
 
 def int_to_short_notation(n, precision=1, ):
@@ -71,6 +73,7 @@ def int_to_short_notation(n, precision=1, ):
 
 class BinPlyPointCloudReader():
     def __init__(self, path, ):
+        # t = time.time()
         log("{}:".format(self.__class__.__name__), 0)
         if(os.path.exists(path) is False or os.path.isdir(path) is True):
             raise OSError("did you point me to an imaginary file? ('{0}')".format(path))
@@ -99,6 +102,8 @@ class BinPlyPointCloudReader():
         self.points = [(i[q[0]], i[q[1]], i[q[2]], i[q[3]], i[q[4]], i[q[5]], ) for i in vd]
         
         log("done.", 1)
+        # d = datetime.timedelta(seconds=time.time() - t)
+        # log("completed in {}.".format(d), 1)
     
     def _header(self):
         raw = []
@@ -234,6 +239,9 @@ def load_ply_to_cache(context, operator=None, ):
     pcv = context.object.point_cloud_visualizer
     filepath = pcv.filepath
     
+    log('load data..')
+    t = time.time()
+    
     points = []
     try:
         points = BinPlyPointCloudReader(filepath).points
@@ -246,15 +254,30 @@ def load_ply_to_cache(context, operator=None, ):
         operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
         return False
     
-    rnd = random.Random()
-    random.shuffle(points, rnd.random)
+    log('done.')
+    d = datetime.timedelta(seconds=time.time() - t)
+    log("completed in {}.".format(d))
     
-    vs = []
-    cs = []
+    # # no need to shuffle because display percent is not yet implemented
+    # rnd = random.Random()
+    # random.shuffle(points, rnd.random)
+    
+    log('process data..')
+    t = time.time()
+    
+    # vs = []
+    # cs = []
+    # for i, p in enumerate(points):
+    #     vs.append(tuple(p[:3]))
+    #     c = [v / 255 for v in p[3:]]
+    #     cs.append(tuple(c) + (1.0, ))
+    
+    l = len(points)
+    vs = [None] * l
+    cs = [None] * l
     for i, p in enumerate(points):
-        vs.append(tuple(p[:3]))
-        c = [v / 255 for v in p[3:]]
-        cs.append(tuple(c) + (1.0, ))
+        vs[i] = p[:3]
+        cs[i] = tuple(v / 255 for v in p[3:]) + (1.0, )
     
     u = str(uuid.uuid1())
     o = context.object
@@ -263,7 +286,6 @@ def load_ply_to_cache(context, operator=None, ):
     
     d = PCVManager.new()
     d['uuid'] = u
-    
     d['stats'] = len(vs)
     
     shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
@@ -276,6 +298,10 @@ def load_ply_to_cache(context, operator=None, ):
     d['name'] = o.name
     
     PCVManager.add(d)
+    
+    log('done.')
+    d = datetime.timedelta(seconds=time.time() - t)
+    log("completed in {}.".format(d))
     
     return True
 
