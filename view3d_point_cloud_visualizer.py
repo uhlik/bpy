@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 4, 3),
+           "version": (0, 4, 5),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -29,10 +29,8 @@ bl_info = {"name": "Point Cloud Visualizer",
 
 
 import os
-import math
 import struct
 import uuid
-import numpy
 import random
 import time
 import datetime
@@ -45,30 +43,19 @@ from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
 
 
-def log(msg, indent=0):
+def log(msg, indent=0, ):
     m = "{0}> {1}".format("    " * indent, msg)
     # print(m)
 
 
-def int_to_short_notation(n, precision=1, ):
-    if(round(n / 10 ** 12, precision) >= 1):
-        r = int(round(n / 10 ** 12, precision))
-        return '{}t'.format(r)
-    elif(round(n / 10 ** 9, precision) >= 1):
-        r = int(round(n / 10 ** 9, precision))
-        return '{}g'.format(r)
-    elif(round(n / 10 ** 6, precision) >= 1):
-        r = int(round(n / 10 ** 6, precision))
-        return '{}m'.format(r)
-    elif(round(n / 10 ** 3, precision) >= 1):
-        r = int(round(n / 10 ** 3, precision))
-        return '{}k'.format(r)
-    else:
-        r = round(n / 10 ** 3, precision)
-        if(r >= 0.1):
-            return '{}k'.format(r)
-        else:
-            return '{}'.format(n)
+def human_readable_number(num, suffix='', ):
+    # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+    f = 1000.0
+    for unit in ['','K','M','G','T','P','E','Z']:
+        if(abs(num) < f):
+            return "{:3.1f}{}{}".format(num, unit, suffix)
+        num /= f
+    return "{:.1f}{}{}".format(num, 'Y', suffix)
 
 
 class BinPlyPointCloudReader():
@@ -201,7 +188,7 @@ vertex_shader = '''
     in vec4 color;
     uniform mat4 perspective_matrix;
     uniform mat4 object_matrix;
-    uniform float point_size;
+    // uniform float point_size;
     uniform float alpha_radius;
     out vec4 f_color;
     out float f_alpha_radius;
@@ -209,7 +196,7 @@ vertex_shader = '''
     void main()
     {
         gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
-        gl_PointSize = point_size;
+        // gl_PointSize = point_size;
         f_color = color;
         f_alpha_radius = alpha_radius;
     }
@@ -258,9 +245,8 @@ def load_ply_to_cache(context, operator=None, ):
     d = datetime.timedelta(seconds=time.time() - t)
     log("completed in {}.".format(d))
     
-    # # TODO: no need to shuffle because display percent is not yet implemented
-    # rnd = random.Random()
-    # random.shuffle(points, rnd.random)
+    rnd = random.Random()
+    random.shuffle(points, rnd.random)
     
     log('process data..')
     t = time.time()
@@ -287,9 +273,18 @@ def load_ply_to_cache(context, operator=None, ):
     d = PCVManager.new()
     d['uuid'] = u
     d['stats'] = len(vs)
+    d['vertices'] = vs
+    d['colors'] = cs
     
+    d['length'] = len(vs)
+    dp = pcv.display_percent
+    l = int((len(vs) / 100) * dp)
+    if(dp >= 99):
+        l = len(vs)
+    d['display_percent'] = l
+    d['current_display_percent'] = l
     shader = gpu.types.GPUShader(vertex_shader, fragment_shader)
-    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+    batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
     
     d['shader'] = shader
     d['batch'] = batch
@@ -330,13 +325,21 @@ class PCVManager():
             shader = ci['shader']
             batch = ci['batch']
             
+            if(ci['current_display_percent'] != ci['display_percent']):
+                l = ci['display_percent']
+                ci['current_display_percent'] = l
+                vs = ci['vertices']
+                cs = ci['colors']
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                ci['batch'] = batch
+            
             o = ci['object']
             pcv = o.point_cloud_visualizer
             
             shader.bind()
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("point_size", pcv.point_size)
+            # shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             batch.draw(shader)
             
@@ -393,6 +396,10 @@ class PCVManager():
     @classmethod
     def new(cls):
         return {'uuid': None,
+                'vertices': None,
+                'colors': None,
+                'display_percent': None,
+                'current_display_percent': None,
                 'shader': False,
                 'batch': False,
                 'ready': False,
@@ -569,13 +576,16 @@ class PCV_PT_panel(Panel):
         r.operator('point_cloud_visualizer.erase', icon='HIDE_ON', )
         r.enabled = e
         r = sub.row()
+        r.prop(pcv, 'display_percent')
+        r.enabled = e
+        r = sub.row()
         r.prop(pcv, 'alpha_radius')
         r.enabled = e
         
         if(pcv.uuid in PCVManager.cache):
             r = sub.row()
             h, t = os.path.split(pcv.filepath)
-            n = int_to_short_notation(PCVManager.cache[pcv.uuid]['stats'], precision=1, )
+            n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
             r.label(text='{}: {} points'.format(t, n))
         
         if(pcv.debug):
@@ -598,14 +608,21 @@ class PCV_PT_panel(Panel):
 class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY file", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
-    point_size: FloatProperty(name="Size", default=1.0, min=0.001, max=100.0, precision=3, description="", )
+    # point_size: FloatProperty(name="Size", default=1.0, min=0.001, max=100.0, precision=3, description="", )
     alpha_radius: FloatProperty(name="Radius", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point radius", )
     
-    # # TODO: implement this
-    # def _display_percent_update(self, context, ):
-    #     pass
-    #
-    # display_percent = FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, )
+    def _display_percent_update(self, context, ):
+        if(self.uuid not in PCVManager.cache):
+            return
+        d = PCVManager.cache[self.uuid]
+        dp = self.display_percent
+        vl = d['length']
+        l = int((vl / 100) * dp)
+        if(dp >= 99):
+            l = vl
+        d['display_percent'] = l
+    
+    display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, )
     
     debug: BoolProperty(default=False, options={'HIDDEN', }, )
     
