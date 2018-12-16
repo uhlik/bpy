@@ -20,7 +20,7 @@
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
 
-* Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > 'Point Cloud Visualizer' panel, click file browser icon, select ply file, click 'Load PLY'. Click 'Draw' button to display point cloud, 'Erase' to hide point cloud. Adjust point size with 'Radius'.
+* Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > 'Point Cloud Visualizer' panel, click file browser icon, select ply file, click 'Load PLY'. Click 'Draw' button to display point cloud, 'Erase' to hide point cloud. Adjust percentage of displayed points with 'Display' and point size with 'Radius'.
 * Transforming parent object transforms point cloud as well.
 * Huge speed improvements compared to 2.7x version.
 
@@ -30,6 +30,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 changelog:
 
+* 0.4.5 added 'Display' percentage, better error handling during .ply loading
 * 0.4.0 almost complete rewrite for blender 2.80, performance improvements using shaders, simplified ui
 * 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
 * 0.2.0 display percentage
