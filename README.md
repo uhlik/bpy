@@ -4,6 +4,7 @@
 ### for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
+* [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
 
 ### for blender 2.7x
 
@@ -11,7 +12,7 @@
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront)
 * [UV Equalize](#uv-equalize)
-* [Tube UV Unwrap](#tube-uv-unwrap)
+* [Tube UV Unwrap](#tube-uv-unwrap-for-blender-27x)
 * [Time Tracker](#time-tracker)
 
 ***
@@ -35,6 +36,31 @@ changelog:
 * 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
 * 0.2.0 display percentage
 * 0.1.0 first release
+
+***
+
+## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/uv_tube_unwrap.py) (for blender 2.80)
+
+UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
+
+notes:
+
+* Works only on tube-like parts of mesh defined by selection and active vertex (therefore you must be in vertex selection mode) and the selection must have a start and an end ring. Tube-like mesh is: all quads, no caps, fixed number of vertices in each ring. (Best example of such mesh is mesh circle extruded several times or beveled curve (not cyclic) converted to mesh.) There must be an active vertex on one of the boundary loops in selection. This active vertex define place where mesh will be 'cut' - where seam will be placed.
+* Result is rectangular UV for easy texturing, scaled to fit square, horizontal and vertical distances between vertices are averaged and proportional to each other. 
+
+usage:
+
+1. tab to Edit mode
+2. select part of mesh you want to unwrap, tube type explained above
+3. make sure your selection has boundaries and there is an active vertex on one border of selection
+4. hit "U" and select "Tube UV Unwrap"
+5. optionally check/uncheck 'Mark Seams' or 'Flip' in operator properties
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
+
+changelog:
+
+* 0.3.0 blender 2.8 update
 
 ***
 
@@ -121,7 +147,7 @@ changelog:
 
 ***
 
-## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/uv_tube_unwrap.py)
+## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/uv_tube_unwrap.py) (for blender 2.7x)
 
 UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
 
