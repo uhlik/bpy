@@ -24,7 +24,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 * Transforming parent object transforms point cloud as well.
 * Huge speed improvements compared to 2.7x version.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280ui.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280ui0.4.5.png)
 
 [BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
 
