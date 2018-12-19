@@ -21,11 +21,13 @@
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
 
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280ui0.4.5.png)
+
 * Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > 'Point Cloud Visualizer' panel, click file browser icon, select ply file, click 'Load PLY'. Click 'Draw' button to display point cloud, 'Erase' to hide point cloud. Adjust percentage of displayed points with 'Display' and point size with 'Radius'.
 * Transforming parent object transforms point cloud as well.
 * Huge speed improvements compared to 2.7x version.
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280ui0.4.5.png)
 
 [BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
 
@@ -42,6 +44,8 @@ changelog:
 ## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/uv_tube_unwrap.py) (for blender 2.80)
 
 UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
+
+![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tuv280.gif)
 
 notes:
 
