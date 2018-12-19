@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 4, 5),
+           "version": (0, 4, 6),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -314,6 +314,7 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             
             ci = PCVManager.cache[uuid]
+            
             if(not bobjects.get(ci['name'])):
                 ci['kill'] = True
                 cls.gc()
@@ -345,9 +346,16 @@ class PCVManager():
             
             ci['drawing'] = True
         
+        run_gc = False
         for k, v in cls.cache.items():
             if(v['ready'] and v['draw'] and not v['drawing']):
                 v['handle'] = bpy.types.SpaceView3D.draw_handler_add(draw, (v['uuid'], ), 'WINDOW', 'POST_VIEW')
+            
+            if(not bobjects.get(v['name'])):
+                v['kill'] = True
+                run_gc = True
+        if(run_gc):
+            cls.gc()
     
     @classmethod
     def gc(cls):
@@ -408,7 +416,25 @@ class PCVManager():
                 'handle': None,
                 'kill': False,
                 'stats': None,
+                'name': None,
                 'object': None, }
+
+
+class PCV_OT_init(Operator):
+    bl_idname = "point_cloud_visualizer.init"
+    bl_label = "init"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        return True
+    
+    def execute(self, context):
+        PCVManager.init()
+        
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
 
 
 class PCV_OT_deinit(Operator):
@@ -422,6 +448,23 @@ class PCV_OT_deinit(Operator):
     
     def execute(self, context):
         PCVManager.deinit()
+        
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_gc(Operator):
+    bl_idname = "point_cloud_visualizer.gc"
+    bl_label = "gc"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        return True
+    
+    def execute(self, context):
+        PCVManager.gc()
         return {'FINISHED'}
 
 
@@ -524,7 +567,24 @@ class PCV_OT_load(Operator):
                 PCVManager.cache[pcv.uuid]['kill'] = True
                 PCVManager.gc()
         
+        if(pcv.debug and pcv.profile):
+            print("-" * 50)
+            print("load_ply_to_cache")
+            print("-" * 50)
+            import cProfile, pstats, io
+            pr = cProfile.Profile()
+            pr.enable()
+        
         ok = load_ply_to_cache(context, self)
+        
+        if(pcv.debug and pcv.profile):
+            pr.disable()
+            s = io.StringIO()
+            sortby = 'cumulative'
+            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            ps.print_stats()
+            print(s.getvalue())
+            print("-" * 50)
         
         if(not ok):
             return {'CANCELLED'}
@@ -590,18 +650,24 @@ class PCV_PT_panel(Panel):
         
         if(pcv.debug):
             sub.separator()
-            # sub.operator('point_cloud_visualizer.deinit')
+            c = sub.column(align=True)
+            c.operator('point_cloud_visualizer.init')
+            c.operator('point_cloud_visualizer.deinit')
+            c.operator('point_cloud_visualizer.gc')
             sub.separator()
             sub.label(text="PCV uuid: {}".format(pcv.uuid))
             sub.label(text="PCVManager:")
             sub.separator()
             for k, v in PCVManager.cache.items():
-                sub.label(text="key: {}".format(k))
                 sub.label(text="uuid: {}".format(v['uuid']))
+                sub.label(text="object: {}".format(v['object']))
+                sub.label(text="name: {}".format(v['name']))
                 sub.label(text="ready: {}".format(v['ready']))
                 sub.label(text="draw: {}".format(v['draw']))
                 sub.label(text="drawing: {}".format(v['drawing']))
                 sub.label(text="handle: {}".format(v['handle']))
+                sub.label(text="current_display_percent: {}".format(v['current_display_percent']))
+                sub.label(text="kill: {}".format(v['kill']))
                 sub.label(text="----------------------")
 
 
@@ -624,7 +690,9 @@ class PCV_properties(PropertyGroup):
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, )
     
+    # debug properties
     debug: BoolProperty(default=False, options={'HIDDEN', }, )
+    profile: BoolProperty(default=False, options={'HIDDEN', }, )
     
     @classmethod
     def register(cls):
@@ -646,7 +714,11 @@ classes = (
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
+    
+    # # debug operators
+    # PCV_OT_init,
     # PCV_OT_deinit,
+    # PCV_OT_gc,
 )
 
 
