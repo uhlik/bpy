@@ -365,7 +365,8 @@ class FastOBJReader():
         def add_object(name, data, ):
             so = bpy.context.scene.objects
             for i in so:
-                i.select = False
+                i.select_set(False)
+            
             o = bpy.data.objects.new(name, data)
             # so.link(o)
             
@@ -586,7 +587,7 @@ class FastOBJReader():
             o = self.object
             me = o.data
             for k, v in groups.items():
-                o.vertex_groups.new(k)
+                o.vertex_groups.new(name=k)
                 vg = o.vertex_groups[k]
                 vg.add(list(set(v)), 1.0, 'REPLACE')
         
