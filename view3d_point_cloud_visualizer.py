@@ -46,7 +46,7 @@ from bpy.app.handlers import persistent
 
 def log(msg, indent=0, ):
     m = "{0}> {1}".format("    " * indent, msg)
-    print(m)
+    # print(m)
 
 
 def human_readable_number(num, suffix='', ):
