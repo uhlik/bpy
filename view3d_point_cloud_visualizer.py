@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 4, 6),
+           "version": (0, 5, 0),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -31,9 +31,10 @@ bl_info = {"name": "Point Cloud Visualizer",
 import os
 import struct
 import uuid
-import random
+# import random
 import time
 import datetime
+import numpy as np
 
 import bpy
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty
@@ -45,7 +46,7 @@ from bpy.app.handlers import persistent
 
 def log(msg, indent=0, ):
     m = "{0}> {1}".format("    " * indent, msg)
-    # print(m)
+    print(m)
 
 
 def human_readable_number(num, suffix='', ):
@@ -60,7 +61,6 @@ def human_readable_number(num, suffix='', ):
 
 class BinPlyPointCloudReader():
     def __init__(self, path, ):
-        # t = time.time()
         log("{}:".format(self.__class__.__name__), 0)
         if(os.path.exists(path) is False or os.path.isdir(path) is True):
             raise OSError("did you point me to an imaginary file? ('{0}')".format(path))
@@ -71,26 +71,27 @@ class BinPlyPointCloudReader():
         log("reading header..", 1)
         self._header()
         log("reading data:", 1)
-        self._data()
+        # self._data()
+        self._data_np()
         
         self._stream.close()
         
-        props = ['x', 'y', 'z', 'red', 'green', 'blue', ]
-        es = self._elements
-        for e in es:
-            if(e['name'] == 'vertex'):
-                ps = e['properties']
-        q = []
-        for i, n in enumerate(props):
-            for j, p in enumerate(ps):
-                if(n == p[0]):
-                    q.append(j)
-        vd = self.data['vertex']
-        self.points = [(i[q[0]], i[q[1]], i[q[2]], i[q[3]], i[q[4]], i[q[5]], ) for i in vd]
+        # props = ['x', 'y', 'z', 'red', 'green', 'blue', ]
+        # es = self._elements
+        # for e in es:
+        #     if(e['name'] == 'vertex'):
+        #         ps = e['properties']
+        # q = []
+        # for i, n in enumerate(props):
+        #     for j, p in enumerate(ps):
+        #         if(n == p[0]):
+        #             q.append(j)
+        # vd = self.data['vertex']
+        # self.points = [(i[q[0]], i[q[1]], i[q[2]], i[q[3]], i[q[4]], i[q[5]], ) for i in vd]
+        
+        self.points = self.data['vertex']
         
         log("done.", 1)
-        # d = datetime.timedelta(seconds=time.time() - t)
-        # log("completed in {}.".format(d), 1)
     
     def _header(self):
         raw = []
@@ -162,24 +163,45 @@ class BinPlyPointCloudReader():
         self._endianness = _endianness
         self._elements = _elements
     
-    def _data(self):
+    # def _data(self):
+    #     self.data = {}
+    #     for i, d in enumerate(self._elements):
+    #         nm = d['name']
+    #         if(nm != 'vertex'):
+    #             # read only vertices
+    #             continue
+    #         a = []
+    #         f = self._endianness
+    #         f += ''.join([i[1] for i in d['properties']])
+    #         c = d['count']
+    #         sz = struct.calcsize(f)
+    #         log("reading {} {} elements..".format(c, nm), 2)
+    #         self._stream.seek(self._header_length)
+    #         for i in range(c):
+    #             r = self._stream.read(sz)
+    #             v = struct.unpack(f, r)
+    #             a.append(v)
+    #         self.data[nm] = a
+    
+    def _data_np(self):
+        # ~2.5x speed up
         self.data = {}
         for i, d in enumerate(self._elements):
             nm = d['name']
             if(nm != 'vertex'):
                 # read only vertices
                 continue
-            a = []
-            f = self._endianness
-            f += ''.join([i[1] for i in d['properties']])
-            c = d['count']
-            sz = struct.calcsize(f)
-            log("reading {} {} elements..".format(c, nm), 2)
+            props = d['properties']
+            dtp = [None] * len(props)
+            e = self._endianness
+            for i, p in enumerate(props):
+                n, t = p
+                dtp[i] = (n, '{}{}'.format(e, t))
+            dt = np.dtype(dtp)
             self._stream.seek(self._header_length)
-            for i in range(c):
-                r = self._stream.read(sz)
-                v = struct.unpack(f, r)
-                a.append(v)
+            c = d['count']
+            log("reading {} {} elements..".format(c, nm), 2)
+            a = np.fromfile(self._stream, dtype=dt, count=c, )
             self.data[nm] = a
 
 
@@ -209,15 +231,14 @@ fragment_shader = '''
     
     void main()
     {
-        float r = 0.0;
-        float delta = 0.0;
-        float alpha = 1.0;
-        vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+        float r = 0.0f;
+        float a = 1.0f;
+        vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
         r = dot(cxy, cxy);
         if(r > f_alpha_radius){
             discard;
         }
-        fragColor = f_color * alpha;
+        fragColor = f_color * a;
     }
 '''
 
@@ -226,8 +247,10 @@ def load_ply_to_cache(context, operator=None, ):
     pcv = context.object.point_cloud_visualizer
     filepath = pcv.filepath
     
+    __t = time.time()
+    
     log('load data..')
-    t = time.time()
+    _t = time.time()
     
     points = []
     try:
@@ -241,15 +264,22 @@ def load_ply_to_cache(context, operator=None, ):
         operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
         return False
     
-    log('done.')
-    d = datetime.timedelta(seconds=time.time() - t)
-    log("completed in {}.".format(d))
+    # log('done.')
+    _d = datetime.timedelta(seconds=time.time() - _t)
+    log("completed in {}.".format(_d))
     
-    rnd = random.Random()
-    random.shuffle(points, rnd.random)
+    log('shuffle data..')
+    _t = time.time()
+    
+    # rnd = random.Random()
+    # random.shuffle(points, rnd.random)
+    np.random.shuffle(points)
+    
+    _d = datetime.timedelta(seconds=time.time() - _t)
+    log("completed in {}.".format(_d))
     
     log('process data..')
-    t = time.time()
+    _t = time.time()
     
     # vs = []
     # cs = []
@@ -258,12 +288,20 @@ def load_ply_to_cache(context, operator=None, ):
     #     c = [v / 255 for v in p[3:]]
     #     cs.append(tuple(c) + (1.0, ))
     
-    l = len(points)
-    vs = [None] * l
-    cs = [None] * l
-    for i, p in enumerate(points):
-        vs[i] = p[:3]
-        cs[i] = tuple(v / 255 for v in p[3:]) + (1.0, )
+    # l = len(points)
+    # vs = [None] * l
+    # cs = [None] * l
+    # for i, p in enumerate(points):
+    #     vs[i] = p[:3]
+    #     cs[i] = tuple(v / 255 for v in p[3:]) + (1.0, )
+    
+    vs = np.column_stack((points['x'], points['y'], points['z'], ))
+    cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+    # a = []
+    # for i, v in enumerate(cs):
+    #     a.append((v[0], v[1], v[2], v[3], ))
+    # cs = a
+    cs = cs.astype(np.float32)
     
     u = str(uuid.uuid1())
     o = context.object
@@ -294,9 +332,14 @@ def load_ply_to_cache(context, operator=None, ):
     
     PCVManager.add(d)
     
-    log('done.')
-    d = datetime.timedelta(seconds=time.time() - t)
-    log("completed in {}.".format(d))
+    # log('done.')
+    _d = datetime.timedelta(seconds=time.time() - _t)
+    log("completed in {}.".format(_d))
+    
+    log("-" * 50)
+    __d = datetime.timedelta(seconds=time.time() - __t)
+    log("load and process completed in {}.".format(__d))
+    log("-" * 50)
     
     return True
 

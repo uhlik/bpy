@@ -33,6 +33,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 changelog:
 
+* 0.5.0 performance improvements using numpy for loading and processing data
 * 0.4.6 fixed crash when parent object is deleted while drawing, fixed removal of loaded data when parent is deleted
 * 0.4.5 added 'Display' percentage, better error handling during .ply loading
 * 0.4.0 almost complete rewrite for blender 2.80, performance improvements using shaders, simplified ui
