@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 5, 0),
+           "version": (0, 5, 1),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -31,7 +31,6 @@ bl_info = {"name": "Point Cloud Visualizer",
 import os
 import struct
 import uuid
-# import random
 import time
 import datetime
 import numpy as np
@@ -44,9 +43,13 @@ from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
 
 
+DEBUG = False
+
+
 def log(msg, indent=0, ):
     m = "{0}> {1}".format("    " * indent, msg)
-    # print(m)
+    if(DEBUG):
+        print(m)
 
 
 def human_readable_number(num, suffix='', ):
@@ -67,30 +70,12 @@ class BinPlyPointCloudReader():
         
         self.path = path
         self._stream = open(self.path, "rb")
-        
         log("reading header..", 1)
         self._header()
         log("reading data:", 1)
-        # self._data()
         self._data_np()
-        
         self._stream.close()
-        
-        # props = ['x', 'y', 'z', 'red', 'green', 'blue', ]
-        # es = self._elements
-        # for e in es:
-        #     if(e['name'] == 'vertex'):
-        #         ps = e['properties']
-        # q = []
-        # for i, n in enumerate(props):
-        #     for j, p in enumerate(ps):
-        #         if(n == p[0]):
-        #             q.append(j)
-        # vd = self.data['vertex']
-        # self.points = [(i[q[0]], i[q[1]], i[q[2]], i[q[3]], i[q[4]], i[q[5]], ) for i in vd]
-        
         self.points = self.data['vertex']
-        
         log("done.", 1)
     
     def _header(self):
@@ -163,28 +148,7 @@ class BinPlyPointCloudReader():
         self._endianness = _endianness
         self._elements = _elements
     
-    # def _data(self):
-    #     self.data = {}
-    #     for i, d in enumerate(self._elements):
-    #         nm = d['name']
-    #         if(nm != 'vertex'):
-    #             # read only vertices
-    #             continue
-    #         a = []
-    #         f = self._endianness
-    #         f += ''.join([i[1] for i in d['properties']])
-    #         c = d['count']
-    #         sz = struct.calcsize(f)
-    #         log("reading {} {} elements..".format(c, nm), 2)
-    #         self._stream.seek(self._header_length)
-    #         for i in range(c):
-    #             r = self._stream.read(sz)
-    #             v = struct.unpack(f, r)
-    #             a.append(v)
-    #         self.data[nm] = a
-    
     def _data_np(self):
-        # ~2.5x speed up
         self.data = {}
         for i, d in enumerate(self._elements):
             nm = d['name']
@@ -264,15 +228,12 @@ def load_ply_to_cache(context, operator=None, ):
         operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
         return False
     
-    # log('done.')
     _d = datetime.timedelta(seconds=time.time() - _t)
     log("completed in {}.".format(_d))
     
     log('shuffle data..')
     _t = time.time()
     
-    # rnd = random.Random()
-    # random.shuffle(points, rnd.random)
     np.random.shuffle(points)
     
     _d = datetime.timedelta(seconds=time.time() - _t)
@@ -281,27 +242,31 @@ def load_ply_to_cache(context, operator=None, ):
     log('process data..')
     _t = time.time()
     
-    # vs = []
-    # cs = []
-    # for i, p in enumerate(points):
-    #     vs.append(tuple(p[:3]))
-    #     c = [v / 255 for v in p[3:]]
-    #     cs.append(tuple(c) + (1.0, ))
-    
-    # l = len(points)
-    # vs = [None] * l
-    # cs = [None] * l
-    # for i, p in enumerate(points):
-    #     vs[i] = p[:3]
-    #     cs[i] = tuple(v / 255 for v in p[3:]) + (1.0, )
+    if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
+        # this is very unlikely..
+        operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
+        return False
+    # # normals are not needed yet
+    # if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
+    #     operator.report({'ERROR'}, "Loaded data seems to miss vertex normals.")
+    #     return False
+    vcols = True
+    if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
+        # operator.report({'ERROR'}, "Loaded data seems to miss vertex colors.")
+        # return False
+        vcols = False
     
     vs = np.column_stack((points['x'], points['y'], points['z'], ))
-    cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
-    # a = []
-    # for i, v in enumerate(cs):
-    #     a.append((v[0], v[1], v[2], v[3], ))
-    # cs = a
-    cs = cs.astype(np.float32)
+    if(vcols):
+        cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+        cs = cs.astype(np.float32)
+    else:
+        # cs = np.ones((len(points), 4), dtype=np.float32, )
+        n = len(points)
+        cs = np.column_stack((np.full(n, 0.75, dtype=np.float32, ),
+                              np.full(n, 0.75, dtype=np.float32, ),
+                              np.full(n, 0.75, dtype=np.float32, ),
+                              np.ones(n, dtype=np.float32, ), ))
     
     u = str(uuid.uuid1())
     o = context.object
@@ -332,7 +297,6 @@ def load_ply_to_cache(context, operator=None, ):
     
     PCVManager.add(d)
     
-    # log('done.')
     _d = datetime.timedelta(seconds=time.time() - _t)
     log("completed in {}.".format(_d))
     
@@ -466,45 +430,26 @@ class PCVManager():
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
-    bl_description = ""
-    
-    @classmethod
-    def poll(cls, context):
-        return True
     
     def execute(self, context):
         PCVManager.init()
-        
         context.area.tag_redraw()
-        
         return {'FINISHED'}
 
 
 class PCV_OT_deinit(Operator):
     bl_idname = "point_cloud_visualizer.deinit"
     bl_label = "deinit"
-    bl_description = ""
-    
-    @classmethod
-    def poll(cls, context):
-        return True
     
     def execute(self, context):
         PCVManager.deinit()
-        
         context.area.tag_redraw()
-        
         return {'FINISHED'}
 
 
 class PCV_OT_gc(Operator):
     bl_idname = "point_cloud_visualizer.gc"
     bl_label = "gc"
-    bl_description = ""
-    
-    @classmethod
-    def poll(cls, context):
-        return True
     
     def execute(self, context):
         PCVManager.gc()
@@ -518,7 +463,14 @@ class PCV_OT_draw(Operator):
     
     @classmethod
     def poll(cls, context):
-        return True
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(not v['draw']):
+                        ok = True
+        return ok
     
     def execute(self, context):
         PCVManager.init()
@@ -556,7 +508,14 @@ class PCV_OT_erase(Operator):
     
     @classmethod
     def poll(cls, context):
-        return True
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -589,8 +548,8 @@ class PCV_OT_load(Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
     
-    def check(self, context):
-        return True
+    # def check(self, context):
+    #     return True
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -610,24 +569,24 @@ class PCV_OT_load(Operator):
                 PCVManager.cache[pcv.uuid]['kill'] = True
                 PCVManager.gc()
         
-        if(pcv.debug and pcv.profile):
-            print("-" * 50)
-            print("load_ply_to_cache")
-            print("-" * 50)
-            import cProfile, pstats, io
-            pr = cProfile.Profile()
-            pr.enable()
+        # if(pcv.debug and pcv.profile):
+        #     print("-" * 50)
+        #     print("load_ply_to_cache")
+        #     print("-" * 50)
+        #     import cProfile, pstats, io
+        #     pr = cProfile.Profile()
+        #     pr.enable()
         
         ok = load_ply_to_cache(context, self)
         
-        if(pcv.debug and pcv.profile):
-            pr.disable()
-            s = io.StringIO()
-            sortby = 'cumulative'
-            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-            ps.print_stats()
-            print(s.getvalue())
-            print("-" * 50)
+        # if(pcv.debug and pcv.profile):
+        #     pr.disable()
+        #     s = io.StringIO()
+        #     sortby = 'cumulative'
+        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        #     ps.print_stats()
+        #     print(s.getvalue())
+        #     print("-" * 50)
         
         if(not ok):
             return {'CANCELLED'}
@@ -693,6 +652,7 @@ class PCV_PT_panel(Panel):
         
         if(pcv.debug):
             sub.separator()
+            sub.label(text="DEBUG: {}".format(DEBUG))
             c = sub.column(align=True)
             c.operator('point_cloud_visualizer.init')
             c.operator('point_cloud_visualizer.deinit')
@@ -731,11 +691,10 @@ class PCV_properties(PropertyGroup):
             l = vl
         d['display_percent'] = l
     
-    display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, )
+    display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
-    # debug properties
-    debug: BoolProperty(default=False, options={'HIDDEN', }, )
-    profile: BoolProperty(default=False, options={'HIDDEN', }, )
+    debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, )
+    # profile: BoolProperty(default=False, options={'HIDDEN', }, )
     
     @classmethod
     def register(cls):
@@ -757,12 +716,13 @@ classes = (
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
-    
-    # # debug operators
-    # PCV_OT_init,
-    # PCV_OT_deinit,
-    # PCV_OT_gc,
 )
+if(DEBUG):
+    classes = classes + (
+        PCV_OT_init,
+        PCV_OT_deinit,
+        PCV_OT_gc,
+    )
 
 
 def register():
