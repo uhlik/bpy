@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 5, 1),
+           "version": (0, 5, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -252,8 +252,6 @@ def load_ply_to_cache(context, operator=None, ):
     #     return False
     vcols = True
     if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
-        # operator.report({'ERROR'}, "Loaded data seems to miss vertex colors.")
-        # return False
         vcols = False
     
     vs = np.column_stack((points['x'], points['y'], points['z'], ))
@@ -261,7 +259,6 @@ def load_ply_to_cache(context, operator=None, ):
         cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
         cs = cs.astype(np.float32)
     else:
-        # cs = np.ones((len(points), 4), dtype=np.float32, )
         n = len(points)
         cs = np.column_stack((np.full(n, 0.75, dtype=np.float32, ),
                               np.full(n, 0.75, dtype=np.float32, ),
@@ -465,36 +462,30 @@ class PCV_OT_draw(Operator):
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
         ok = False
+        cached = False
         for k, v in PCVManager.cache.items():
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
+                    cached = True
                     if(not v['draw']):
                         ok = True
+        if(not ok and pcv.filepath != "" and pcv.uuid != "" and not cached):
+            ok = True
         return ok
     
     def execute(self, context):
         PCVManager.init()
         
         pcv = context.object.point_cloud_visualizer
-        cached = False
-        for k, v in PCVManager.cache.items():
-            if(v['uuid'] == pcv.uuid):
-                cached = True
-                if(v['ready']):
-                    if(not v['draw']):
-                        v['draw'] = True
-                else:
-                    # why is this here? if it is cached, it means it has been loaded already, so ready attribute is not even needed..
-                    # bpy.ops.point_cloud_visualizer.load_ply_to_cache('INVOKE_DEFAULT')
-                    v['draw'] = True
-        if(not cached):
-            if(pcv.filepath != ""):
-                pcv.uuid = ""
-                ok = load_ply_to_cache(context, self)
-                if(not ok):
-                    return {'CANCELLED'}
-                v = PCVManager.cache[pcv.uuid]
-                v['draw'] = True
+        
+        if(not pcv.uuid in PCVManager.cache):
+            pcv.uuid = ""
+            ok = load_ply_to_cache(context, self)
+            if(not ok):
+                return {'CANCELLED'}
+        
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
         
         context.area.tag_redraw()
         
@@ -519,15 +510,8 @@ class PCV_OT_erase(Operator):
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
-        ok = False
-        for k, v in PCVManager.cache.items():
-            if(v['uuid'] == pcv.uuid):
-                if(v['ready']):
-                    if(v['draw']):
-                        v['draw'] = False
-                        ok = True
-        if(not ok):
-            return {'CANCELLED'}
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = False
         
         context.area.tag_redraw()
         
@@ -548,9 +532,6 @@ class PCV_OT_load(Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
     
-    # def check(self, context):
-    #     return True
-    
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
         ok = True
@@ -569,24 +550,7 @@ class PCV_OT_load(Operator):
                 PCVManager.cache[pcv.uuid]['kill'] = True
                 PCVManager.gc()
         
-        # if(pcv.debug and pcv.profile):
-        #     print("-" * 50)
-        #     print("load_ply_to_cache")
-        #     print("-" * 50)
-        #     import cProfile, pstats, io
-        #     pr = cProfile.Profile()
-        #     pr.enable()
-        
         ok = load_ply_to_cache(context, self)
-        
-        # if(pcv.debug and pcv.profile):
-        #     pr.disable()
-        #     s = io.StringIO()
-        #     sortby = 'cumulative'
-        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        #     ps.print_stats()
-        #     print(s.getvalue())
-        #     print("-" * 50)
         
         if(not ok):
             return {'CANCELLED'}
@@ -634,8 +598,8 @@ class PCV_PT_panel(Panel):
         
         e = not (pcv.filepath == "")
         r = sub.row(align=True)
-        r.operator('point_cloud_visualizer.draw', icon='HIDE_OFF', )
-        r.operator('point_cloud_visualizer.erase', icon='HIDE_ON', )
+        r.operator('point_cloud_visualizer.draw')
+        r.operator('point_cloud_visualizer.erase')
         r.enabled = e
         r = sub.row()
         r.prop(pcv, 'display_percent')
@@ -652,26 +616,23 @@ class PCV_PT_panel(Panel):
         
         if(pcv.debug):
             sub.separator()
-            sub.label(text="DEBUG: {}".format(DEBUG))
+            sub.label(text="PCV uuid: {}".format(pcv.uuid))
             c = sub.column(align=True)
             c.operator('point_cloud_visualizer.init')
             c.operator('point_cloud_visualizer.deinit')
             c.operator('point_cloud_visualizer.gc')
-            sub.separator()
-            sub.label(text="PCV uuid: {}".format(pcv.uuid))
-            sub.label(text="PCVManager:")
-            sub.separator()
-            for k, v in PCVManager.cache.items():
-                sub.label(text="uuid: {}".format(v['uuid']))
-                sub.label(text="object: {}".format(v['object']))
-                sub.label(text="name: {}".format(v['name']))
-                sub.label(text="ready: {}".format(v['ready']))
-                sub.label(text="draw: {}".format(v['draw']))
-                sub.label(text="drawing: {}".format(v['drawing']))
-                sub.label(text="handle: {}".format(v['handle']))
-                sub.label(text="current_display_percent: {}".format(v['current_display_percent']))
-                sub.label(text="kill: {}".format(v['kill']))
-                sub.label(text="----------------------")
+            if(len(PCVManager.cache)):
+                sub.separator()
+                sub.label(text="PCVManager:")
+                for k, v in PCVManager.cache.items():
+                    b = sub.box()
+                    c = b.column()
+                    c.scale_y = 0.5
+                    for ki, vi in sorted(v.items()):
+                        if(type(vi) == np.ndarray):
+                            c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
+                        else:
+                            c.label(text="{}: {}".format(ki, vi))
 
 
 class PCV_properties(PropertyGroup):
@@ -694,7 +655,6 @@ class PCV_properties(PropertyGroup):
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, )
-    # profile: BoolProperty(default=False, options={'HIDDEN', }, )
     
     @classmethod
     def register(cls):
