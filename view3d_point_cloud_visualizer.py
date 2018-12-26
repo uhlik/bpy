@@ -478,7 +478,7 @@ class PCV_OT_draw(Operator):
         
         pcv = context.object.point_cloud_visualizer
         
-        if(not pcv.uuid in PCVManager.cache):
+        if(pcv.uuid not in PCVManager.cache):
             pcv.uuid = ""
             ok = load_ply_to_cache(context, self)
             if(not ok):
