@@ -92,6 +92,8 @@ changelog:
 
 ###Cython version notes
 
+Cython export is ~3x faster than built-in export now. 450k quads mesh with uv map in 5s, built-in 15s..
+
 **requirements:**
 
 * python 3.7.0 (the same as shipped with blender 2.8)
