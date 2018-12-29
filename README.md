@@ -5,7 +5,7 @@
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
-* [Fast Wavefront^2](#fast-wavefront-for-blender-280)
+* [Fast Wavefront^2](#fast-wavefront2-for-blender-280)
 
 ### for blender 2.7x
 
@@ -90,7 +90,7 @@ changelog:
 * 0.1.2 import zbrush mask as vertex group
 * 0.1.1 first release
 
-####Cython version notes
+###Cython version notes
 
 **requirements:**
 
