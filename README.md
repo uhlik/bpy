@@ -5,12 +5,13 @@
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
+* [Fast Wavefront^2](#fast-wavefront-for-blender-280)
 
 ### for blender 2.7x
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-27x)
 * [OpenGL Lights](#opengl-lights)
-* [Fast Wavefront (.obj)](#fast-wavefront)
+* [Fast Wavefront (.obj)](#fast-wavefront-for-blender-27x)
 * [UV Equalize](#uv-equalize)
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-27x)
 * [Time Tracker](#time-tracker)
@@ -72,6 +73,40 @@ changelog:
 
 ***
 
+## [Fast Wavefront^2](https://github.com/uhlik/bpy) (for blender 2.80)
+
+**Currently there are two addons of that name.** The first is `io_mesh_fast_obj.py` which is direct port to 2.80 from [Fast Wavefront (.obj)](#fast-wavefront-for-blender-27x), not much tested, but should work. The second addon is `io_mesh_fast_obj` (directory) which is second attempt to make it even faster with Cython. **Currently only export works and i am not providing compiled Cython extension, you have to compile it for yourself.**
+
+**Import/Export single mesh as Wavefront OBJ.**
+
+Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b). Export is ~3x faster than built-in obj exporter and import ~2x. It lacks some features, but saves quite a bit time when you need to move high resolution mesh from blender to ZBrush and back a few times per hour while cleaning up scans.
+
+Comes with a few presets (created upon activation) for following workflow: import raw mesh obj from Agisoft PhotoScan, export raw mesh obj to ZBrush, import cleaned/uv unwrapped mesh obj from ZBrush, export cleaned mesh to Agisoft PhotoScan for texture generation.
+
+changelog:
+
+* 0.3.0 export implementated in cython
+* 0.2.0 ported to blender 2.80
+* 0.1.2 import zbrush mask as vertex group
+* 0.1.1 first release
+
+####Cython version notes
+
+**requirements:**
+
+* python 3.7.0 (the same as shipped with blender 2.8)
+* Cython (easiest is to install with pip)
+
+**installation on mac (win/linux should be very similar):**
+
+1. download repository and copy whole directory `io_mesh_fast_obj` to `/Users/*USERNAME*/Library/Application Support/Blender/2.80/scripts/addons/`
+2. in terminal cd to `/Users/*USERNAME*/Library/Application Support/Blender/2.80/scripts/addons/io_mesh_fast_obj/`
+    1. `$ git clone http://git.blender.org/blender.git`
+    2. `$ python3 setup.py build_ext --inplace`
+3. now delete `blender` directory, it is no longer needed
+
+***
+
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py) (for blender 2.7x)
 
 Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
@@ -114,7 +149,7 @@ changelog:
 
 ***
 
-## [Fast Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/io_mesh_fast_obj.py)
+## [Fast Wavefront](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/io_mesh_fast_obj.py) (for blender 2.7x)
 
 Import/Export single mesh as Wavefront OBJ.
 
