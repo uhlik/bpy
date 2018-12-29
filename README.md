@@ -90,7 +90,7 @@ changelog:
 * 0.1.2 import zbrush mask as vertex group
 * 0.1.1 first release
 
-###Cython version notes
+### Cython version notes
 
 Cython export is ~3x faster than built-in export now. 450k quads mesh with uv map in 5s, built-in 15s..
 
