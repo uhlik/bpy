@@ -1,6 +1,5 @@
 ### Contents:
 
-
 ### for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
@@ -75,14 +74,14 @@ changelog:
 
 ## [Fast Wavefront^2](https://github.com/uhlik/bpy) (for blender 2.80)
 
-**Import/Export single mesh as Wavefront OBJ.**
+**Import/Export single mesh as Wavefront OBJ. Fast. Now with Cython. Binaries not included.**
 
 Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).
 
 changelog:
 
 * 0.3.1 import obj (python only)
-* 0.3.0 export implementated in cython
+* 0.3.0 export implemented in cython
 * 0.2.0 ported to blender 2.80
 * 0.1.2 import zbrush mask as vertex group
 * 0.1.1 first release
@@ -98,7 +97,7 @@ changelog:
 2. in terminal cd to `/Users/*USERNAME*/Library/Application Support/Blender/2.80/scripts/addons/io_mesh_fast_obj/`
     1. `$ git clone http://git.blender.org/blender.git`
     2. `$ python3 setup.py build_ext --inplace`
-3. now delete `blender` directory, it is no longer needed
+3. now delete `blender` directory, it is no longer needed until blender is updated, then you (might) need to repeat the process
 
 ***
 

@@ -33,6 +33,7 @@ import datetime
 from mathutils import Matrix
 
 import bpy
+import bmesh
 from bpy_extras.io_utils import ExportHelper, ImportHelper, axis_conversion
 from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, FloatProperty, IntProperty
@@ -259,7 +260,7 @@ class FastOBJReader():
         self.object = add_object(name, me)
         if(len(mask) > 0):
             log("making mask vertex group..", 1)
-            g = self.object.vertex_groups.new("mask")
+            g = self.object.vertex_groups.new(name="M")
             indexes = [i for i in range(len(me.vertices))]
             g.add(indexes, 0.0, 'REPLACE')
             ind = g.index
@@ -303,7 +304,7 @@ class ExportFastOBJ(Operator, ExportHelper):
     bl_description = "Export single mesh as Wavefront OBJ. Only active mesh is exported. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush)."
     bl_options = {'PRESET'}
     
-    # filepath = StringProperty(name="File Path", description="Filepath used for exporting the file", maxlen=1024, subtype='FILE_PATH', )
+    # filepath: StringProperty(name="File Path", description="Filepath used for exporting the file", maxlen=1024, subtype='FILE_PATH', )
     filename_ext = ".obj"
     filter_glob: StringProperty(default="*.obj", options={'HIDDEN'}, )
     check_extension = True
@@ -311,12 +312,12 @@ class ExportFastOBJ(Operator, ExportHelper):
     apply_modifiers: BoolProperty(name="Apply Modifiers", default=False, description="Apply all modifiers.", )
     apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Zero-out mesh transformation.", )
     convert_axes: BoolProperty(name="Convert Axes", default=True, description="Convert from blender (y forward, z up) to forward -z, up y.", )
-    triangulate: BoolProperty(name="Triangulate", default=False, description="", )
-    use_normals: BoolProperty(name="With Normals", default=True, description="", )
+    triangulate: BoolProperty(name="Triangulate", default=False, description="Triangulate mesh before exporting.", )
+    use_normals: BoolProperty(name="With Normals", default=True, description="Export vertex normals.", )
     use_uv: BoolProperty(name="With UV", default=True, description="Export active UV layout.", )
     use_vcols: BoolProperty(name="With Vertex Colors", default=False, description="Export vertex colors, this is not part of official file format specification.", )
-    global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="", )
-    precision: IntProperty(name="Precision", default=6, description="", )
+    global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
+    precision: IntProperty(name="Precision", default=6, description="Floating point precision.", )
     
     @classmethod
     def poll(cls, context):
@@ -359,14 +360,14 @@ class ExportFastOBJ(Operator, ExportHelper):
             sm = Matrix.Scale(self.global_scale, 4)
             m.transform(sm)
         
-        export.export_obj(m.as_pointer(),
-                          self.filepath,
-                          "{}-{}".format(o.name, o.data.name),
-                          use_normals=self.use_normals,
-                          use_uv=self.use_uv,
-                          use_vcols=self.use_vcols,
-                          precision=self.precision,
-                          debug=DEBUG, )
+        export_obj.export_obj(m.as_pointer(),
+                              self.filepath,
+                              "{}-{}".format(o.name, o.data.name),
+                              use_normals=self.use_normals,
+                              use_uv=self.use_uv,
+                              use_vcols=self.use_vcols,
+                              precision=self.precision,
+                              debug=DEBUG, )
         
         bpy.data.meshes.remove(m)
         
@@ -380,17 +381,17 @@ class ImportFastOBJ(Operator, ImportHelper):
     bl_description = "Import single mesh Wavefront OBJ. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush)."
     bl_options = {'PRESET'}
     
-    # filepath = StringProperty(name="File Path", description="Filepath used for exporting the file", maxlen=1024, subtype='FILE_PATH', )
+    # filepath: StringProperty(name="File Path", description="Filepath used for exporting the file", maxlen=1024, subtype='FILE_PATH', )
     filename_ext = ".obj"
     filter_glob: StringProperty(default="*.obj", options={'HIDDEN'}, )
     check_extension = True
     
     convert_axes: BoolProperty(name="Convert Axes", default=True, description="Convert from blender (y forward, z up) to forward -z, up y.", )
     with_uv: BoolProperty(name="With UV", default=True, description="Import texture coordinates.", )
-    with_vertex_colors: BoolProperty(name="With Vertex Colors", default=True, description="Import vertex colors, this is not part of official file format specification.", )
-    use_mask_as_vertex_group: BoolProperty(name="Mask as Vertex Group", default=False, description="Import ZBrush mask as vertex group.", )
-    with_polygroups: BoolProperty(name="With Polygroups", default=False, description="", )
-    global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="", )
+    with_vertex_colors: BoolProperty(name="With Vertex Colors (MRGB)", default=True, description="Import vertex colors, this is not part of official file format specification. ZBrush uses MRGB comments to write Polypaint to OBJ.", )
+    use_mask_as_vertex_group: BoolProperty(name="M as Vertex Group", default=False, description="Import M from MRGB as vertex group.", )
+    with_polygroups: BoolProperty(name="With Polygroups", default=False, description="Import ZBrush polygroups as vertex groups.", )
+    global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
     apply_conversion: BoolProperty(name="Apply Conversion", default=False, description="Apply new axes directly to mesh or only transform at object level.", )
     
     @classmethod

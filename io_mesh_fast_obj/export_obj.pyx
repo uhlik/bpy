@@ -129,7 +129,7 @@ def export_obj(long long int pointer, str path, str obname, bool use_normals, bo
     log('writing obj file..', 1)
     tp = "{}.tmp".format(path)
     with open(tp, mode='w', encoding='utf-8', newline="\n", ) as of:
-        of.write("# Fast Wavefront (.obj) (Cython)\n")
+        of.write("# Fast Wavefront^2 (.obj) (Cython)\n")
         of.write("o {}\n".format(obname))
         of.write(f.getvalue())
     f.close()
