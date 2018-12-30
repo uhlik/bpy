@@ -22,7 +22,7 @@ bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "version": (0, 3, 0),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
-           "warning": "work in progress, currently export only, binaries are not provided, you have to compile them by yourself",
+           "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
            "wiki_url": "",
            "tracker_url": "",
            "category": "Import-Export", }
@@ -37,7 +37,7 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper, axis_conversion
 from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, FloatProperty, IntProperty
 
-from . import export
+from . import export_obj
 
 
 # note for myself:
@@ -51,6 +51,250 @@ def log(msg="", indent=0, prefix="> "):
     m = "{}{}{}".format("    " * indent, prefix, msg, )
     if(DEBUG):
         print(m)
+
+
+class FastOBJReader():
+    def __init__(self, path, convert_axes=True, with_uv=True, with_shading=True, with_vertex_colors=True, use_vcols_mrgb=True, use_mask_as_vertex_group=False, use_vcols_ext=False, with_polygroups=True, global_scale=1.0, apply_conversion=False, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        name = os.path.splitext(os.path.split(path)[1])[0]
+        log("will import .obj at: {}".format(path), 1)
+        log_args_align = 30
+        
+        # t = time.time()
+        
+        def add_object(name, data, ):
+            so = bpy.context.scene.objects
+            for i in so:
+                i.select_set(False)
+            
+            o = bpy.data.objects.new(name, data)
+            # so.link(o)
+            
+            context = bpy.context
+            view_layer = context.view_layer
+            collection = view_layer.active_layer_collection.collection
+            collection.objects.link(o)
+            
+            view_layer.objects.active = o
+            
+            # o.select = True
+            o.select_set(True)
+            # if(so.active is None or so.active.mode == 'OBJECT'):
+            #     so.active = o
+            return o
+        
+        # def activate_object(obj, ):
+        #     bpy.ops.object.select_all(action='DESELECT')
+        #     sc = bpy.context.scene
+        #     obj.select = True
+        #     sc.objects.active = obj
+        
+        log("reading..", 1)
+        ls = None
+        with open(path, mode='r', encoding='utf-8') as f:
+            ls = f.readlines()
+        
+        def v(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
+        
+        def vt(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
+        
+        def f(l):
+            a = l.split()[1:]
+            ls = map(int, a)
+            return tuple([i - 1 for i in ls])
+        
+        def fn(l):
+            a = l.split()[1:]
+            ls = [i.split('/') for i in a]
+            f = []
+            for i, p in enumerate(ls):
+                f.append(int(p[0]) - 1)
+            return f
+        
+        def ftn(l):
+            a = l.split()[1:]
+            ls = [i.split('/') for i in a]
+            f = []
+            t = []
+            for i, p in enumerate(ls):
+                f.append(int(p[0]) - 1)
+                t.append(int(p[1]) - 1)
+            return f, t
+        
+        def vc_mrgb(l):
+            r = []
+            m = []
+            l = l[6:]
+            l = l.strip()
+            for i in range(0, len(l), 8):
+                v = l[i:i + 8]
+                c = (int(v[2:4], 16) / 255, int(v[4:6], 16) / 255, int(v[6:8], 16) / 255)
+                r.append(c)
+                m.append(int(v[0:2], 16) / 255)
+            return r, m
+        
+        def v_vc_ext(l):
+            a = l.split()[1:]
+            return tuple(map(float, a))
+        
+        groups = {}
+        verts = []
+        tverts = []
+        faces = []
+        tfaces = []
+        vcols = []
+        shading = []
+        shading_flag = None
+        mask = []
+        
+        log("parsing..", 1)
+        parsef = None
+        has_uv = None
+        cg = None
+        
+        for l in ls:
+            if(l.startswith('s ')):
+                if(with_shading):
+                    if(l.lower() == 's off' or l.lower() == 's 0'):
+                        shading_flag = False
+                    else:
+                        shading_flag = True
+            elif(l.startswith('g ')):
+                if(with_polygroups):
+                    g = l[2:]
+                    g = g.strip()
+                    if(g not in groups):
+                        groups[g] = []
+                    cg = g
+            elif(l.startswith('v ')):
+                if(with_vertex_colors and use_vcols_ext):
+                    a = v_vc_ext(l)
+                    verts.append(a[:3])
+                    vcols.append(a[3:])
+                else:
+                    verts.append(v(l))
+            elif(l.startswith('vt ')):
+                if(with_uv):
+                    tverts.append(vt(l))
+            elif(l.startswith('f ')):
+                if(parsef is None):
+                    if('//' in l):
+                        parsef = fn
+                    elif('/' not in l):
+                        parsef = f
+                    else:
+                        parsef = ftn
+                        has_uv = True
+                if(has_uv):
+                    a, b = parsef(l)
+                else:
+                    a = parsef(l)
+                faces.append(a)
+                if(with_shading):
+                    shading.append(shading_flag)
+                if(has_uv):
+                    if(with_uv):
+                        tfaces.append(b)
+                if(with_polygroups):
+                    if(cg is not None):
+                        groups[cg].extend(a)
+            elif(l.startswith('#MRGB ')):
+                if(with_vertex_colors):
+                    if(use_vcols_mrgb):
+                        c, m = vc_mrgb(l)
+                        vcols.extend(c)
+                        if(use_mask_as_vertex_group):
+                            mask.extend(m)
+            else:
+                pass
+        
+        log("making mesh..", 1)
+        me = bpy.data.meshes.new(name)
+        me.from_pydata(verts, [], faces)
+        
+        log("{} {}".format("{}: ".format("with_uv").ljust(log_args_align, "."), with_uv), 1)
+        if(len(tverts) > 0):
+            log("making uv map..", 1)
+            me.uv_layers.new(name="UVMap")
+            loops = me.uv_layers[0].data
+            i = 0
+            for j in range(len(tfaces)):
+                f = tfaces[j]
+                for k in range(len(f)):
+                    loops[i + k].uv = tverts[f[k]]
+                i += (k + 1)
+        
+        log("{} {}".format("{}: ".format("with_vertex_colors").ljust(log_args_align, "."), with_vertex_colors), 1)
+        log("{} {}".format("{}: ".format("use_vcols_mrgb").ljust(log_args_align, "."), use_vcols_mrgb), 1)
+        log("{} {}".format("{}: ".format("use_mask_as_vertex_group").ljust(log_args_align, "."), use_mask_as_vertex_group), 1)
+        log("{} {}".format("{}: ".format("use_vcols_ext").ljust(log_args_align, "."), use_vcols_ext), 1)
+        if(len(vcols) > 0):
+            log("making vertex colors..", 1)
+            me.vertex_colors.new()
+            vc = me.vertex_colors.active
+            vcd = vc.data
+            for l in me.loops:
+                vcd[l.index].color = vcols[l.vertex_index] + (1.0, )
+        
+        log("{} {}".format("{}: ".format("convert_axes").ljust(log_args_align, "."), convert_axes), 1)
+        log("{} {}".format("{}: ".format("apply_conversion").ljust(log_args_align, "."), apply_conversion), 1)
+        if(convert_axes):
+            if(apply_conversion):
+                axis_forward = '-Z'
+                axis_up = 'Y'
+                cm = axis_conversion(from_forward=axis_forward, from_up=axis_up).to_4x4()
+                me.transform(cm)
+        log("{} {}".format("{}: ".format("global_scale").ljust(log_args_align, "."), global_scale), 1)
+        if(global_scale != 1.0):
+            sm = Matrix.Scale(global_scale, 4)
+            me.transform(sm)
+        me.update()
+        
+        log("adding to scene..", 1)
+        self.name = name
+        self.object = add_object(name, me)
+        if(len(mask) > 0):
+            log("making mask vertex group..", 1)
+            g = self.object.vertex_groups.new("mask")
+            indexes = [i for i in range(len(me.vertices))]
+            g.add(indexes, 0.0, 'REPLACE')
+            ind = g.index
+            for i, v in enumerate(me.vertices):
+                v.groups[ind].weight = mask[i]
+        
+        if(convert_axes):
+            if(not apply_conversion):
+                axis_forward = '-Z'
+                axis_up = 'Y'
+                cm = axis_conversion(from_forward=axis_forward, from_up=axis_up).to_4x4()
+                m = self.object.matrix_world
+                mm = m @ cm
+                self.object.matrix_world = mm
+        
+        log("{} {}".format("{}: ".format("with_shading").ljust(log_args_align, "."), with_shading), 1)
+        if(with_shading):
+            log("setting shading..", 1)
+            for i, p in enumerate(me.polygons):
+                p.use_smooth = shading[i]
+        
+        log("{} {}".format("{}: ".format("with_polygroups").ljust(log_args_align, "."), with_polygroups), 1)
+        if(len(groups) > 0):
+            log("making polygroups..", 1)
+            o = self.object
+            me = o.data
+            for k, v in groups.items():
+                o.vertex_groups.new(name=k)
+                vg = o.vertex_groups[k]
+                vg.add(list(set(v)), 1.0, 'REPLACE')
+        
+        log("imported object: '{}'".format(self.object.name), 1)
+        
+        # d = datetime.timedelta(seconds=time.time() - t)
+        # log("completed in {}.".format(d), 1)
 
 
 class ExportFastOBJ(Operator, ExportHelper):
@@ -132,7 +376,7 @@ class ExportFastOBJ(Operator, ExportHelper):
 
 class ImportFastOBJ(Operator, ImportHelper):
     bl_idname = "import_mesh.fast_obj"
-    bl_label = 'Import Fast OBJ (Cython)'
+    bl_label = 'Import Fast OBJ'
     bl_description = "Import single mesh Wavefront OBJ. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush)."
     bl_options = {'PRESET'}
     
@@ -143,7 +387,7 @@ class ImportFastOBJ(Operator, ImportHelper):
     
     convert_axes: BoolProperty(name="Convert Axes", default=True, description="Convert from blender (y forward, z up) to forward -z, up y.", )
     with_uv: BoolProperty(name="With UV", default=True, description="Import texture coordinates.", )
-    with_vertex_colors: BoolProperty(name="With Vertex Colors", default=False, description="Import vertex colors, this is not part of official file format specification.", )
+    with_vertex_colors: BoolProperty(name="With Vertex Colors", default=True, description="Import vertex colors, this is not part of official file format specification.", )
     use_mask_as_vertex_group: BoolProperty(name="Mask as Vertex Group", default=False, description="Import ZBrush mask as vertex group.", )
     with_polygroups: BoolProperty(name="With Polygroups", default=False, description="", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="", )
@@ -151,7 +395,7 @@ class ImportFastOBJ(Operator, ImportHelper):
     
     @classmethod
     def poll(cls, context):
-        return False
+        return True
     
     def draw(self, context):
         l = self.layout
@@ -165,6 +409,24 @@ class ImportFastOBJ(Operator, ImportHelper):
         sub.prop(self, 'apply_conversion')
     
     def execute(self, context):
+        t = time.time()
+        
+        d = {'path': self.filepath,
+             'convert_axes': self.convert_axes,
+             'with_uv': self.with_uv,
+             'with_shading': False,
+             'with_vertex_colors': self.with_vertex_colors,
+             'use_vcols_mrgb': True,
+             'use_mask_as_vertex_group': self.use_mask_as_vertex_group,
+             'use_vcols_ext': False,
+             'with_polygroups': self.with_polygroups,
+             'global_scale': self.global_scale,
+             'apply_conversion': self.apply_conversion, }
+        r = FastOBJReader(**d)
+        
+        d = datetime.timedelta(seconds=time.time() - t)
+        log("completed in {}.".format(d), 0)
+        
         return {'FINISHED'}
 
 
@@ -173,12 +435,12 @@ def menu_func_export(self, context):
 
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportFastOBJ.bl_idname, text="Fast Wavefront^2 (.obj) (Cython)")
+    self.layout.operator(ImportFastOBJ.bl_idname, text="Fast Wavefront^2 (.obj)")
 
 
 classes = (
     ExportFastOBJ,
-    # ImportFastOBJ,
+    ImportFastOBJ,
 )
 
 
@@ -187,14 +449,12 @@ def register():
         bpy.utils.register_class(cls)
     
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
-    # bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-    
-    # setup()
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
-    # bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

@@ -75,24 +75,17 @@ changelog:
 
 ## [Fast Wavefront^2](https://github.com/uhlik/bpy) (for blender 2.80)
 
-**Currently there are two addons of that name.** The first is `io_mesh_fast_obj.py` which is direct port to 2.80 from [Fast Wavefront (.obj)](#fast-wavefront-for-blender-27x), not much tested, but should work. The second addon is `io_mesh_fast_obj` (directory) which is second attempt to make it even faster with Cython. **Currently only export works and i am not providing compiled Cython extension, you have to compile it for yourself.**
-
 **Import/Export single mesh as Wavefront OBJ.**
 
-Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, shading, vertex colors using MRGB format (ZBrush) or so called 'extended' format when each vertex is defined by 6 values (x, y, z, r, g, b). Export is ~3x faster than built-in obj exporter and import ~2x. It lacks some features, but saves quite a bit time when you need to move high resolution mesh from blender to ZBrush and back a few times per hour while cleaning up scans.
-
-Comes with a few presets (created upon activation) for following workflow: import raw mesh obj from Agisoft PhotoScan, export raw mesh obj to ZBrush, import cleaned/uv unwrapped mesh obj from ZBrush, export cleaned mesh to Agisoft PhotoScan for texture generation.
+Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).
 
 changelog:
 
+* 0.3.1 import obj (python only)
 * 0.3.0 export implementated in cython
 * 0.2.0 ported to blender 2.80
 * 0.1.2 import zbrush mask as vertex group
 * 0.1.1 first release
-
-### Cython version notes
-
-Cython export is ~3x faster than built-in export now. 450k quads mesh with uv map in 5s, built-in 15s..
 
 **requirements:**
 

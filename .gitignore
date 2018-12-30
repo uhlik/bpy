@@ -5,7 +5,7 @@
 io_mesh_fast_obj/__pycache__
 io_mesh_fast_obj/blender
 io_mesh_fast_obj/build
-io_mesh_fast_obj/export.cpp
+io_mesh_fast_obj/*.cpp
 
 
 
