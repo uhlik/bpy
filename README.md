@@ -72,7 +72,7 @@ changelog:
 
 ***
 
-## [Fast Wavefront^2](https://github.com/uhlik/bpy) (for blender 2.80)
+## [Fast Wavefront^2](https://github.com/uhlik/bpy/tree/master/io_mesh_fast_obj) (for blender 2.80)
 
 **Import/Export single mesh as Wavefront OBJ. Fast. Now with Cython. Binaries not included.**
 
