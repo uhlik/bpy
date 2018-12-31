@@ -130,6 +130,8 @@ usage:
 6. import done..
 7. now you can quickly swap cameras in alphabetical order in `PhotoScan Cameras Utilities` panel
 
+[BlenderArtist.org thread](https://blenderartists.org/t/addon-import-agisoft-photoscan-cameras/1140610)
+
 changelog:
 
 * 0.1.1 first release
