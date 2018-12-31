@@ -90,8 +90,6 @@ changelog:
 * 0.3.1 import obj (python only)
 * 0.3.0 export implemented in cython
 * 0.2.0 ported to blender 2.80
-* 0.1.2 import zbrush mask as vertex group
-* 0.1.1 first release
 
 **requirements:**
 
