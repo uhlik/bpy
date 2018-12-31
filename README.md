@@ -1,12 +1,13 @@
 ### Contents:
 
-### for blender 2.80
+### addons for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
 * [Fast Wavefront^2](#fast-wavefront2-for-blender-280)
+* [Import Agisoft PhotoScan Cameras](#import-agisoft-photoscan-cameras)
 
-### for blender 2.7x
+### addons for blender 2.7x
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-27x)
 * [OpenGL Lights](#opengl-lights)
@@ -15,6 +16,12 @@
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-27x)
 * [Time Tracker](#time-tracker)
 
+***
+***
+
+### addons for blender 2.80
+
+***
 ***
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
@@ -99,6 +106,42 @@ changelog:
     2. `$ python3 setup.py build_ext --inplace`
 3. now delete `blender` directory, it is no longer needed until blender is updated, then you (might) need to repeat the process
 
+***
+
+## [Import Agisoft PhotoScan Cameras](https://github.com/uhlik/bpy/tree/master/io_import_photoscan_cameras.py)
+
+Import cameras from Agisoft PhotoScan xml. Works with xml version 1.4.0 which is exported from PhotoScan 1.4.x versions. If you want to have images actually aligned with model, undistort images first. This is done in PhotoScan by `Export > Undistort Photos..`. Because you can't in Blender set resolution for cameras independently, xml with different cameras or image resolutions might not work well.
+
+![Import Agisoft PhotoScan Cameras](https://raw.githubusercontent.com/uhlik/bpy/master/x/pscamerasui.png)
+
+usage:
+
+1. go to `Properties > Scene > Import Agisoft PhotoScan Cameras` panel
+2. **Cameras XML**: set path to xml
+3. set import options:
+    * **Camera Display Size**: size of imported cameras in viewport
+    * **Load Camera Images**: load images or not
+    * **Images Directory**: path to directory with undistorted images
+    * **Image Extension**: images extension, they all should be the same (currently)
+    * **Alpha**: camera image alpha, 0.0 - 1.0
+    * **Depth**: camera display depth, front / back
+4. there are some more optional properties:
+    * **Create Chunk Region Borders**
+    * **Align to Active Object**: if you import mesh from PhotoScan first, the transform it to correct size and orientation, this option will copy transformation from that mesh if it is active
+5. hit **Import**
+6. import done..
+7. now you can quickly swap cameras in alphabetical order in `PhotoScan Cameras Utilities` panel
+
+changelog:
+
+* 0.1.1 first release
+
+***
+***
+
+### addons for blender 2.7x
+
+***
 ***
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py) (for blender 2.7x)
