@@ -310,12 +310,12 @@ class ExportFastOBJ(Operator, ExportHelper):
     check_extension = True
     
     apply_modifiers: BoolProperty(name="Apply Modifiers", default=False, description="Apply all modifiers.", )
-    apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Zero-out mesh transformation.", )
+    apply_transformation: BoolProperty(name="Apply Transformation", default=False, description="Zero-out mesh transformation.", )
     convert_axes: BoolProperty(name="Convert Axes", default=True, description="Convert from blender (y forward, z up) to forward -z, up y.", )
     triangulate: BoolProperty(name="Triangulate", default=False, description="Triangulate mesh before exporting.", )
     use_normals: BoolProperty(name="With Normals", default=True, description="Export vertex normals.", )
     use_uv: BoolProperty(name="With UV", default=True, description="Export active UV layout.", )
-    use_vcols: BoolProperty(name="With Vertex Colors", default=False, description="Export vertex colors, this is not part of official file format specification.", )
+    use_vcols: BoolProperty(name="With Vertex Colors", default=True, description="Export vertex colors, this is not part of official file format specification.", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
     precision: IntProperty(name="Precision", default=6, description="Floating point precision.", )
     
@@ -392,7 +392,7 @@ class ImportFastOBJ(Operator, ImportHelper):
     use_mask_as_vertex_group: BoolProperty(name="M as Vertex Group", default=False, description="Import M from MRGB as vertex group.", )
     with_polygroups: BoolProperty(name="With Polygroups", default=False, description="Import ZBrush polygroups as vertex groups.", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
-    apply_conversion: BoolProperty(name="Apply Conversion", default=False, description="Apply new axes directly to mesh or only transform at object level.", )
+    apply_conversion: BoolProperty(name="Apply Conversion", default=True, description="Apply new axes directly to mesh.", )
     
     @classmethod
     def poll(cls, context):
