@@ -360,12 +360,21 @@ class ExportFastOBJ(Operator, ExportHelper):
             sm = Matrix.Scale(self.global_scale, 4)
             m.transform(sm)
         
+        has_uv = self.use_uv
+        if(has_uv):
+            if(not len(m.uv_layers)):
+                has_uv = False
+        has_vcols = self.use_vcols
+        if(has_vcols):
+            if(not len(m.vertex_colors)):
+                has_vcols = False
+        
         export_obj.export_obj(m.as_pointer(),
                               self.filepath,
                               "{}-{}".format(o.name, o.data.name),
                               use_normals=self.use_normals,
-                              use_uv=self.use_uv,
-                              use_vcols=self.use_vcols,
+                              use_uv=has_uv,
+                              use_vcols=has_vcols,
                               precision=self.precision,
                               debug=DEBUG, )
         
