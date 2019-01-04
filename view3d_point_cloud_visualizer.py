@@ -55,7 +55,7 @@ def log(msg, indent=0, ):
 def human_readable_number(num, suffix='', ):
     # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
     f = 1000.0
-    for unit in ['','K','M','G','T','P','E','Z']:
+    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
         if(abs(num) < f):
             return "{:3.1f}{}{}".format(num, unit, suffix)
         num /= f

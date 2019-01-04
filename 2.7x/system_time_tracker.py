@@ -149,7 +149,7 @@ def summary():
         p = proj(r[5], int(prefs.level))
         try:
             dbp[p].append(r)
-        except:
+        except Exception:
             dbp[p] = []
             dbp[p].append(r)
     

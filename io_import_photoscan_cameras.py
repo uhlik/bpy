@@ -303,7 +303,7 @@ class PSCCamera():
                 i += 4
             matrix = Matrix((m[0], m[1], m[2], m[3]))
             self.transform = t
-        except:
+        except Exception as e:
             matrix = Matrix()
             self.transform = None
             self.enabled = False
@@ -763,9 +763,6 @@ class PSCXMLImport():
                         bi = cam.background_images.new()
                         bi.image = im
                         bi.display_depth = 'FRONT'
-                
-                
-                
                 
                 # for im in self.images:
                 #     bim = s3dv.background_images.new()

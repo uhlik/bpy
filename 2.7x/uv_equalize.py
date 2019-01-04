@@ -83,7 +83,7 @@ def equalize(operator, context, use_pack, rotate, margin, use_active, ):
             mesh_area = cache[k][0]
             uv_area = cache[k][1]
             return mesh_area, uv_area
-        except:
+        except Exception:
             pass
         # prepare
         bm = bmesh.new()
