@@ -6,6 +6,7 @@
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
 * [Fast Wavefront^2](#fast-wavefront2-for-blender-280)
 * [Import Agisoft PhotoScan Cameras](#import-agisoft-photoscan-cameras)
+* [Carbon Tools](#carbon-tools)
 
 ### addons for blender 2.7x
 
@@ -135,6 +136,16 @@ usage:
 changelog:
 
 * 0.1.1 first release
+
+***
+
+## [Carbon Tools](https://github.com/uhlik/bpy/tree/master/carbon_tools.py)
+
+Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans. Documentation is going to be sooner or later..
+
+changelog:
+
+* 0.2.0 first release
 
 ***
 ***
