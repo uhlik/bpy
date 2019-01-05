@@ -141,7 +141,45 @@ changelog:
 
 ## [Carbon Tools](https://github.com/uhlik/bpy/tree/master/carbon_tools.py)
 
-Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans. Documentation is going to be sooner or later..
+Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.
+
+![Carbon Tools](https://raw.githubusercontent.com/uhlik/bpy/master/x/carbon_tools.png)
+
+#### Subtools
+
+* **Extract** selected part of mesh to a new object. If edges of extracted mesh are changed, it won't be able to merge back seamlessly - use option to hide edges (lock button) to protect them.
+* **Insert** it back when finished editing.
+* **Extract Non-Manifold** elements with part of mesh around them (10x expanded selection) as subtool
+
+#### Dyntopo
+
+* **Dyntopo Setup** - Quick setup for optimizing mesh resolution. Set desired **Constant Resolution** and **Method** and hit **Dyntopo Setup**
+Mode is switched to Sculpt with Dyntopo, brush is set to strength 0 - affecting only mesh resolution.
+* **Dyntopo Live Settings** - current settings which can be changed during sculpting
+
+#### Texture Paint
+
+* **Texture Paint Setup** - Quick setup for retouching texture in Photoshop, set **Resolution** of exported images and hit **TP Setup** (Photoshop must be set in preferences as Image Editor)
+* **External TP Live Commands**: **Quick Edit** - export image and open in PS, **Apply** - project image back to model, **Save All Images** - save all edited textures
+
+#### IO
+
+* **Import from ZBrush**
+* **Export to ZBrush**
+* **Transformation: Selected > Active** - Copy transformation from selected to active. Useful for setting correct scale and orientation after initial import from PhotoScan.
+* **Matrix: Selected > Active** - Select matrix source object first and then target object. Matrix will be copied while keeping visual transformation intact.
+* **Export to PhotoScan**
+
+#### Utilities
+
+* **Smooth** / **Flat** shading, just shortcuts
+* **Seams From Islands** mark seams from UV islands
+* **Select Seams** select seam edges
+* **Seams > Wireframe** copy seams edges to a new mesh object
+* **Export UV Layout**
+* **Wireframe** set display to shaded + wire + all edges and deselect object
+* **Select Non-Manifold** select non-manifold elements and optionally focus camera on them (eye icon)
+* **End** ends current procedure: Dyntopo and Texture Paint back to Object mode and reset all settings
 
 changelog:
 
