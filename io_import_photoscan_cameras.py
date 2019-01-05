@@ -993,6 +993,7 @@ class PSC_OT_prev_camera(Operator):
 
 class PSC_PT_import_panel(SceneButtonsPanel, Panel):
     bl_label = "Import PhotoScan Cameras"
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -1028,6 +1029,7 @@ class PSC_PT_import_panel(SceneButtonsPanel, Panel):
 
 class PSC_PT_utilities_panel(SceneButtonsPanel, Panel):
     bl_label = "PhotoScan Cameras Utilities"
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):

@@ -64,6 +64,13 @@ class Utils():
         view_layer = context.view_layer
         o.select_set(True)
         view_layer.objects.active = o
+    
+    @classmethod
+    def get_spaceview3d(cls):
+        for a in bpy.context.screen.areas:
+            if(a.type == "VIEW_3D"):
+                return a.spaces[0]
+        return None
 
 
 class CARBON_OT_quick_mesh_dyntopo_cleanup(Operator):
@@ -398,6 +405,13 @@ class CARBON_OT_quick_texture_painting_setup(Operator):
         bpy.context.scene.tool_settings.image_paint.screen_grab_size[1] = r
         bpy.context.scene.tool_settings.image_paint.seam_bleed = 8
         bpy.data.brushes["TexDraw"].strength = 0
+        
+        v = Utils.get_spaceview3d()
+        if(v is not None):
+            v.shading.color_type = 'TEXTURE'
+            v.shading.light = 'FLAT'
+            v.overlay.show_overlays = False
+        
         return {'FINISHED'}
 
 
@@ -434,6 +448,13 @@ class CARBON_OT_end_current_procedure(Operator):
         if(not ctp.end_keep_wire):
             bpy.context.object.show_wire = False
         Utils.activate_object(context.active_object)
+        
+        v = Utils.get_spaceview3d()
+        if(v is not None):
+            v.shading.color_type = 'MATERIAL'
+            v.shading.light = 'STUDIO'
+            v.overlay.show_overlays = True
+        
         return {'FINISHED'}
 
 
@@ -675,7 +696,7 @@ class CARBON_PT_carbon_tools(Panel):
     bl_region_type = 'UI'
     bl_category = 'View'
     bl_label = 'Carbon Tools'
-    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         ctp = context.scene.carbon_tools
