@@ -19,7 +19,7 @@
 bl_info = {"name": "Carbon Tools",
            "description": "Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 1),
+           "version": (0, 2, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Carbon Tools",
            "warning": "",
@@ -82,6 +82,68 @@ class Utils():
             if(a.type == "VIEW_3D"):
                 return a.spaces[0]
         return None
+    
+    @classmethod
+    def normalize(cls, v, vmin, vmax):
+        return (v - vmin) / (vmax - vmin)
+    
+    @classmethod
+    def interpolate(cls, nv, vmin, vmax):
+        return vmin + (vmax - vmin) * nv
+    
+    @classmethod
+    def map(cls, v, min1, max1, min2, max2):
+        return cls.remap(v, min1, max1, min2, max2)
+    
+    @classmethod
+    def remap(cls, v, min1, max1, min2, max2):
+        v = cls.clamp(v, min1, max1)
+        r = cls.interpolate(cls.normalize(v, min1, max1), min2, max2)
+        r = cls.clamp(r, min2, max2)
+        return r
+    
+    @classmethod
+    def clamp(cls, v, vmin, vmax):
+        if(vmax <= vmin):
+            raise ValueError("Maximum value is smaller than or equal to minimum.")
+        if(v <= vmin):
+            return vmin
+        if(v >= vmax):
+            return vmax
+        return v
+    
+    @classmethod
+    def maprange(cls, v, ar, br, ):
+        (a1, a2), (b1, b2) = ar, br
+        return b1 + ((v - a1) * (b2 - b1) / (a2 - a1))
+    
+    @classmethod
+    def distance_vectors(cls, a, b, ):
+        return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2) ** 0.5
+    
+    @classmethod
+    def distance_tuples(cls, a, b, ):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    
+    @classmethod
+    def distance(cls, a, b, ):
+        if(type(a) is Vector and type(b) is Vector):
+            return cls.distance_vectors(a, b)
+        return cls.distance_tuples(a, b)
+    
+    @classmethod
+    def real_length_to_relative(cls, matrix, length):
+        l, r, s = matrix.decompose()
+        ms = Matrix.Scale(s.x, 4)
+        l = Vector((length, 0, 0))
+        v = ms.inverted() @ l
+        return v.x
+    
+    @classmethod
+    def shift_vert_along_normal(cls, tco, tno, v):
+        co = Vector(tco)
+        no = Vector(tno)
+        return co + (no.normalized() * v)
 
 
 class Progress():
@@ -198,7 +260,7 @@ class CARBON_OT_insert_mesh_part(Operator):
     def poll(cls, context):
         o = context.active_object
         # return (o and o.type == 'MESH' and context.mode == 'EDIT_MESH')
-        return (o and o.type == 'MESH')
+        return (o and o.type == 'MESH' and context.mode == 'OBJECT')
     
     def insert(self, context):
         o = context.active_object
@@ -618,24 +680,6 @@ class CARBON_OT_visualize_uv_seams_as_wireframe_mesh(Operator):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.ops.carbon_tools.select_seams()
-        # bpy.ops.mesh.duplicate_move(MESH_OT_duplicate={"mode":1},
-        #                             TRANSFORM_OT_translate={"value":(0, 0, 0),
-        #                                                     "constraint_axis":(False, False, False),
-        #                                                     "constraint_orientation":'GLOBAL',
-        #                                                     "mirror":False,
-        #                                                     "proportional":'DISABLED',
-        #                                                     "proportional_edit_falloff":'SMOOTH',
-        #                                                     "proportional_size":1,
-        #                                                     "snap":False,
-        #                                                     "snap_target":'CLOSEST',
-        #                                                     "snap_point":(0, 0, 0),
-        #                                                     "snap_align":False,
-        #                                                     "snap_normal":(0, 0, 0),
-        #                                                     "gpencil_strokes":False,
-        #                                                     "texture_space":False,
-        #                                                     "remove_on_cancel":False,
-        #                                                     "release_confirm":False,
-        #                                                     "use_accurate":False, })
         bpy.ops.mesh.duplicate(mode=1)
         ob = context.active_object
         bm = bmesh.from_edit_mesh(ob.data)
@@ -940,7 +984,184 @@ class CARBON_OT_vertex_colors_to_vertex_group(Operator):
         return {'FINISHED'}
 
 
+class CARBON_OT_two_meshes_difference_to_vertex_group(Operator):
+    bl_idname = "carbon_tools.two_meshes_difference_to_vertex_group"
+    bl_label = "Difference > Group"
+    bl_description = "Calculate difference between two selected meshes and write as vertex group to active mesh. Selected is consedered to be original, active to be modified. Objects should have the same transformation."
+    bl_options = {'REGISTER', 'UNDO', }
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.mode != 'OBJECT'):
+            return False
+        o = context.active_object
+        if(not o):
+            return False
+        if(o.type != 'MESH'):
+            return False
+        obs = context.selected_objects
+        if(len(obs) != 2):
+            return False
+        for o in obs:
+            if(o.type != 'MESH'):
+                return False
+        return True
+    
+    def execute(self, context):
+        log(self.bl_idname, 0)
+        
+        ctp = context.scene.carbon_tools
+        
+        modified = context.active_object
+        original = [o for o in context.selected_objects if o is not modified][0]
+        
+        identical = True
+        for i, r in enumerate(original.matrix_world):
+            for j, c in enumerate(r):
+                if(c != modified.matrix_world[i][j]):
+                    identical = False
+                    break
+        
+        if(not identical):
+            log("Original object matrix and modified object matrix are not equal.", 1, )
+            log("Will copy matrix from modified to original..", 1, )
+            mos = repr(original.matrix_world).replace('        ', '').replace('\n', '')
+            mms = repr(modified.matrix_world).replace('        ', '').replace('\n', '')
+            log(mos, 1)
+            log(mms, 1)
+            original.matrix_world = modified.matrix_world
+        
+        m = modified.matrix_world
+        max_search_distance = Utils.real_length_to_relative(m, ctp.diff_search_distance)
+        log("search_distance: {0}, max_search_distance: {1}".format(ctp.diff_search_distance, max_search_distance), 1)
+        
+        log("calculating differences:", 1)
+        mod_vs = [v.co for v in modified.data.vertices]
+        mod_ns = [v.normal for v in modified.data.vertices]
+        
+        r = []
+        prgr = Progress(len(mod_vs), 2)
+        for i, v in enumerate(mod_vs):
+            prgr.step()
+            
+            n = mod_ns[i]
+            e0 = Utils.shift_vert_along_normal(v, n, -max_search_distance)
+            e1 = Utils.shift_vert_along_normal(v, n, max_search_distance)
+            pr = None
+            nr = None
+            
+            if(ctp.diff_positive):
+                _, loc, nor, ind = original.ray_cast(v, e1)
+                if(ind != -1):
+                    pr = (loc, nor, ind)
+                    prd = Utils.distance_tuples(pr[0], v)
+            
+            if(ctp.diff_negative):
+                _, loc, nor, ind = original.ray_cast(v, e0)
+                if(ind != -1):
+                    nr = (loc, nor, ind)
+                    nrd = Utils.distance_tuples(nr[0], v)
+            
+            if(pr is not None and nr is not None):
+                # hit in both directions
+                # take closer point
+                if(prd > nrd):
+                    r.append((v, n, nr[0], nr[1], nr[2], nrd))
+                else:
+                    r.append((v, n, pr[0], pr[1], pr[2], -prd))
+            elif(pr is not None):
+                # hit positive
+                r.append((v, n, pr[0], pr[1], pr[2], -prd))
+            elif(nr is not None):
+                # hit negative
+                r.append((v, n, nr[0], nr[1], nr[2], nrd))
+            else:
+                # hit nothing..
+                r.append((v, n, None, None, None, 0.0))
+        
+        log("adding vertex group..", 1)
+        
+        vg = modified.vertex_groups.new(name="Difference")
+        indexes = [i for i in range(len(mod_vs))]
+        modified.vertex_groups.active.add(indexes, 0.5, 'REPLACE')
+        vg_index = modified.vertex_groups.active_index
+        weights = [i[5] for i in r]
+        
+        arr = np.array(weights)
+        mean = np.mean(arr)
+        stdev = np.std(arr)
+        log("mean: {0}, stdev: {1}".format(mean, stdev), 1)
+        
+        if(mean == 0.0 or stdev == 0.0):
+            log("meshes looks identical..", 1)
+            log("done.", 1)
+            return {'FINISHED'}
+        
+        wmin = mean - (ctp.diff_sigma * stdev)
+        wmax = mean + (ctp.diff_sigma * stdev)
+        log("wmin: {0}, wmax: {1}".format(wmin, wmax), 1)
+        
+        log("calculating weights:", 1)
+        prgr = Progress(len(mod_vs), 2)
+        for i, v in enumerate(modified.data.vertices):
+            w = weights[i]
+            v.groups[vg_index].weight = Utils.map(w, wmin, wmax, 0.0, 1.0)
+            prgr.step()
+        
+        log("done.", 1)
+        
+        return {'FINISHED'}
+
+
+class CARBON_OT_calc_active_uv_coverage(Operator):
+    bl_idname = "carbon_tools.calc_active_uv_coverage"
+    bl_label = "UV Coverage"
+    bl_description = ""
+    bl_options = {'REGISTER', 'UNDO', }
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.mode != 'OBJECT'):
+            return False
+        o = context.active_object
+        if(not o):
+            return False
+        if(o.type != 'MESH'):
+            return False
+        if(not o.data.uv_layers.active):
+            return False
+        return True
+    
+    def execute(self, context):
+        log(self.bl_idname, 0)
+        
+        o = context.active_object
+        mesh = o.data
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.faces.ensure_lookup_table()
+        uvl = bm.loops.layers.uv.active
+        total_area = 0.0
+        for f in bm.faces:
+            ls = f.loops
+            uvv = []
+            for l in ls:
+                uvv.append(l[uvl].uv)
+            a, b, c = uvv
+            tri_area = ((a.x * (b.y - c.y)) + (b.x * (c.y - a.y)) + (c.x * (a.y - b.y))) / 2
+            total_area += tri_area
+        bm.free()
+        
+        self.report({'INFO'}, "Area used by UV: {:0.2f}%".format(total_area * 100))
+        
+        return {'FINISHED'}
+
+
 class CARBON_properties(PropertyGroup):
+    utils_expanded: BoolProperty(default=False)
+    conversions_expanded: BoolProperty(default=False)
+    
     extract_protect: BoolProperty(name="Protect Mesh Borders", default=False, description="Hide mesh borders to protect them from modification.", )
     dyntopo_resolution: IntProperty(name="Resolution", default=500, min=0, max=1000, description="Dyntopo constant resolution, this is just initial value. Change in Dyntopo settings afterwards.", )
     dyntopo_method: EnumProperty(name="Method", items=[('SUBDIVIDE', 'Subdivide', ''), ('COLLAPSE', 'Collapse', ''), ('SUBDIVIDE_COLLAPSE', 'Subdivide Collapse', ''), ], default='COLLAPSE', description="Dyntopo method, this is just initial value. Change in Dyntopo settings afterwards.", )
@@ -948,6 +1169,11 @@ class CARBON_properties(PropertyGroup):
     end_keep_wire: BoolProperty(name="Keep Wireframe Display", default=False, description="Keep all wire display when finished with current procedure", )
     select_non_manifold_extra_auto_view: BoolProperty(name="Select Non-Manifold Extra Auto View", default=False, description="Center camera view on selected non-manifold elements", )
     export_uv_layout_resolution: EnumProperty(name="Resolution", items=[('1024', '1024', ''), ('2048', '2048', ''), ('4096', '4096', ''), ('8192', '8192', ''), ('16384', '16384', ''), ], default='8192', description="Image resolution presets", )
+    
+    diff_search_distance: FloatProperty(name="Distance", description="How far to look around for second object along vertex normal", default=10.0, precision=3, )
+    diff_sigma: FloatProperty(name="Sigma", description="", default=1.0, precision=3, )
+    diff_positive: BoolProperty(name="Positive", default=True, description="", )
+    diff_negative: BoolProperty(name="Negative", default=True, description="", )
     
     version: StringProperty(name="Version", description="", default='.'.join([str(i) for i in bl_info['version']]), )
     
@@ -1050,40 +1276,60 @@ class CARBON_PT_carbon_tools(Panel):
         c.operator('carbon_tools.copy_original_matrix', text="Matrix: Selected > Active")
         c.operator('carbon_tools.export_obj_to_photoscan', text="Export to PhotoScan")
         
-        c = l.column(align=True)
-        c.label(text="Utilities")
-        r = c.row(align=True)
-        r.operator('carbon_tools.shade_smooth', text="Smooth", )
-        r.operator('carbon_tools.shade_flat', text="Flat", )
-        c.operator('carbon_tools.mark_seams_from_uv_islands', text="Seams From Islands", )
-        c.operator('carbon_tools.select_seams', text="Select Seams", )
-        c.operator('carbon_tools.visualize_uv_seams_as_wireframe_mesh', text="Seams > Wireframe", )
-        
-        r = c.row(align=True)
-        r.operator('carbon_tools.export_uv_layout', text="Export UV Layout", )
-        r.prop(ctp, 'export_uv_layout_resolution', text="", )
-        if(ob and ob.type == 'MESH' and context.mode == 'OBJECT' and len(ob.data.uv_layers) > 0):
-            r.active = True
-        else:
-            r.active = False
-        
-        c.operator('carbon_tools.toggle_unselected_wireframe', text="Wireframe", )
-        
-        r = c.row(align=True)
-        r.operator('carbon_tools.select_non_manifold_extra')
-        r.prop(ctp, 'select_non_manifold_extra_auto_view', toggle=True, text='', icon='HIDE_OFF' if ctp.select_non_manifold_extra_auto_view else 'HIDE_ON', icon_only=True, )
-        
         l.separator()
         c = l.column(align=True)
         r = c.row(align=True)
         r.operator('carbon_tools.end_current_procedure', text="End", )
         r.prop(ctp, 'end_keep_wire', toggle=True, text='', icon='SHADING_WIRE', icon_only=True, )
         
-        c = l.column(align=True)
-        c.label(text="Convert")
-        c.operator('carbon_tools.texture_to_vertex_colors')
-        c.operator('carbon_tools.vertex_group_to_vertex_colors')
-        c.operator('carbon_tools.vertex_colors_to_vertex_group')
+        l.separator()
+        b = l.box()
+        r = b.row()
+        r.prop(ctp, 'utils_expanded', icon='TRIA_DOWN' if ctp.utils_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Utilities")
+        if(ctp.utils_expanded):
+            c = b.column(align=True)
+            r = c.row(align=True)
+            r.operator('carbon_tools.shade_smooth', text="Smooth", )
+            r.operator('carbon_tools.shade_flat', text="Flat", )
+            c.operator('carbon_tools.calc_active_uv_coverage')
+            c.operator('carbon_tools.mark_seams_from_uv_islands', text="Seams From Islands", )
+            c.operator('carbon_tools.select_seams', text="Select Seams", )
+            c.operator('carbon_tools.visualize_uv_seams_as_wireframe_mesh', text="Seams > Wireframe", )
+            
+            r = c.row(align=True)
+            r.operator('carbon_tools.export_uv_layout', text="Export UV Layout", )
+            r.prop(ctp, 'export_uv_layout_resolution', text="", )
+            if(ob and ob.type == 'MESH' and context.mode == 'OBJECT' and len(ob.data.uv_layers) > 0):
+                r.active = True
+            else:
+                r.active = False
+            
+            c.operator('carbon_tools.toggle_unselected_wireframe', text="Wireframe", )
+            
+            r = c.row(align=True)
+            r.operator('carbon_tools.select_non_manifold_extra')
+            r.prop(ctp, 'select_non_manifold_extra_auto_view', toggle=True, text='', icon='HIDE_OFF' if ctp.select_non_manifold_extra_auto_view else 'HIDE_ON', icon_only=True, )
+        
+        b = l.box()
+        r = b.row()
+        r.prop(ctp, 'conversions_expanded', icon='TRIA_DOWN' if ctp.conversions_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Conversions")
+        if(ctp.conversions_expanded):
+            c = b.column(align=True)
+            c.label(text="Conversions")
+            c.operator('carbon_tools.texture_to_vertex_colors')
+            c.operator('carbon_tools.vertex_group_to_vertex_colors')
+            c.operator('carbon_tools.vertex_colors_to_vertex_group')
+            
+            c = b.column(align=True)
+            c.prop(ctp, 'diff_search_distance')
+            c.prop(ctp, 'diff_sigma')
+            r = c.row(align=True)
+            r.prop(ctp, 'diff_positive', toggle=True, )
+            r.prop(ctp, 'diff_negative', toggle=True, )
+            c.operator('carbon_tools.two_meshes_difference_to_vertex_group')
+            c.enabled = CARBON_OT_two_meshes_difference_to_vertex_group.poll(context)
         
         r = l.row()
         r.label(text='Carbon Tools {}'.format(ctp.version))
@@ -1114,6 +1360,8 @@ classes = (
     CARBON_OT_texture_to_vertex_colors,
     CARBON_OT_vertex_group_to_vertex_colors,
     CARBON_OT_vertex_colors_to_vertex_group,
+    CARBON_OT_two_meshes_difference_to_vertex_group,
+    CARBON_OT_calc_active_uv_coverage,
     CARBON_properties,
     CARBON_PT_carbon_tools,
 )

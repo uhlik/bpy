@@ -170,25 +170,30 @@ Mode is switched to Sculpt with Dyntopo, brush is set to strength 0 - affecting 
 * **Matrix: Selected > Active** - Select matrix source object first and then target object. Matrix will be copied while keeping visual transformation intact.
 * **Export to PhotoScan** (depends on other addon Fast Wavefront^2)
 
+#### End
+* **End** ends current procedure: Dyntopo and Texture Paint back to Object mode and reset all settings
+
 #### Utilities
 
 * **Smooth** / **Flat** shading, just shortcuts
+* **UV Coverage** calculate and print how much percent covers active uv layout
 * **Seams From Islands** mark seams from UV islands
 * **Select Seams** select seam edges
 * **Seams > Wireframe** copy seams edges to a new mesh object
 * **Export UV Layout**
 * **Wireframe** set display to shaded + wire + all edges and deselect object
 * **Select Non-Manifold** select non-manifold elements and optionally focus camera on them (eye icon)
-* **End** ends current procedure: Dyntopo and Texture Paint back to Object mode and reset all settings
 
-#### Convert
+#### Conversions
 
 * **UVTex > VCols** - Copy image colors from active image texture node in active material using active UV layout to new vertex colors
 * **Group > VCols** - Active vertex group to new vertex colors, vertex weight to rgba(weight, weight, weight, 1.0)
 * **VCols > Group** - Active vertex colors to new vertex group, vertex weight by color perceived luminance
+* **Difference > Group** - Calculate difference between two selected meshes and write as vertex group to active mesh. Selected is consedered to be original, active to be modified. Objects should have the same transformation.
 
 changelog:
 
+* 2.2.2 ui changes, mesh difference to group, calculate uv coverege
 * 0.2.1 uvtex / vcols / group conversions
 * 0.2.0 first release
 
