@@ -164,11 +164,11 @@ Mode is switched to Sculpt with Dyntopo, brush is set to strength 0 - affecting 
 
 #### IO
 
-* **Import from ZBrush**
-* **Export to ZBrush**
+* **Import from ZBrush** (depends on other addon Fast Wavefront^2)
+* **Export to ZBrush** (depends on other addon Fast Wavefront^2)
 * **Transformation: Selected > Active** - Copy transformation from selected to active. Useful for setting correct scale and orientation after initial import from PhotoScan.
 * **Matrix: Selected > Active** - Select matrix source object first and then target object. Matrix will be copied while keeping visual transformation intact.
-* **Export to PhotoScan**
+* **Export to PhotoScan** (depends on other addon Fast Wavefront^2)
 
 #### Utilities
 
@@ -181,8 +181,15 @@ Mode is switched to Sculpt with Dyntopo, brush is set to strength 0 - affecting 
 * **Select Non-Manifold** select non-manifold elements and optionally focus camera on them (eye icon)
 * **End** ends current procedure: Dyntopo and Texture Paint back to Object mode and reset all settings
 
+#### Convert
+
+* **UVTex > VCols** - Copy image colors from active image texture node in active material using active UV layout to new vertex colors
+* **Group > VCols** - Active vertex group to new vertex colors, vertex weight to rgba(weight, weight, weight, 1.0)
+* **VCols > Group** - Active vertex colors to new vertex group, vertex weight by color perceived luminance
+
 changelog:
 
+* 0.2.1 uvtex / vcols / group conversions
 * 0.2.0 first release
 
 ***

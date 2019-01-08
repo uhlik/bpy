@@ -19,7 +19,7 @@
 bl_info = {"name": "Carbon Tools",
            "description": "Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 0),
+           "version": (0, 2, 1),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Carbon Tools",
            "warning": "",
@@ -31,6 +31,7 @@ bl_info = {"name": "Carbon Tools",
 import os
 import uuid
 import sys
+import math
 
 import bpy
 import bmesh
@@ -38,6 +39,16 @@ from bpy.types import Operator, Panel
 from mathutils import Vector, Matrix
 from bpy.props import FloatProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup
+import numpy as np
+
+
+DEBUG = False
+
+
+def log(msg, indent=0, ):
+    m = "{0}> {1}".format("    " * indent, msg)
+    if(DEBUG):
+        print(m)
 
 
 class ObjDiff():
@@ -71,6 +82,33 @@ class Utils():
             if(a.type == "VIEW_3D"):
                 return a.spaces[0]
         return None
+
+
+class Progress():
+    def __init__(self, total, indent=0, prefix="> ", ):
+        self.current = 0
+        self.percent = -1
+        self.last = -1
+        self.total = total
+        self.prefix = prefix
+        self.indent = indent
+        self.t = "    "
+        self.r = "\r"
+        self.n = "\n"
+    
+    def step(self, numdone=1):
+        if(not DEBUG):
+            return
+        
+        self.current += numdone
+        self.percent = int(self.current / (self.total / 100))
+        if(self.percent > self.last):
+            sys.stdout.write(self.r)
+            sys.stdout.write("{0}{1}{2}%".format(self.t * self.indent, self.prefix, self.percent))
+            self.last = self.percent
+        if(self.percent >= 100 or self.total == self.current):
+            sys.stdout.write(self.r)
+            sys.stdout.write("{0}{1}{2}%{3}".format(self.t * self.indent, self.prefix, 100, self.n))
 
 
 class CARBON_OT_quick_mesh_dyntopo_cleanup(Operator):
@@ -671,6 +709,237 @@ class CARBON_OT_shade_flat(Operator):
         return {'FINISHED'}
 
 
+class CARBON_OT_texture_to_vertex_colors(Operator):
+    bl_idname = "carbon_tools.texture_to_vertex_colors"
+    bl_label = "UVTex > VCols"
+    bl_description = "Copy image colors from active image texture node in active material using active UV layout to new vertex colors"
+    bl_options = {'REGISTER', 'UNDO', }
+    
+    @classmethod
+    def poll(cls, context):
+        # o = context.active_object
+        # o_ok = (o is not None and o.type == 'MESH' and context.mode == 'OBJECT')
+        # m = o.active_material
+        # m_ok = (m is not None)
+        # n_ok = False
+        # i_ok = False
+        # u_ok = (o.data.uv_layers.active is not None)
+        # if(m_ok):
+        #     n = m.node_tree.nodes.active
+        #     n_ok = (n.type == 'TEX_IMAGE')
+        #     if(n_ok):
+        #         if(n.image is not None):
+        #             i = n.image
+        #             i_ok = os.path.exists(i.filepath_from_user())
+        # return (o_ok and m_ok and n_ok and i_ok and u_ok)
+        
+        if(context.mode != 'OBJECT'):
+            return False
+        o = context.active_object
+        if(not o):
+            return False
+        if(o.type != 'MESH'):
+            return False
+        m = o.active_material
+        if(not m):
+            return False
+        d = o.data
+        if(not d.uv_layers.active):
+            return False
+        n = m.node_tree.nodes.active
+        if(not n):
+            return False
+        if(n.type != 'TEX_IMAGE'):
+            return False
+        if(not n.image):
+            return False
+        i = n.image
+        if(not os.path.exists(i.filepath_from_user())):
+            return False
+        return True
+    
+    def execute(self, context):
+        log(self.bl_idname, 0)
+        
+        def remap(v, min1, max1, min2, max2):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            v = clamp(v, min1, max1)
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            r = clamp(r, min2, max2)
+            return r
+        
+        o = context.active_object
+        m = o.active_material
+        n = m.node_tree.nodes.active
+        im = n.image
+        im.update()
+        w, h = im.size
+        
+        a = np.asarray(im.pixels)
+        a = a.reshape((h, w, 4))
+        
+        o.data.vertex_colors.new(name=im.name)
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        col_layer = bm.loops.layers.color.active
+        uvl = bm.loops.layers.uv.active
+        fs = bm.faces
+        uv_layers = o.data.uv_layers
+        
+        prgs = Progress(len(fs), 1)
+        for f in fs:
+            prgs.step()
+            ls = f.loops
+            for l in ls:
+                x, y = l[uvl].uv.to_tuple()
+                xx = int(round(remap(x, 0.0, 1.0, 0, w - 1)))
+                yy = int(round(remap(y, 0.0, 1.0, 0, h - 1)))
+                l[col_layer] = a[yy][xx]
+        
+        bm.to_mesh(o.data)
+        bm.free()
+        log("done.", 1)
+        
+        return {'FINISHED'}
+
+
+class CARBON_OT_vertex_group_to_vertex_colors(Operator):
+    bl_idname = "carbon_tools.vertex_group_to_vertex_colors"
+    bl_label = "Group > VCols"
+    bl_description = "Active vertex group to new vertex colors, vertex weight to rgba(weight, weight, weight, 1.0)"
+    bl_options = {'REGISTER', 'UNDO', }
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.mode != 'OBJECT'):
+            return False
+        o = context.active_object
+        if(not o):
+            return False
+        if(o.type != 'MESH'):
+            return False
+        if(not o.vertex_groups.active):
+            return False
+        return True
+    
+    def execute(self, context):
+        log(self.bl_idname, 0)
+        o = context.active_object
+        me = o.data
+        vg = o.vertex_groups.active
+        
+        # add zero to every vertex to have them all in group
+        indexes = [i for i in range(len(me.vertices))]
+        vg.add(indexes, 0.0, 'ADD')
+        
+        vc = me.vertex_colors.new(name=vg.name)
+        me.vertex_colors.active = vc
+        vcd = vc.data
+        vcols = [None] * len(me.vertices)
+        
+        log("precalculating colors:", 1)
+        prgs = Progress(len(me.vertices), 2)
+        for v in me.vertices:
+            prgs.step()
+            i = v.index
+            w = vg.weight(i)
+            vcols[i] = (w, w, w, 1.0)
+        
+        log("assigning colors:", 1)
+        prgs = Progress(len(me.loops), 2)
+        for l in me.loops:
+            prgs.step()
+            li = l.index
+            vi = l.vertex_index
+            vcd[li].color = vcols[vi]
+        
+        log("done.", 1)
+        
+        return {'FINISHED'}
+
+
+class CARBON_OT_vertex_colors_to_vertex_group(Operator):
+    bl_idname = "carbon_tools.vertex_colors_to_vertex_group"
+    bl_label = "VCols > Group"
+    bl_description = "Active vertex colors to new vertex group, vertex weight by color perceived luminance"
+    bl_options = {'REGISTER', 'UNDO', }
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.mode != 'OBJECT'):
+            return False
+        o = context.active_object
+        if(not o):
+            return False
+        if(o.type != 'MESH'):
+            return False
+        if(not o.data.vertex_colors.active):
+            return False
+        return True
+    
+    def execute(self, context):
+        log(self.bl_idname, 0)
+        o = context.active_object
+        me = o.data
+        vc = me.vertex_colors.active
+        vs = me.vertices
+        ls = me.loops
+        
+        vg = o.vertex_groups.new(name=vc.name)
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        
+        lums = [None] * len(vs)
+        cl = bm.loops.layers.color.active
+        
+        bm.verts.ensure_lookup_table()
+        log("precalculating weights:", 1)
+        prgs = Progress(len(bm.verts), 2)
+        for i, v in enumerate(bm.verts):
+            prgs.step()
+            vi = v.index
+            lums[vi] = []
+            ll = v.link_loops
+            for l in ll:
+                r, g, b, _ = l[cl][:]
+                # http://stackoverflow.com/questions/596216/formula-to-determine-brightness-of-rgb-color
+                lum = math.sqrt(0.299 * r ** 2 + 0.587 * g ** 2 + 0.114 * b ** 2)
+                lums[vi].append(lum)
+        
+        ws = [None] * len(vs)
+        for i, a in enumerate(lums):
+            ws[i] = sum(a) / float(len(a))
+        
+        log("assigning weights:", 1)
+        prgs = Progress(len(vs), 2)
+        for i, v in enumerate(vs):
+            prgs.step()
+            w = ws[i]
+            # if l is None, means that vertex is not connected to any face > has no loops > has no color/weight
+            if(l is not None):
+                vg.add([i], w, 'REPLACE')
+        
+        bm.free()
+        log("done.", 1)
+        
+        return {'FINISHED'}
+
+
 class CARBON_properties(PropertyGroup):
     extract_protect: BoolProperty(name="Protect Mesh Borders", default=False, description="Hide mesh borders to protect them from modification.", )
     dyntopo_resolution: IntProperty(name="Resolution", default=500, min=0, max=1000, description="Dyntopo constant resolution, this is just initial value. Change in Dyntopo settings afterwards.", )
@@ -809,6 +1078,12 @@ class CARBON_PT_carbon_tools(Panel):
         r.operator('carbon_tools.end_current_procedure', text="End", )
         r.prop(ctp, 'end_keep_wire', toggle=True, text='', icon='SHADING_WIRE', icon_only=True, )
         
+        c = l.column(align=True)
+        c.label(text="Convert")
+        c.operator('carbon_tools.texture_to_vertex_colors')
+        c.operator('carbon_tools.vertex_group_to_vertex_colors')
+        c.operator('carbon_tools.vertex_colors_to_vertex_group')
+        
         r = l.row()
         r.label(text='Carbon Tools {}'.format(ctp.version))
         r.enabled = False
@@ -835,6 +1110,9 @@ classes = (
     CARBON_OT_select_non_manifold_extra,
     CARBON_OT_shade_smooth,
     CARBON_OT_shade_flat,
+    CARBON_OT_texture_to_vertex_colors,
+    CARBON_OT_vertex_group_to_vertex_colors,
+    CARBON_OT_vertex_colors_to_vertex_group,
     CARBON_properties,
     CARBON_PT_carbon_tools,
 )
