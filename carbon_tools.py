@@ -965,7 +965,8 @@ class CARBON_PT_carbon_tools(Panel):
     bl_region_type = 'UI'
     bl_category = 'View'
     bl_label = 'Carbon Tools'
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_category = 'Carbon Tools'
+    # bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
         ctp = context.scene.carbon_tools
