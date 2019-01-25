@@ -7,6 +7,7 @@
 * [Fast Wavefront^2](#fast-wavefront2-for-blender-280)
 * [Import Agisoft PhotoScan Cameras](#import-agisoft-photoscan-cameras)
 * [Carbon Tools](#carbon-tools)
+* [Time Tracker](#time-tracker-for-blender-280)
 
 ### addons for blender 2.7x
 
@@ -196,6 +197,26 @@ changelog:
 * 2.2.2 ui changes, mesh difference to group, calculate uv coverege
 * 0.2.1 uvtex / vcols / group conversions
 * 0.2.0 first release
+
+***
+
+## [Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/system_time_tracker.py) (for blender 2.80)
+
+Simple time tracker inside blender. After you install and enable it, it will log loaded and saved files and time spent of file until it is saved. All ui is inside addon preferences.
+
+![Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/x/tt2.png)
+
+Here you can enable / disable logging, clear data collected so far, set custom data path (.csv) and see short summary of collected data and open individual project directories in file browser. The project name is determined by directory name where the blend is. For example if you have project in directory named "MyNewOutstandingProject" and all blends are inside subdirectory "models", set level number to 1 and you will see project name in results. 0 is directory directly above blend, 1 is one directory above blend, and so on. If you are like me and all your projects have the same subdirectory structure, sent directory level and you are good to go.
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?345129-Time-Tracker-addon)
+
+changelog:
+
+* 0.2.0 updated for 2.80
+* 0.1.0 added simple ui
+* 0.0.8 ui tweaks, more advanced options, minor bugfixes
+* 0.0.7 fixed performance and sorting, added tracking of files which were closed without saving once a minute (can be enabled in preferences: check Track Scene Update)
+* 0.0.6 first release
 
 ***
 ***
