@@ -438,7 +438,7 @@ class CARBON_OT_import_obj_from_zbrush(Operator):
              'use_m_as_vertex_group': False,
              'with_polygroups': False,
              'global_scale': 1.0,
-             'apply_conversion': False, }
+             'apply_conversion': True, }
         
         try:
             bpy.ops.import_mesh.fast_obj('INVOKE_DEFAULT', **d)
