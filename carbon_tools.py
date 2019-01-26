@@ -432,8 +432,10 @@ class CARBON_OT_import_obj_from_zbrush(Operator):
     def execute(self, context):
         d = {'convert_axes': True,
              'with_uv': True,
-             'with_vertex_colors': False,
-             'use_mask_as_vertex_group': False,
+             'with_vertex_colors_mrgb': False,
+             'with_vertex_colors_extended': False,
+             'vcols_ext_with_gamma': False,
+             'use_m_as_vertex_group': False,
              'with_polygroups': False,
              'global_scale': 1.0,
              'apply_conversion': False, }
