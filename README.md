@@ -85,10 +85,11 @@ changelog:
 
 **Import/Export single mesh as Wavefront OBJ. Fast. Now with Cython. Binaries not included.**
 
-Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).
+Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush) or 'Extended' format (import only) where vertex is defined as (x,y,z,r,g,b).
 
 changelog:
 
+* 0.3.2 import 'extended' vertex colors (x,y,z,r,g,b), optionally apply gamma correction
 * 0.3.1 import obj (python only)
 * 0.3.0 export implemented in cython
 * 0.2.0 ported to blender 2.80

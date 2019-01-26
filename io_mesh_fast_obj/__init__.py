@@ -19,7 +19,7 @@
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 0),
+           "version": (0, 3, 2),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
            "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
@@ -55,7 +55,7 @@ def log(msg="", indent=0, prefix="> "):
 
 
 class FastOBJReader():
-    def __init__(self, path, convert_axes=True, with_uv=True, with_shading=True, with_vertex_colors=True, use_vcols_mrgb=True, use_mask_as_vertex_group=False, use_vcols_ext=False, with_polygroups=True, global_scale=1.0, apply_conversion=False, ):
+    def __init__(self, path, convert_axes=True, with_uv=True, with_shading=True, with_vertex_colors=True, use_vcols_mrgb=True, use_m_as_vertex_group=False, use_vcols_ext=False, use_vcols_ext_with_gamma=False, with_polygroups=True, global_scale=1.0, apply_conversion=False, ):
         log("{}:".format(self.__class__.__name__), 0, )
         name = os.path.splitext(os.path.split(path)[1])[0]
         log("will import .obj at: {}".format(path), 1)
@@ -140,7 +140,13 @@ class FastOBJReader():
         
         def v_vc_ext(l):
             a = l.split()[1:]
-            return tuple(map(float, a))
+            v = tuple(map(float, a))
+            p = v[:3]
+            c = v[3:]
+            if(use_vcols_ext_with_gamma):
+                g = 1 / 2.2
+                c = tuple([i ** g for i in c])
+            return p + c
         
         groups = {}
         verts = []
@@ -208,7 +214,7 @@ class FastOBJReader():
                     if(use_vcols_mrgb):
                         c, m = vc_mrgb(l)
                         vcols.extend(c)
-                        if(use_mask_as_vertex_group):
+                        if(use_m_as_vertex_group):
                             mask.extend(m)
             else:
                 pass
@@ -231,7 +237,7 @@ class FastOBJReader():
         
         log("{} {}".format("{}: ".format("with_vertex_colors").ljust(log_args_align, "."), with_vertex_colors), 1)
         log("{} {}".format("{}: ".format("use_vcols_mrgb").ljust(log_args_align, "."), use_vcols_mrgb), 1)
-        log("{} {}".format("{}: ".format("use_mask_as_vertex_group").ljust(log_args_align, "."), use_mask_as_vertex_group), 1)
+        log("{} {}".format("{}: ".format("use_m_as_vertex_group").ljust(log_args_align, "."), use_m_as_vertex_group), 1)
         log("{} {}".format("{}: ".format("use_vcols_ext").ljust(log_args_align, "."), use_vcols_ext), 1)
         if(len(vcols) > 0):
             log("making vertex colors..", 1)
@@ -397,11 +403,24 @@ class ImportFastOBJ(Operator, ImportHelper):
     
     convert_axes: BoolProperty(name="Convert Axes", default=True, description="Convert from blender (y forward, z up) to forward -z, up y.", )
     with_uv: BoolProperty(name="With UV", default=True, description="Import texture coordinates.", )
-    with_vertex_colors: BoolProperty(name="With Vertex Colors (MRGB)", default=True, description="Import vertex colors, this is not part of official file format specification. ZBrush uses MRGB comments to write Polypaint to OBJ.", )
-    use_mask_as_vertex_group: BoolProperty(name="M as Vertex Group", default=False, description="Import M from MRGB as vertex group.", )
+    
+    def vcol_update_mrgb(self, context):
+        if(self.with_vertex_colors_mrgb):
+            if(self.with_vertex_colors_extended):
+                self.with_vertex_colors_extended = False
+    
+    def vcol_update_ext(self, context):
+        if(self.with_vertex_colors_extended):
+            if(self.with_vertex_colors_mrgb):
+                self.with_vertex_colors_mrgb = False
+    
+    with_vertex_colors_mrgb: BoolProperty(name="With Vertex Colors (#MRGB)", default=True, description="Import vertex colors, this is not part of official file format specification. ZBrush uses MRGB comments to write Polypaint to OBJ.", update=vcol_update_mrgb, )
+    with_vertex_colors_extended: BoolProperty(name="With Vertex Colors (x,y,z,r,g,b)", default=False, description="Import vertex colors in 'extended' format where vertex is defined as (x, y, z, r, g, b), this is not part of official file format specification.", update=vcol_update_ext, )
+    vcols_ext_with_gamma: BoolProperty(name="With Gamma Correction", default=True, description="Apply gamma correction to extended vertex colors.", )
+    use_m_as_vertex_group: BoolProperty(name="M as Vertex Group", default=False, description="Import M from MRGB as vertex group.", )
     with_polygroups: BoolProperty(name="With Polygroups", default=False, description="Import ZBrush polygroups as vertex groups.", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
-    apply_conversion: BoolProperty(name="Apply Conversion", default=True, description="Apply new axes directly to mesh.", )
+    apply_conversion: BoolProperty(name="Apply Axis Conversion", default=True, description="Apply new axes directly to mesh.", )
     
     @classmethod
     def poll(cls, context):
@@ -412,23 +431,41 @@ class ImportFastOBJ(Operator, ImportHelper):
         sub = l.column()
         sub.prop(self, 'convert_axes')
         sub.prop(self, 'with_uv')
-        sub.prop(self, 'with_vertex_colors')
-        sub.prop(self, 'use_mask_as_vertex_group')
+        
+        r = sub.row()
+        r.prop(self, 'with_vertex_colors_mrgb')
+        c = r.column()
+        c.prop(self, 'use_m_as_vertex_group', toggle=True, text='', icon='GROUP_VERTEX')
+        c.enabled = self.with_vertex_colors_mrgb
+        
+        r = sub.row()
+        r.prop(self, 'with_vertex_colors_extended')
+        c = r.column()
+        c.prop(self, 'vcols_ext_with_gamma', toggle=True, text='', icon='FCURVE')
+        c.enabled = self.with_vertex_colors_extended
+        
         sub.prop(self, 'with_polygroups')
         sub.prop(self, 'global_scale')
-        sub.prop(self, 'apply_conversion')
+        r = sub.row()
+        r.prop(self, 'apply_conversion')
+        r.enabled = self.convert_axes
     
     def execute(self, context):
         t = time.time()
+        
+        vcols = False
+        if(self.with_vertex_colors_mrgb or self.with_vertex_colors_extended):
+            vcols = True
         
         d = {'path': self.filepath,
              'convert_axes': self.convert_axes,
              'with_uv': self.with_uv,
              'with_shading': False,
-             'with_vertex_colors': self.with_vertex_colors,
-             'use_vcols_mrgb': True,
-             'use_mask_as_vertex_group': self.use_mask_as_vertex_group,
-             'use_vcols_ext': False,
+             'with_vertex_colors': vcols,
+             'use_vcols_mrgb': self.with_vertex_colors_mrgb,
+             'use_m_as_vertex_group': self.use_m_as_vertex_group,
+             'use_vcols_ext': self.with_vertex_colors_extended,
+             'use_vcols_ext_with_gamma': self.vcols_ext_with_gamma,
              'with_polygroups': self.with_polygroups,
              'global_scale': self.global_scale,
              'apply_conversion': self.apply_conversion, }
