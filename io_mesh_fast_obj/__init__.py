@@ -429,7 +429,15 @@ class ImportFastOBJ(Operator, ImportHelper):
     def draw(self, context):
         l = self.layout
         sub = l.column()
-        sub.prop(self, 'convert_axes')
+        
+        r = sub.row()
+        r.prop(self, 'convert_axes')
+        c = r.column()
+        # c.prop(self, 'apply_conversion', toggle=True, text='', icon='AXIS_TOP')
+        c.prop(self, 'apply_conversion', toggle=True, text='', icon='EMPTY_AXIS')
+        # c.prop(self, 'apply_conversion', toggle=True, text='', icon='OUTLINER_DATA_EMPTY')
+        c.enabled = self.convert_axes
+        
         sub.prop(self, 'with_uv')
         
         r = sub.row()
@@ -446,9 +454,9 @@ class ImportFastOBJ(Operator, ImportHelper):
         
         sub.prop(self, 'with_polygroups')
         sub.prop(self, 'global_scale')
-        r = sub.row()
-        r.prop(self, 'apply_conversion')
-        r.enabled = self.convert_axes
+        # r = sub.row()
+        # r.prop(self, 'apply_conversion')
+        # r.enabled = self.convert_axes
     
     def execute(self, context):
         t = time.time()
