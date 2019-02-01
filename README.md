@@ -55,7 +55,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 ##### Cloud render options:
 
 * `Point Radius` - resulting point radius in pixels. This is independent on size of points in viewport.
-* `Point Segments` - point is rendered as polygonal circle, this setting controls number of vertices used. Generally, les points is needed when point is smaller.
+* `Point Segments` - point is rendered as polygonal circle, this setting controls number of vertices used. Generally, less segments is needed when point is smaller.
 * `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
 * `Leading Zeros` - image filename frame number leading zeros count
 
