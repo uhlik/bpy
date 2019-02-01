@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 5, 2),
+           "version": (0, 6, 0),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -36,11 +36,14 @@ import datetime
 import numpy as np
 
 import bpy
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty
 from bpy.types import PropertyGroup, Panel, Operator
 import gpu
 from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
+import bgl
+from mathutils import Matrix, Vector
+from bpy_extras.object_utils import world_to_camera_view
 
 
 DEBUG = False
@@ -207,7 +210,7 @@ fragment_shader = '''
 '''
 
 
-def load_ply_to_cache(context, operator=None, ):
+def load_ply_to_cache(operator, context, ):
     pcv = context.object.point_cloud_visualizer
     filepath = pcv.filepath
     
@@ -303,6 +306,83 @@ def load_ply_to_cache(context, operator=None, ):
     log("-" * 50)
     
     return True
+
+
+def save_render(operator, scene, image, render_suffix, render_zeros, ):
+    f = False
+    n = render_suffix
+    rs = bpy.context.scene.render
+    op = rs.filepath
+    if(len(op) > 0):
+        if(not op.endswith(os.path.sep)):
+            f = True
+            op, n = os.path.split(op)
+    else:
+        log("error: output path is not set".format(e))
+        operator.report({'ERROR'}, "Output path is not set.")
+        return
+    
+    if(f):
+        n = "{}_{}".format(n, render_suffix)
+    
+    fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
+    p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
+    
+    s = rs.image_settings
+    ff = s.file_format
+    cm = s.color_mode
+    cd = s.color_depth
+    
+    s.file_format = 'PNG'
+    s.color_mode = 'RGBA'
+    s.color_depth = '8'
+    
+    try:
+        image.save_render(p)
+        log("image '{}' saved".format(p))
+    except Exception as e:
+        s.file_format = ff
+        s.color_mode = cm
+        s.color_depth = cd
+        
+        log("error: {}".format(e))
+        operator.report({'ERROR'}, "Unable to save render image, see console for details.")
+        return
+    
+    s.file_format = ff
+    s.color_mode = cm
+    s.color_depth = cd
+
+
+def draw_circle_2d(position, color, radius, segments=32):
+    # modified to draw filled circles from blender.app/Contents/Resources/2.80/scripts/modules/gpu_extras/presets.py
+    
+    from math import sin, cos, pi
+    import gpu
+    from gpu.types import (
+        GPUBatch,
+        GPUVertBuf,
+        GPUVertFormat,
+    )
+    
+    if segments <= 0:
+        raise ValueError("Amount of segments must be greater than 0.")
+    
+    with gpu.matrix.push_pop():
+        gpu.matrix.translate(position)
+        gpu.matrix.scale_uniform(radius)
+        mul = (1.0 / (segments - 1)) * (pi * 2)
+        verts = [(sin(i * mul), cos(i * mul)) for i in range(segments)]
+        fmt = GPUVertFormat()
+        pos_id = fmt.attr_add(id="pos", comp_type='F32', len=2, fetch_mode='FLOAT')
+        vbo = GPUVertBuf(len=len(verts), format=fmt)
+        vbo.attr_fill(id=pos_id, data=verts)
+        # batch = GPUBatch(type='LINE_STRIP', buf=vbo)
+        batch = GPUBatch(type='TRI_FAN', buf=vbo)
+        shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
+        batch.program_set(shader)
+        shader.uniform_float("color", color)
+        batch.draw()
 
 
 class PCVManager():
@@ -480,7 +560,7 @@ class PCV_OT_draw(Operator):
         
         if(pcv.uuid not in PCVManager.cache):
             pcv.uuid = ""
-            ok = load_ply_to_cache(context, self)
+            ok = load_ply_to_cache(self, context)
             if(not ok):
                 return {'CANCELLED'}
         
@@ -550,10 +630,121 @@ class PCV_OT_load(Operator):
                 PCVManager.cache[pcv.uuid]['kill'] = True
                 PCVManager.gc()
         
-        ok = load_ply_to_cache(context, self)
+        ok = load_ply_to_cache(self, context)
         
         if(not ok):
             return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+class PCV_OT_render(Operator):
+    bl_idname = "point_cloud_visualizer.render"
+    bl_label = "Render"
+    bl_description = "Render displayed point cloud from active camera view to image"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        scene = context.scene
+        render = scene.render
+        image_settings = render.image_settings
+        
+        original_depth = image_settings.color_depth
+        image_settings.color_depth = '8'
+        
+        scale = render.resolution_percentage / 100
+        width = int(render.resolution_x * scale)
+        height = int(render.resolution_y * scale)
+        
+        offscreen = gpu.types.GPUOffScreen(width, height)
+        view_matrix = Matrix(((2 / width, 0, 0, -1), (0, 2 / height, 0, -1), (0, 0, 1, 0), (0, 0, 0, 1), ))
+        
+        pcv = context.object.point_cloud_visualizer
+        cloud = PCVManager.cache[pcv.uuid]
+        model_matrix = cloud['object'].matrix_world
+        cam = scene.camera
+        render_segments = pcv.render_segments
+        render_suffix = pcv.render_suffix
+        render_zeros = pcv.render_zeros
+        
+        radius = pcv.render_size
+        
+        with offscreen.bind():
+            bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
+            
+            gpu.matrix.reset()
+            gpu.matrix.load_matrix(view_matrix)
+            gpu.matrix.load_projection_matrix(Matrix.Identity(4))
+            
+            locs_2d = []
+            for i, v in enumerate(cloud['vertices']):
+                # covert point location to camera view coordinates
+                vw = model_matrix @ Vector(v)
+                loc = world_to_camera_view(scene, cam, vw)
+                # join with color to be able to z sort points in next step
+                col = cloud['colors'][i]
+                locs_2d.append(loc.to_tuple() + tuple(col))
+            # sort point by z (which is depth returned from world_to_camera_view)
+            points_2d = sorted(locs_2d, key=lambda v: v[2])
+            # draw circles in reversed order to have closest on top
+            for p in reversed(points_2d):
+                draw_circle_2d((width * p[0], height * p[1]), p[3:], radius, segments=render_segments, )
+            
+            buff = bgl.Buffer(bgl.GL_BYTE, width * height * 4)
+            bgl.glReadBuffer(bgl.GL_COLOR_ATTACHMENT0)
+            bgl.glReadPixels(0, 0, width, height, bgl.GL_RGBA, bgl.GL_UNSIGNED_BYTE, buff)
+        
+        offscreen.free()
+        
+        # image from buffer
+        image_name = "pcv_output"
+        if(not image_name in bpy.data.images):
+            bpy.data.images.new(image_name, width, height)
+        image = bpy.data.images[image_name]
+        image.scale(width, height)
+        image.pixels = [v / 255 for v in buff]
+        
+        # save as image file
+        save_render(self, scene, image, render_suffix, render_zeros, )
+        
+        # restore
+        image_settings.color_depth = original_depth
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_animation(Operator):
+    bl_idname = "point_cloud_visualizer.animation"
+    bl_label = "Animation"
+    bl_description = "Render displayed point cloud from active camera view to animation frames"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        scene = context.scene
+        fc = scene.frame_current
+        for i in range(scene.frame_start, scene.frame_end, 1):
+            scene.frame_set(i)
+            bpy.ops.point_cloud_visualizer.render()
+        scene.frame_set(fc)
         return {'FINISHED'}
 
 
@@ -614,6 +805,28 @@ class PCV_PT_panel(Panel):
             n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
             r.label(text='{}: {} points'.format(t, n))
         
+        sub.separator()
+        
+        c = sub.column()
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.render')
+        r.operator('point_cloud_visualizer.animation')
+        c.enabled = PCV_OT_render.poll(context)
+        
+        b = sub.box()
+        r = b.row()
+        r.prop(pcv, 'render_expanded', icon='TRIA_DOWN' if pcv.render_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Render Options")
+        if(pcv.render_expanded):
+            c = b.column(align=True)
+            c.prop(pcv, 'render_size')
+            c.prop(pcv, 'render_segments')
+            c.enabled = PCV_OT_render.poll(context)
+            c = b.column()
+            c.prop(pcv, 'render_suffix')
+            c.prop(pcv, 'render_zeros')
+            c.enabled = PCV_OT_render.poll(context)
+        
         if(pcv.debug):
             sub.separator()
             sub.label(text="PCV uuid: {}".format(pcv.uuid))
@@ -654,6 +867,12 @@ class PCV_properties(PropertyGroup):
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
+    render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
+    render_size: FloatProperty(name="Point Radius", default=2.0, min=0.1, max=10.0, precision=1, subtype='PIXEL', description="Adjust point render radius in pixels", )
+    render_segments: IntProperty(name="Point Segments", default=32, min=3, max=256, subtype='NONE', description="Number of segments in each circle / points", )
+    render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
+    render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
+    
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, )
     
     @classmethod
@@ -676,6 +895,8 @@ classes = (
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
+    PCV_OT_render,
+    PCV_OT_animation,
 )
 if(DEBUG):
     classes = classes + (
