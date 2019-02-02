@@ -34,6 +34,8 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.1.png)
 
+### General info
+
 * Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`. Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display` and point 'size' with `Radius` (in viewport real point size is fixed and radius controls discarding pixels in circular shape around point center). **Adjusting `Size` (gl_PointSize) currently doesn't work for viewport, but works for rendering.**
 * Transforming parent object transforms point cloud as well.
 * Huge speed improvements compared to 2.7x version.
