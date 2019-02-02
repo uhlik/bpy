@@ -647,6 +647,10 @@ class PCV_OT_render(Operator):
         pcv = context.object.point_cloud_visualizer
         cloud = PCVManager.cache[pcv.uuid]
         cam = scene.camera
+        if(cam is None):
+            self.report({'ERROR'}, "No camera found.")
+            return {'CANCELLED'}
+        
         render_suffix = pcv.render_suffix
         render_zeros = pcv.render_zeros
         
@@ -703,7 +707,7 @@ class PCV_OT_render(Operator):
             bgl.glReadPixels(0, 0, width, height, bgl.GL_RGBA, bgl.GL_UNSIGNED_BYTE, buffer)
             
         except Exception as e:
-            operator.report({'ERROR'}, str(e))
+            self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
             
         finally:
@@ -753,6 +757,11 @@ class PCV_OT_animation(Operator):
     
     def execute(self, context):
         scene = context.scene
+        
+        if(scene.camera is None):
+            self.report({'ERROR'}, "No camera found.")
+            return {'CANCELLED'}
+        
         fc = scene.frame_current
         for i in range(scene.frame_start, scene.frame_end, 1):
             scene.frame_set(i)
