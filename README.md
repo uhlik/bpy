@@ -69,7 +69,7 @@ Point size is changed with `Size` and `Radius`. Rendering uses the same code as 
 
 changelog:
 
-* 0.6.1 single cloud rendering almost completely rewritten to better and faster
+* 0.6.1 single cloud rendering almost completely rewritten to be better and faster
 * 0.6.0 single cloud rendering
 * 0.5.2 refactored some logic, removed icons from buttons
 * 0.5.1 load ply without vertex colors, uniform grey will be used
