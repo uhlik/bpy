@@ -321,7 +321,7 @@ class ExportFastOBJ(Operator, ExportHelper):
     triangulate: BoolProperty(name="Triangulate", default=False, description="Triangulate mesh before exporting.", )
     use_normals: BoolProperty(name="With Normals", default=True, description="Export vertex normals.", )
     use_uv: BoolProperty(name="With UV", default=True, description="Export active UV layout.", )
-    use_vcols: BoolProperty(name="With Vertex Colors", default=True, description="Export vertex colors, this is not part of official file format specification.", )
+    use_vcols: BoolProperty(name="With Vertex Colors (#MRGB)", default=True, description="Export vertex colors, this is not part of official file format specification.", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )
     precision: IntProperty(name="Precision", default=6, description="Floating point precision.", )
     
@@ -416,7 +416,7 @@ class ImportFastOBJ(Operator, ImportHelper):
     
     with_vertex_colors_mrgb: BoolProperty(name="With Vertex Colors (#MRGB)", default=True, description="Import vertex colors, this is not part of official file format specification. ZBrush uses MRGB comments to write Polypaint to OBJ.", update=vcol_update_mrgb, )
     with_vertex_colors_extended: BoolProperty(name="With Vertex Colors (x,y,z,r,g,b)", default=False, description="Import vertex colors in 'extended' format where vertex is defined as (x, y, z, r, g, b), this is not part of official file format specification.", update=vcol_update_ext, )
-    vcols_ext_with_gamma: BoolProperty(name="With Gamma Correction", default=True, description="Apply gamma correction to extended vertex colors.", )
+    vcols_ext_with_gamma: BoolProperty(name="With Gamma Correction", default=False, description="Apply gamma correction to extended vertex colors.", )
     use_m_as_vertex_group: BoolProperty(name="M as Vertex Group", default=False, description="Import M from MRGB as vertex group.", )
     with_polygroups: BoolProperty(name="With Polygroups", default=False, description="Import ZBrush polygroups as vertex groups.", )
     global_scale: FloatProperty(name="Scale", default=1.0, precision=3, description="Uniform scale.", )

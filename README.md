@@ -110,6 +110,8 @@ changelog:
 
 Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush) or 'Extended' format (import only) where vertex is defined as (x,y,z,r,g,b).
 
+![Fast Wavefront^2](https://raw.githubusercontent.com/uhlik/bpy/master/x/obj2.png)
+
 changelog:
 
 * 0.3.2 import 'extended' vertex colors (x,y,z,r,g,b), optionally apply gamma correction
