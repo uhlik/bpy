@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 6, 1),
+           "version": (0, 6, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -366,6 +366,8 @@ class PCVManager():
         bobjects = bpy.data.objects
         
         def draw(uuid):
+            bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+            
             pm = bpy.context.region_data.perspective_matrix
             
             ci = PCVManager.cache[uuid]
@@ -690,7 +692,8 @@ class PCV_OT_render(Operator):
             
             shader.uniform_float("perspective_matrix", perspective_matrix)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("point_size", pcv.point_size)
+            # shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("point_size", pcv.render_point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             batch.draw(shader)
             
@@ -808,9 +811,9 @@ class PCV_PT_panel(Panel):
         r = sub.row()
         r.prop(pcv, 'point_size')
         r.enabled = e
-        r = sub.row()
-        r.prop(pcv, 'alpha_radius')
-        r.enabled = e
+        # r = sub.row()
+        # r.prop(pcv, 'alpha_radius')
+        # r.enabled = e
         
         b = sub.box()
         r = b.row()
@@ -822,6 +825,8 @@ class PCV_PT_panel(Panel):
             r.operator('point_cloud_visualizer.render')
             r.operator('point_cloud_visualizer.animation')
             c = b.column()
+            c.prop(pcv, 'render_point_size')
+            c.separator()
             c.prop(pcv, 'render_suffix')
             c.prop(pcv, 'render_zeros')
             c.enabled = PCV_OT_render.poll(context)
@@ -856,8 +861,9 @@ class PCV_PT_panel(Panel):
 class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY file", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
-    point_size: FloatProperty(name="Size", default=1.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Adjust gl_PointSize", )
-    alpha_radius: FloatProperty(name="Radius", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
+    # point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Point size", )
+    point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
+    alpha_radius: FloatProperty(name="Radius", default=1.0, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
     
     def _display_percent_update(self, context, ):
         if(self.uuid not in PCVManager.cache):
@@ -873,6 +879,8 @@ class PCV_properties(PropertyGroup):
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
     render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
+    # render_point_size: FloatProperty(name="Render Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
+    render_point_size: IntProperty(name="Render Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
     render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
     render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
     
