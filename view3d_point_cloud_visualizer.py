@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 6, 2),
+           "version": (0, 6, 3),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -335,6 +335,12 @@ def save_render(operator, scene, image, render_suffix, render_zeros, ):
     cm = s.color_mode
     cd = s.color_depth
     
+    vs = scene.view_settings
+    vsvt = vs.view_transform
+    vsl = vs.look
+    vs.view_transform = 'Default'
+    vs.look = 'None'
+    
     s.file_format = 'PNG'
     s.color_mode = 'RGBA'
     s.color_depth = '8'
@@ -354,6 +360,8 @@ def save_render(operator, scene, image, render_suffix, render_zeros, ):
     s.file_format = ff
     s.color_mode = cm
     s.color_depth = cd
+    vs.view_transform = vsvt
+    vs.look = vsl
 
 
 class PCVManager():
@@ -627,10 +635,6 @@ class PCV_OT_render(Operator):
         return ok
     
     def execute(self, context):
-        # import cProfile, pstats, io
-        # pr = cProfile.Profile()
-        # pr.enable()
-        
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         
         scene = context.scene
@@ -656,7 +660,6 @@ class PCV_OT_render(Operator):
         
         offscreen = GPUOffScreen(width, height)
         offscreen.bind()
-        # with offscreen.bind():
         try:
             gpu.matrix.load_matrix(Matrix.Identity(4))
             gpu.matrix.load_projection_matrix(Matrix.Identity(4))
@@ -667,7 +670,7 @@ class PCV_OT_render(Operator):
             vs = cloud['vertices']
             cs = cloud['colors']
             
-            dp = pcv.display_percent
+            dp = pcv.render_display_percent
             l = int((len(vs) / 100) * dp)
             if(dp >= 99):
                 l = len(vs)
@@ -696,13 +699,11 @@ class PCV_OT_render(Operator):
             
             shader.uniform_float("perspective_matrix", perspective_matrix)
             shader.uniform_float("object_matrix", o.matrix_world)
-            # shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("point_size", pcv.render_point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             batch.draw(shader)
             
             buffer = bgl.Buffer(bgl.GL_BYTE, width * height * 4)
-            # bgl.glReadBuffer(bgl.GL_COLOR_ATTACHMENT0)
             bgl.glReadBuffer(bgl.GL_BACK)
             bgl.glReadPixels(0, 0, width, height, bgl.GL_RGBA, bgl.GL_UNSIGNED_BYTE, buffer)
             
@@ -713,7 +714,6 @@ class PCV_OT_render(Operator):
         finally:
             offscreen.unbind()
             offscreen.free()
-        # offscreen.free()
         
         # image from buffer
         image_name = "pcv_output"
@@ -728,13 +728,6 @@ class PCV_OT_render(Operator):
         
         # restore
         image_settings.color_depth = original_depth
-        
-        # pr.disable()
-        # s = io.StringIO()
-        # sortby = 'cumulative'
-        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        # ps.print_stats()
-        # print(s.getvalue())
         
         return {'FINISHED'}
 
@@ -834,6 +827,7 @@ class PCV_PT_panel(Panel):
             r.operator('point_cloud_visualizer.render')
             r.operator('point_cloud_visualizer.animation')
             c = b.column()
+            c.prop(pcv, 'render_display_percent')
             c.prop(pcv, 'render_point_size')
             c.separator()
             c.prop(pcv, 'render_suffix')
@@ -888,8 +882,9 @@ class PCV_properties(PropertyGroup):
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
     render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
-    # render_point_size: FloatProperty(name="Render Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
-    render_point_size: IntProperty(name="Render Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
+    # render_point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
+    render_point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
+    render_display_percent: FloatProperty(name="Count", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of points rendered", )
     render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
     render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
     

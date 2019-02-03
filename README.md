@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.2.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.3.png)
 
 ### General info
 
@@ -50,11 +50,13 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * Make a camera and adjust as needed.
 * Set render image size in `Properties > Output > Dimensions`. Resolution X, Y and % are used.
 * Set render path in `Properties > Output > Output`. Just path is used.
-* Select cloud parent object, set point size with `Render Size` and hit `Render` or `Animation`.
+* Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
+* Hit `Render` or `Animation`.
 
 ##### Render options:
 
-* `Render Size` - point render size in pixels
+* `Size` - point render size in pixels
+* `Count` - percentage of rendered points
 * `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
 * `Leading Zeros` - image filename frame number leading zeros count
 
@@ -62,6 +64,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.6.3 added percentage of rendered points, fixed render colors to look the same as in viewport
 * 0.6.2 fixed point size display in viewport, separated view and render point size
 * 0.6.1 single cloud rendering almost completely rewritten to be better and faster
 * 0.6.0 single cloud rendering
