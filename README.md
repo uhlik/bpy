@@ -61,6 +61,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * `Leading Zeros` - image filename frame number leading zeros count
 
 ##### Known bugs:
+
 * If you duplicate object with cloud, duplicate will still control the original one until you load a different one. Currently there is no reliable way (as far as i know) to get unique id of an object and therefore no way to tell to which object stored properties (e.g. path to ply) belong.
 
 [BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
