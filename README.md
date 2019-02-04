@@ -60,10 +60,14 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
 * `Leading Zeros` - image filename frame number leading zeros count
 
+##### Known bugs:
+* If you duplicate object with cloud, duplicate will still control the original one until you load a different one. Currently there is no reliable way (as far as i know) to get unique id of an object and therefore no way to tell to which object stored properties (e.g. path to ply) belong.
+
 [BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
 
 changelog:
 
+* 0.6.4 refactored draw handlers, fixed occasional crash on erase
 * 0.6.3 added percentage of rendered points, fixed render colors to look the same as in viewport
 * 0.6.2 fixed point size display in viewport, separated view and render point size
 * 0.6.1 single cloud rendering almost completely rewritten to be better and faster

@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 6, 3),
+           "version": (0, 6, 4),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -370,55 +370,44 @@ class PCVManager():
     initialized = False
     
     @classmethod
+    def render(cls, uuid, ):
+        bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        
+        ci = PCVManager.cache[uuid]
+        
+        shader = ci['shader']
+        batch = ci['batch']
+        
+        if(ci['current_display_percent'] != ci['display_percent']):
+            l = ci['display_percent']
+            ci['current_display_percent'] = l
+            vs = ci['vertices']
+            cs = ci['colors']
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+            ci['batch'] = batch
+        
+        o = ci['object']
+        pcv = o.point_cloud_visualizer
+        
+        shader.bind()
+        pm = bpy.context.region_data.perspective_matrix
+        shader.uniform_float("perspective_matrix", pm)
+        shader.uniform_float("object_matrix", o.matrix_world)
+        shader.uniform_float("point_size", pcv.point_size)
+        shader.uniform_float("alpha_radius", pcv.alpha_radius)
+        batch.draw(shader)
+    
+    @classmethod
     def handler(cls):
         bobjects = bpy.data.objects
         
-        def draw(uuid):
-            bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
-            
-            pm = bpy.context.region_data.perspective_matrix
-            
-            ci = PCVManager.cache[uuid]
-            
-            if(not bobjects.get(ci['name'])):
-                ci['kill'] = True
-                cls.gc()
-                return
-            if(not ci['draw']):
-                cls.gc()
-                return
-            
-            shader = ci['shader']
-            batch = ci['batch']
-            
-            if(ci['current_display_percent'] != ci['display_percent']):
-                l = ci['display_percent']
-                ci['current_display_percent'] = l
-                vs = ci['vertices']
-                cs = ci['colors']
-                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
-                ci['batch'] = batch
-            
-            o = ci['object']
-            pcv = o.point_cloud_visualizer
-            
-            shader.bind()
-            shader.uniform_float("perspective_matrix", pm)
-            shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("point_size", pcv.point_size)
-            shader.uniform_float("alpha_radius", pcv.alpha_radius)
-            batch.draw(shader)
-            
-            ci['drawing'] = True
-        
         run_gc = False
         for k, v in cls.cache.items():
-            if(v['ready'] and v['draw'] and not v['drawing']):
-                v['handle'] = bpy.types.SpaceView3D.draw_handler_add(draw, (v['uuid'], ), 'WINDOW', 'POST_VIEW')
-            
             if(not bobjects.get(v['name'])):
                 v['kill'] = True
                 run_gc = True
+            if(v['ready'] and v['draw'] and not v['kill']):
+                cls.render(v['uuid'])
         if(run_gc):
             cls.gc()
     
@@ -428,14 +417,6 @@ class PCVManager():
         for k, v in cls.cache.items():
             if(v['kill']):
                 l.append(k)
-                if(v['drawing']):
-                    bpy.types.SpaceView3D.draw_handler_remove(v['handle'], 'WINDOW')
-                    v['handle'] = None
-                    v['drawing'] = False
-            if(v['drawing'] and not v['draw']):
-                bpy.types.SpaceView3D.draw_handler_remove(v['handle'], 'WINDOW')
-                v['handle'] = None
-                v['drawing'] = False
         for i in l:
             del cls.cache[i]
     
@@ -457,10 +438,8 @@ class PCVManager():
         
         bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
         cls.handle = None
-        
-        cls.initialized = False
-        
         bpy.app.handlers.load_pre.remove(watcher)
+        cls.initialized = False
     
     @classmethod
     def add(cls, data, ):
@@ -477,8 +456,6 @@ class PCVManager():
                 'batch': False,
                 'ready': False,
                 'draw': False,
-                'drawing': False,
-                'handle': None,
                 'kill': False,
                 'stats': None,
                 'name': None,
@@ -842,14 +819,37 @@ class PCV_PT_panel(Panel):
         
         if(pcv.debug):
             sub.separator()
-            sub.label(text="PCV uuid: {}".format(pcv.uuid))
+            
+            sub.label(text="properties:")
+            b = sub.box()
+            c = b.column()
+            c.label(text="uuid: {}".format(pcv.uuid))
+            c.label(text="filepath: {}".format(pcv.filepath))
+            c.label(text="point_size: {}".format(pcv.point_size))
+            c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
+            c.label(text="display_percent: {}".format(pcv.display_percent))
+            c.label(text="render_expanded: {}".format(pcv.render_expanded))
+            c.label(text="render_point_size: {}".format(pcv.render_point_size))
+            c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
+            c.label(text="render_suffix: {}".format(pcv.render_suffix))
+            c.label(text="render_zeros: {}".format(pcv.render_zeros))
+            c.label(text="debug: {}".format(pcv.debug))
+            c.scale_y = 0.5
+            
+            sub.label(text="manager:")
             c = sub.column(align=True)
             c.operator('point_cloud_visualizer.init')
             c.operator('point_cloud_visualizer.deinit')
             c.operator('point_cloud_visualizer.gc')
+            b = sub.box()
+            c = b.column()
+            c.label(text="cache: {} item(s)".format(len(PCVManager.cache.items())))
+            c.label(text="handle: {}".format(PCVManager.handle))
+            c.label(text="initialized: {}".format(PCVManager.initialized))
+            c.scale_y = 0.5
+            
             if(len(PCVManager.cache)):
-                sub.separator()
-                sub.label(text="PCVManager:")
+                sub.label(text="cache details:")
                 for k, v in PCVManager.cache.items():
                     b = sub.box()
                     c = b.column()
