@@ -28,17 +28,32 @@
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
-Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values. All other values are ignored. Color values must be in 0-255 range.
+Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional. Color values must be in 0-255 range.
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.3.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.5.png)
 
 ### General info
 
-* Usage: Install and activate addon in a usual way. Add any object to scene. Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`. Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display` and point size with `Size`.
+##### Usage:
+
+* Install and activate addon in a usual way.
+* Add any object type to scene.
+* Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`.
+* Click `Draw` button to display point cloud, `Erase` to hide point cloud.
 * Transforming parent object transforms point cloud as well.
-* Huge speed improvements compared to 2.7x version.
+* `Illumination` works only when vertex normals are present
+* When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
+
+##### Display Options:
+
+* `Display` - percentage of displayed points
+* `Size` - point size in pixels
+* `Illumination` - enable extra illumination, works only when vertex normals can be loaded.
+* `Light Direction` - light direction
+* `Light Intensity` - light intensity
+* `Shadow Intensity` - shadow intensity
 
 ### Point cloud rendering
 
@@ -51,6 +66,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * Set render image size in `Properties > Output > Dimensions`. Resolution X, Y and % are used.
 * Set render path in `Properties > Output > Output`. Just path is used.
 * Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
+* If `Illumination` is enabled it will be rendered as well
 * Hit `Render` or `Animation`.
 
 ##### Render options:
@@ -68,6 +84,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.6.5 point cloud illumination
 * 0.6.4 refactored draw handlers, fixed occasional crash on erase
 * 0.6.3 added percentage of rendered points, fixed render colors to look the same as in viewport
 * 0.6.2 fixed point size display in viewport, separated view and render point size
