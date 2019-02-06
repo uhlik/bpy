@@ -694,7 +694,7 @@ class PCV_OT_render(Operator):
         
         # image from buffer
         image_name = "pcv_output"
-        if(not image_name in bpy.data.images):
+        if(image_name not in bpy.data.images):
             bpy.data.images.new(image_name, width, height)
         image = bpy.data.images[image_name]
         image.scale(width, height)
