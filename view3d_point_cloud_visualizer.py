@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 6, 5),
+           "version": (0, 6, 6),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -446,7 +446,16 @@ class PCVManager():
             ci['batch'] = batch
         
         o = ci['object']
-        pcv = o.point_cloud_visualizer
+        try:
+            pcv = o.point_cloud_visualizer
+        except ReferenceError:
+            log("PCVManager.render: ReferenceError (possibly after undo/redo?)")
+            # blender on undo/redo swaps whole scene to different one stored in memory and therefore stored object references are no longer valid
+            # so find object with the same name, not the best solution, but lets see how it goes..
+            o = bpy.data.objects[ci['name']]
+            # update stored reference
+            ci['object'] = o
+            pcv = o.point_cloud_visualizer
         
         shader.bind()
         pm = bpy.context.region_data.perspective_matrix
