@@ -17,7 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {"name": "Point Cloud Visualizer",
-           "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
+           "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
            "version": (0, 7, 0),
            "blender": (2, 80, 0),
