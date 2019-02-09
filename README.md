@@ -28,7 +28,7 @@
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
-Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional. Color values must be in 0-255 range.
+Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional. Color values must be in 0-255 range.
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
@@ -84,6 +84,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.7.0 ascii ply support
 * 0.6.6 fixed drawing after undo/redo
 * 0.6.5 point cloud illumination
 * 0.6.4 refactored draw handlers, fixed occasional crash on erase

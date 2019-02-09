@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY in Blender's 3d viewport. Works with binary point cloud PLY files with 'x, y, z, red, green, blue' vertex values.",
            "author": "Jakub Uhlik",
-           "version": (0, 6, 6),
+           "version": (0, 7, 0),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -175,85 +175,252 @@ class BinPlyPointCloudReader():
             self.data[nm] = a
 
 
-vertex_shader = '''
-    in vec3 position;
-    in vec3 normal;
-    in vec4 color;
+class PlyPointCloudReader():
+    _supported_formats = ('binary_little_endian', 'binary_big_endian', 'ascii', )
+    _supported_versions = ('1.0', )
+    _byte_order = {'binary_little_endian': '<', 'binary_big_endian': '>', 'ascii': None, }
+    _types = {'char': 'c', 'uchar': 'B', 'short': 'h', 'ushort': 'H', 'int': 'i', 'uint': 'I', 'float': 'f', 'double': 'd', }
     
-    uniform vec3 light_direction;
-    uniform vec3 light_intensity;
-    uniform vec3 shadow_direction;
-    uniform vec3 shadow_intensity;
-    uniform float show_normals;
-    
-    uniform mat4 perspective_matrix;
-    uniform mat4 object_matrix;
-    uniform float point_size;
-    uniform float alpha_radius;
-    
-    out vec4 f_color;
-    out float f_alpha_radius;
-    out vec3 f_normal;
-    
-    out vec3 f_light_direction;
-    out vec3 f_light_intensity;
-    out vec3 f_shadow_direction;
-    out vec3 f_shadow_intensity;
-    out float f_show_normals;
-    
-    void main()
-    {
-        gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
-        gl_PointSize = point_size;
-        f_normal = normal;
-        f_color = color;
-        f_alpha_radius = alpha_radius;
+    def __init__(self, path, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        if(os.path.exists(path) is False or os.path.isdir(path) is True):
+            raise OSError("did you point me to an imaginary file? ('{}')".format(path))
         
-        // f_light_direction = normalize(vec3(inverse(object_matrix) * vec4(light_direction, 1.0)));
-        f_light_direction = light_direction;
-        f_light_intensity = light_intensity;
-        // f_shadow_direction = normalize(vec3(inverse(object_matrix) * vec4(shadow_direction, 1.0)));
-        f_shadow_direction = shadow_direction;
-        f_shadow_intensity = shadow_intensity;
-        f_show_normals = show_normals;
-    }
-'''
+        self.path = path
+        log("will read file at: '{}'".format(self.path), 1)
+        log("reading header..", 1)
+        self._header()
+        log("reading data..", 1)
+        # log("data format: {}".format(self._ply_format), 1)
+        # log("vertex element properties:", 1)
+        # for n, p in self._props:
+        #     log("{}: {}".format(n, p), 2)
+        if(self._ply_format == 'ascii'):
+            self._data_ascii()
+        else:
+            self._data_binary()
+        log("loaded {} vertices".format(len(self.points)), 1)
+        log("done.", 1)
+    
+    def _header(self):
+        # stream = open(self.path, mode='rb')
+        # raw = []
+        # h = []
+        # for l in stream:
+        #     raw.append(l)
+        #     a = l.decode('ascii').rstrip()
+        #     h.append(a)
+        #     if(a == "end_header"):
+        #         break
+        # # stream.close()
+        
+        raw = []
+        h = []
+        with open(self.path, mode='rb') as f:
+            for l in f:
+                raw.append(l)
+                a = l.decode('ascii').rstrip()
+                h.append(a)
+                if(a == "end_header"):
+                    break
+        
+        if(h[0] != 'ply'):
+            raise TypeError("not a ply file")
+        for i, l in enumerate(h):
+            if(l.startswith('format')):
+                _, f, v = l.split(' ')
+                if(f not in self._supported_formats):
+                    raise TypeError("unsupported ply format")
+                if(v not in self._supported_versions):
+                    raise TypeError("unsupported ply file version")
+                self._ply_format = f
+                self._ply_version = v
+                if(self._ply_format != 'ascii'):
+                    self._endianness = self._byte_order[self._ply_format]
+        
+        # if(self._ply_format == 'ascii'):
+        #     stream.close()
+        # else:
+        #     self._stream = stream
+        
+        self._elements = []
+        current_element = None
+        for i, l in enumerate(h):
+            if(l.startswith('ply')):
+                pass
+            elif(l.startswith('format')):
+                pass
+            elif(l.startswith('comment')):
+                pass
+            elif(l.startswith('element')):
+                _, t, c = l.split(' ')
+                a = {'type': t, 'count': int(c), 'props': [], }
+                self._elements.append(a)
+                current_element = a
+            elif(l.startswith('property')):
+                if(l.startswith('property list')):
+                    _, _, c, t, n = l.split(' ')
+                    if(self._ply_format == 'ascii'):
+                        current_element['props'].append((n, self._types[c], self._types[t], ))
+                    else:
+                        current_element['props'].append((n, self._types[c], self._types[t], ))
+                else:
+                    _, t, n = l.split(' ')
+                    if(n == 'alpha'):
+                        # skip alpha, maybe use it in future versions, but now it is useless
+                        continue
+                    if(self._ply_format == 'ascii'):
+                        current_element['props'].append((n, self._types[t]))
+                    else:
+                        current_element['props'].append((n, self._types[t]))
+            elif(l.startswith('end_header')):
+                pass
+            else:
+                log('unknown header line: {}'.format(l))
+        
+        if(self._ply_format == 'ascii'):
+            skip = False
+            flen = 0
+            hlen = 0
+            with open(self.path, mode='r', encoding='utf-8') as f:
+                for i, l in enumerate(f):
+                    flen += 1
+                    if(skip):
+                        continue
+                    hlen += 1
+                    if(l.rstrip() == 'end_header'):
+                        skip = True
+            self._header_length = hlen
+            self._file_length = flen
+        else:
+            self._header_length = sum([len(i) for i in raw])
+    
+    def _data_binary(self):
+        self.points = []
+        
+        read_from = self._header_length
+        for ie, element in enumerate(self._elements):
+            if(element['type'] != 'vertex'):
+                continue
+            
+            dtp = []
+            for i, p in enumerate(element['props']):
+                n, t = p
+                dtp.append((n, '{}{}'.format(self._endianness, t), ))
+            dt = np.dtype(dtp)
+            with open(self.path, mode='rb') as f:
+                f.seek(read_from)
+                a = np.fromfile(f, dtype=dt, count=element['count'], )
+            
+            # self._stream.seek(read_from)
+            # a = np.fromfile(self._stream, dtype=dt, count=element['count'], )
+            
+            self.points = a
+            read_from += element['count']
+        
+        # self._stream.close()
+    
+    def _data_ascii(self):
+        self.points = []
+        
+        skip_header = self._header_length
+        skip_footer = self._file_length - self._header_length
+        for ie, element in enumerate(self._elements):
+            if(element['type'] != 'vertex'):
+                continue
+            
+            skip_footer = skip_footer - element['count']
+            with open(self.path, mode='r', encoding='utf-8') as f:
+                a = np.genfromtxt(f, dtype=np.dtype(element['props']), skip_header=skip_header, skip_footer=skip_footer, )
+            self.points = a
+            skip_header += element['count']
 
-fragment_shader = '''
-    in vec4 f_color;
-    in vec3 f_normal;
-    in float f_alpha_radius;
-    
-    in vec3 f_light_direction;
-    in vec3 f_light_intensity;
-    in vec3 f_shadow_direction;
-    in vec3 f_shadow_intensity;
-    in float f_show_normals;
-    
-    out vec4 fragColor;
-    
-    void main()
-    {
-        float r = 0.0f;
-        float a = 1.0f;
-        vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
-        r = dot(cxy, cxy);
-        if(r > f_alpha_radius){
-            discard;
-        }
-        // fragColor = f_color * a;
+
+class PCVShaders():
+    vertex_shader = '''
+        in vec3 position;
+        in vec3 normal;
+        in vec4 color;
         
-        vec4 col;
-        if(f_show_normals > 0.5){
-            col = vec4(f_normal, 1.0) * a;
-        }else{
-            vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
-            vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
-            col = (f_color + light - shadow) * a;
+        uniform float show_illumination;
+        uniform vec3 light_direction;
+        uniform vec3 light_intensity;
+        uniform vec3 shadow_direction;
+        uniform vec3 shadow_intensity;
+        uniform float show_normals;
+        
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        
+        out vec4 f_color;
+        out float f_alpha_radius;
+        out vec3 f_normal;
+        
+        out vec3 f_light_direction;
+        out vec3 f_light_intensity;
+        out vec3 f_shadow_direction;
+        out vec3 f_shadow_intensity;
+        out float f_show_normals;
+        out float f_show_illumination;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_normal = normal;
+            f_color = color;
+            f_alpha_radius = alpha_radius;
+            
+            // f_light_direction = normalize(vec3(inverse(object_matrix) * vec4(light_direction, 1.0)));
+            f_light_direction = light_direction;
+            f_light_intensity = light_intensity;
+            // f_shadow_direction = normalize(vec3(inverse(object_matrix) * vec4(shadow_direction, 1.0)));
+            f_shadow_direction = shadow_direction;
+            f_shadow_intensity = shadow_intensity;
+            f_show_normals = show_normals;
+            f_show_illumination = show_illumination;
         }
-        fragColor = col;
-    }
-'''
+    '''
+    fragment_shader = '''
+        in vec4 f_color;
+        in vec3 f_normal;
+        in float f_alpha_radius;
+        
+        in vec3 f_light_direction;
+        in vec3 f_light_intensity;
+        in vec3 f_shadow_direction;
+        in vec3 f_shadow_intensity;
+        in float f_show_normals;
+        in float f_show_illumination;
+        
+        out vec4 fragColor;
+        
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            // fragColor = f_color * a;
+            
+            vec4 col;
+            if(f_show_normals > 0.5){
+                col = vec4(f_normal, 1.0) * a;
+            }else if(f_show_illumination > 0.5){
+                vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
+                vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
+                col = (f_color + light - shadow) * a;
+            }else{
+                col = f_color * a;
+            }
+            fragColor = col;
+        }
+    '''
 
 
 def load_ply_to_cache(operator, context, ):
@@ -267,7 +434,8 @@ def load_ply_to_cache(operator, context, ):
     
     points = []
     try:
-        points = BinPlyPointCloudReader(filepath).points
+        # points = BinPlyPointCloudReader(filepath).points
+        points = PlyPointCloudReader(filepath).points
     except Exception as e:
         if(operator is not None):
             operator.report({'ERROR'}, str(e))
@@ -346,7 +514,7 @@ def load_ply_to_cache(operator, context, ):
         l = len(vs)
     d['display_percent'] = l
     d['current_display_percent'] = l
-    shader = GPUShader(vertex_shader, fragment_shader)
+    shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
     
     d['shader'] = shader
@@ -495,6 +663,7 @@ class PCVManager():
             c = pcv.shadow_intensity
             shader.uniform_float("shadow_intensity", (c, c, c, ))
             shader.uniform_float("show_normals", float(pcv.show_normals))
+            shader.uniform_float("show_illumination", float(pcv.light_enabled))
         else:
             z = (0, 0, 0)
             shader.uniform_float("light_direction", z)
@@ -502,6 +671,7 @@ class PCVManager():
             shader.uniform_float("shadow_direction", z)
             shader.uniform_float("shadow_intensity", z)
             shader.uniform_float("show_normals", float(False))
+            shader.uniform_float("show_illumination", float(False))
         
         batch.draw(shader)
     
@@ -777,7 +947,7 @@ class PCV_OT_render(Operator):
             cs = [b for _, a, b, c in sps][::-1]
             ns = [c for _, a, b, c in sps][::-1]
             
-            shader = GPUShader(vertex_shader, fragment_shader)
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             shader.bind()
             
@@ -808,6 +978,7 @@ class PCV_OT_render(Operator):
                 c = pcv.shadow_intensity
                 shader.uniform_float("shadow_intensity", (c, c, c, ))
                 shader.uniform_float("show_normals", float(pcv.show_normals))
+                shader.uniform_float("show_illumination", float(pcv.light_enabled))
             else:
                 z = (0, 0, 0)
                 shader.uniform_float("light_direction", z)
@@ -815,6 +986,7 @@ class PCV_OT_render(Operator):
                 shader.uniform_float("shadow_direction", z)
                 shader.uniform_float("shadow_intensity", z)
                 shader.uniform_float("show_normals", float(False))
+                shader.uniform_float("show_illumination", float(False))
             
             batch.draw(shader)
             
@@ -1040,7 +1212,8 @@ class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY file", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     # point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Point size", )
-    point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
+    # point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
+    point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
     alpha_radius: FloatProperty(name="Radius", default=1.0, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
     
     def _display_percent_update(self, context, ):
