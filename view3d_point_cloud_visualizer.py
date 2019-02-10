@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 7, 0),
+           "version": (0, 7, 1),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -421,6 +421,41 @@ class PCVShaders():
             fragColor = col;
         }
     '''
+    vertex_shader_simple = '''
+        in vec3 position;
+        in vec3 normal;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        void main()
+        {
+            vec3 n = normal;
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = color;
+            f_alpha_radius = alpha_radius;
+        }
+    '''
+    fragment_shader_simple = '''
+        in vec4 f_color;
+        in float f_alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            fragColor = f_color * a;
+        }
+    '''
 
 
 def load_ply_to_cache(operator, context, ):
@@ -468,7 +503,7 @@ def load_ply_to_cache(operator, context, ):
         normals = False
     pcv.has_normals = normals
     if(not pcv.has_normals):
-        pcv.light_enabled = False
+        pcv.illumination = False
     vcols = True
     if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
         vcols = False
@@ -514,7 +549,13 @@ def load_ply_to_cache(operator, context, ):
         l = len(vs)
     d['display_percent'] = l
     d['current_display_percent'] = l
-    shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+    
+    ienabled = pcv.illumination
+    d['illumination'] = ienabled
+    if(ienabled):
+        shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+    else:
+        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
     
     d['shader'] = shader
@@ -625,6 +666,21 @@ class PCVManager():
             ci['object'] = o
             pcv = o.point_cloud_visualizer
         
+        if(ci['illumination'] != pcv.illumination):
+            if(pcv.illumination):
+                shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+                ci['illumination'] = True
+            else:
+                shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+                ci['illumination'] = False
+            vs = ci['vertices']
+            cs = ci['colors']
+            ns = ci['normals']
+            l = ci['current_display_percent']
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+            ci['shader'] = shader
+            ci['batch'] = batch
+        
         shader.bind()
         pm = bpy.context.region_data.perspective_matrix
         shader.uniform_float("perspective_matrix", pm)
@@ -632,7 +688,7 @@ class PCVManager():
         shader.uniform_float("point_size", pcv.point_size)
         shader.uniform_float("alpha_radius", pcv.alpha_radius)
         
-        if(pcv.light_enabled and pcv.has_normals):
+        if(pcv.illumination and pcv.has_normals and ci['illumination']):
             cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
             _, obrot, _ = o.matrix_world.decompose()
             mr = obrot.to_matrix().to_4x4()
@@ -663,15 +719,16 @@ class PCVManager():
             c = pcv.shadow_intensity
             shader.uniform_float("shadow_intensity", (c, c, c, ))
             shader.uniform_float("show_normals", float(pcv.show_normals))
-            shader.uniform_float("show_illumination", float(pcv.light_enabled))
+            shader.uniform_float("show_illumination", float(pcv.illumination))
         else:
-            z = (0, 0, 0)
-            shader.uniform_float("light_direction", z)
-            shader.uniform_float("light_intensity", z)
-            shader.uniform_float("shadow_direction", z)
-            shader.uniform_float("shadow_intensity", z)
-            shader.uniform_float("show_normals", float(False))
-            shader.uniform_float("show_illumination", float(False))
+            # z = (0, 0, 0)
+            # shader.uniform_float("light_direction", z)
+            # shader.uniform_float("light_intensity", z)
+            # shader.uniform_float("shadow_direction", z)
+            # shader.uniform_float("shadow_intensity", z)
+            # shader.uniform_float("show_normals", float(False))
+            # shader.uniform_float("show_illumination", float(False))
+            pass
         
         batch.draw(shader)
     
@@ -730,6 +787,7 @@ class PCVManager():
                 'colors': None,
                 'display_percent': None,
                 'current_display_percent': None,
+                'illumination': False,
                 'shader': False,
                 'batch': False,
                 'ready': False,
@@ -947,7 +1005,10 @@ class PCV_OT_render(Operator):
             cs = [b for _, a, b, c in sps][::-1]
             ns = [c for _, a, b, c in sps][::-1]
             
-            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            if(pcv.illumination):
+                shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            else:
+                shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             shader.bind()
             
@@ -960,7 +1021,7 @@ class PCV_OT_render(Operator):
             shader.uniform_float("point_size", pcv.render_point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             
-            if(pcv.light_enabled and pcv.has_normals):
+            if(pcv.illumination and pcv.has_normals and cloud['illumination']):
                 cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
                 _, obrot, _ = o.matrix_world.decompose()
                 mr = obrot.to_matrix().to_4x4()
@@ -978,15 +1039,16 @@ class PCV_OT_render(Operator):
                 c = pcv.shadow_intensity
                 shader.uniform_float("shadow_intensity", (c, c, c, ))
                 shader.uniform_float("show_normals", float(pcv.show_normals))
-                shader.uniform_float("show_illumination", float(pcv.light_enabled))
+                shader.uniform_float("show_illumination", float(pcv.illumination))
             else:
-                z = (0, 0, 0)
-                shader.uniform_float("light_direction", z)
-                shader.uniform_float("light_intensity", z)
-                shader.uniform_float("shadow_direction", z)
-                shader.uniform_float("shadow_intensity", z)
-                shader.uniform_float("show_normals", float(False))
-                shader.uniform_float("show_illumination", float(False))
+                # z = (0, 0, 0)
+                # shader.uniform_float("light_direction", z)
+                # shader.uniform_float("light_intensity", z)
+                # shader.uniform_float("shadow_direction", z)
+                # shader.uniform_float("shadow_intensity", z)
+                # shader.uniform_float("show_normals", float(False))
+                # shader.uniform_float("show_illumination", float(False))
+                pass
             
             batch.draw(shader)
             
@@ -1115,14 +1177,14 @@ class PCV_PT_panel(Panel):
                         ok = True
         
         c = sub.column()
-        c.prop(pcv, 'light_enabled', toggle=True, )
+        c.prop(pcv, 'illumination', toggle=True, )
         if(ok):
             if(not pcv.has_normals):
                 c.label(text="Missing vertex normals.", icon='ERROR', )
                 c.enabled = False
         else:
             c.enabled = False
-        if(pcv.light_enabled):
+        if(pcv.illumination):
             cc = c.column()
             cc.prop(pcv, 'light_direction', text="", )
             ccc = cc.column(align=True)
@@ -1175,7 +1237,7 @@ class PCV_PT_panel(Panel):
             
             c.label(text="has_normals: {}".format(pcv.has_normals))
             c.label(text="has_vcols: {}".format(pcv.has_vcols))
-            c.label(text="light_enabled: {}".format(pcv.light_enabled))
+            c.label(text="illumination: {}".format(pcv.illumination))
             c.label(text="light_direction: {}".format(pcv.light_direction))
             c.label(text="light_intensity: {}".format(pcv.light_intensity))
             c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
@@ -1238,7 +1300,7 @@ class PCV_properties(PropertyGroup):
     
     has_normals: BoolProperty(default=False)
     has_vcols: BoolProperty(default=False)
-    light_enabled: BoolProperty(name="Illumination", description="Enable extra illumination on point cloud", default=False, )
+    illumination: BoolProperty(name="Illumination", description="Enable extra illumination on point cloud", default=False, )
     light_direction: FloatVectorProperty(name="Light Direction", description="Light direction", default=(0.0, 1.0, 0.0), subtype='DIRECTION', size=3, )
     # light_color: FloatVectorProperty(name="Light Color", description="", default=(0.2, 0.2, 0.2), min=0, max=1, subtype='COLOR', size=3, )
     light_intensity: FloatProperty(name="Light Intensity", description="Light intensity", default=0.3, min=0, max=1, subtype='FACTOR', )

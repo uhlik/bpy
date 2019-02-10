@@ -84,6 +84,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.7.1 viewport performance fixes
 * 0.7.0 ascii ply support
 * 0.6.6 fixed drawing after undo/redo
 * 0.6.5 point cloud illumination
