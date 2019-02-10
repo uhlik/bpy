@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 7, 1),
+           "version": (0, 7, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1193,81 +1193,99 @@ class PCV_PT_panel(Panel):
             if(not pcv.has_normals):
                 cc.enabled = e
         
-        sub.separator()
-        
-        b = sub.box()
-        r = b.row()
-        r.prop(pcv, 'render_expanded', icon='TRIA_DOWN' if pcv.render_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-        r.label(text="Render")
-        if(pcv.render_expanded):
-            c = b.column()
-            r = c.row(align=True)
-            r.operator('point_cloud_visualizer.render')
-            r.operator('point_cloud_visualizer.animation')
-            c = b.column()
-            c.prop(pcv, 'render_display_percent')
-            c.prop(pcv, 'render_point_size')
-            c.separator()
-            c.prop(pcv, 'render_suffix')
-            c.prop(pcv, 'render_zeros')
-            c.enabled = PCV_OT_render.poll(context)
-        
         if(pcv.uuid in PCVManager.cache):
+            sub.separator()
             r = sub.row()
             h, t = os.path.split(pcv.filepath)
             n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
             r.label(text='{}: {} points'.format(t, n))
+
+
+class PCV_PT_render(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Render"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        sub = l.column()
+        c = sub.column()
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.render')
+        r.operator('point_cloud_visualizer.animation')
+        c = sub.column()
+        c.prop(pcv, 'render_display_percent')
+        c.prop(pcv, 'render_point_size')
+        c.separator()
+        c.prop(pcv, 'render_suffix')
+        c.prop(pcv, 'render_zeros')
+        c.enabled = PCV_OT_render.poll(context)
+
+
+class PCV_PT_debug(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Debug"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        sub = l.column()
         
-        if(pcv.debug):
-            sub.separator()
-            
-            sub.label(text="properties:")
-            b = sub.box()
-            c = b.column()
-            c.label(text="uuid: {}".format(pcv.uuid))
-            c.label(text="filepath: {}".format(pcv.filepath))
-            c.label(text="point_size: {}".format(pcv.point_size))
-            c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
-            c.label(text="display_percent: {}".format(pcv.display_percent))
-            c.label(text="render_expanded: {}".format(pcv.render_expanded))
-            c.label(text="render_point_size: {}".format(pcv.render_point_size))
-            c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
-            c.label(text="render_suffix: {}".format(pcv.render_suffix))
-            c.label(text="render_zeros: {}".format(pcv.render_zeros))
-            
-            c.label(text="has_normals: {}".format(pcv.has_normals))
-            c.label(text="has_vcols: {}".format(pcv.has_vcols))
-            c.label(text="illumination: {}".format(pcv.illumination))
-            c.label(text="light_direction: {}".format(pcv.light_direction))
-            c.label(text="light_intensity: {}".format(pcv.light_intensity))
-            c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
-            
-            c.label(text="debug: {}".format(pcv.debug))
-            c.scale_y = 0.5
-            
-            sub.label(text="manager:")
-            c = sub.column(align=True)
-            c.operator('point_cloud_visualizer.init')
-            c.operator('point_cloud_visualizer.deinit')
-            c.operator('point_cloud_visualizer.gc')
-            b = sub.box()
-            c = b.column()
-            c.label(text="cache: {} item(s)".format(len(PCVManager.cache.items())))
-            c.label(text="handle: {}".format(PCVManager.handle))
-            c.label(text="initialized: {}".format(PCVManager.initialized))
-            c.scale_y = 0.5
-            
-            if(len(PCVManager.cache)):
-                sub.label(text="cache details:")
-                for k, v in PCVManager.cache.items():
-                    b = sub.box()
-                    c = b.column()
-                    c.scale_y = 0.5
-                    for ki, vi in sorted(v.items()):
-                        if(type(vi) == np.ndarray):
-                            c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
-                        else:
-                            c.label(text="{}: {}".format(ki, vi))
+        sub.label(text="properties:")
+        b = sub.box()
+        c = b.column()
+        c.label(text="uuid: {}".format(pcv.uuid))
+        c.label(text="filepath: {}".format(pcv.filepath))
+        c.label(text="point_size: {}".format(pcv.point_size))
+        c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
+        c.label(text="display_percent: {}".format(pcv.display_percent))
+        c.label(text="render_expanded: {}".format(pcv.render_expanded))
+        c.label(text="render_point_size: {}".format(pcv.render_point_size))
+        c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
+        c.label(text="render_suffix: {}".format(pcv.render_suffix))
+        c.label(text="render_zeros: {}".format(pcv.render_zeros))
+        
+        c.label(text="has_normals: {}".format(pcv.has_normals))
+        c.label(text="has_vcols: {}".format(pcv.has_vcols))
+        c.label(text="illumination: {}".format(pcv.illumination))
+        c.label(text="light_direction: {}".format(pcv.light_direction))
+        c.label(text="light_intensity: {}".format(pcv.light_intensity))
+        c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
+        
+        c.label(text="debug: {}".format(pcv.debug))
+        c.scale_y = 0.5
+        
+        sub.label(text="manager:")
+        c = sub.column(align=True)
+        c.operator('point_cloud_visualizer.init')
+        c.operator('point_cloud_visualizer.deinit')
+        c.operator('point_cloud_visualizer.gc')
+        b = sub.box()
+        c = b.column()
+        c.label(text="cache: {} item(s)".format(len(PCVManager.cache.items())))
+        c.label(text="handle: {}".format(PCVManager.handle))
+        c.label(text="initialized: {}".format(PCVManager.initialized))
+        c.scale_y = 0.5
+        
+        if(len(PCVManager.cache)):
+            sub.label(text="cache details:")
+            for k, v in PCVManager.cache.items():
+                b = sub.box()
+                c = b.column()
+                c.scale_y = 0.5
+                for ki, vi in sorted(v.items()):
+                    if(type(vi) == np.ndarray):
+                        c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
+                    else:
+                        c.label(text="{}: {}".format(ki, vi))
 
 
 class PCV_properties(PropertyGroup):
@@ -1326,6 +1344,7 @@ def watcher(scene):
 classes = (
     PCV_properties,
     PCV_PT_panel,
+    PCV_PT_render,
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
@@ -1334,6 +1353,7 @@ classes = (
 )
 if(DEBUG):
     classes = classes + (
+        PCV_PT_debug,
         PCV_OT_init,
         PCV_OT_deinit,
         PCV_OT_gc,

@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.6.5.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.7.2.png)
 
 ### General info
 
@@ -84,6 +84,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.7.2 ui tweaks
 * 0.7.1 viewport performance fixes
 * 0.7.0 ascii ply support
 * 0.6.6 fixed drawing after undo/redo
