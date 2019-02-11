@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.7.2.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.0.png)
 
 ### General info
 
@@ -45,6 +45,8 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 * Transforming parent object transforms point cloud as well.
 * `Illumination` works only when vertex normals are present
 * When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
+* Single point cloud can be rendered on transparent and composed over regular render
+* For rendering in regular render engine you can conver cloud to colored mesh
 
 ##### Display Options:
 
@@ -67,7 +69,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * Set render path in `Properties > Output > Output`. Just path is used.
 * Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
 * If `Illumination` is enabled it will be rendered as well
-* Hit `Render` or `Animation`.
+* Hit `Render` or `Animation`
 
 ##### Render options:
 
@@ -75,6 +77,13 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * `Count` - percentage of rendered points
 * `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
 * `Leading Zeros` - image filename frame number leading zeros count
+
+##### Conversion options:
+
+* `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
+* `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 wven whan cloud is scaled
+* `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
+* `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
 
 ##### Known bugs:
 
@@ -84,6 +93,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.8.0 convert to mesh
 * 0.7.2 ui tweaks
 * 0.7.1 viewport performance fixes
 * 0.7.0 ascii ply support

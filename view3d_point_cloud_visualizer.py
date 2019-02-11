@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 7, 2),
+           "version": (0, 8, 0),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -37,16 +37,28 @@ import math
 import numpy as np
 
 import bpy
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
 from bpy.types import PropertyGroup, Panel, Operator
 import gpu
 from gpu.types import GPUOffScreen, GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
 import bgl
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Vector, Quaternion
 from bpy_extras.object_utils import world_to_camera_view
 from bpy_extras.io_utils import axis_conversion
+
+
+# FIXME undo still doesn't work in some cases, from what i've seen, only when i am undoing operations on parent object, especially when you undo/redo e.g. transforms around load/draw operators, filepath property gets reset and the whole thing is drawn, but ui looks like loding never happened, i've added a quick fix storing path in cache, but it all depends on object name and this is bad.
+# TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
+# TODO ~2k lines, maybe time to break into modules
+# TODO any new functionality? any ideas?
+
+# NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
+#      W293 blank line contains whitespace              --> and i will do it, i hate caret jumping all around
+#      E501 line too long (81 > 79 characters)          --> yea sure, i have 24" screen and i will write in small stripe in the middle, fantastic
+#      E741 ambiguous variable name 'l'                 --> this one is new? good old pep8, never had an issue to confuse letters, sorry, i like one letter variables and i will keep using them
+#      E402 module level import not at top of file      --> hmm, why do we have to have bl_info on top? 99% of other addons have it too
 
 
 DEBUG = False
@@ -66,6 +78,424 @@ def human_readable_number(num, suffix='', ):
             return "{:3.1f}{}{}".format(num, unit, suffix)
         num /= f
     return "{:.1f}{}{}".format(num, 'Y', suffix)
+
+
+class InstanceMeshGenerator():
+    def __init__(self):
+        self.def_verts, self.def_edges, self.def_faces = self.generate()
+    
+    def generate(self):
+        return [(0, 0, 0, ), ], [], []
+
+
+class VertexMeshGenerator(InstanceMeshGenerator):
+    def __init__(self):
+        log("{}:".format(self.__class__.__name__), 0, )
+        super(VertexMeshGenerator, self).__init__()
+
+
+class TetrahedronMeshGenerator(InstanceMeshGenerator):
+    def __init__(self, length=1.0, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        if(length <= 0):
+            log("length is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
+            length = 0.001
+        self.length = length
+        super(TetrahedronMeshGenerator, self).__init__()
+    
+    def generate(self):
+        def circle2d_coords(radius, steps, offset, ox, oy):
+            r = []
+            angstep = 2 * math.pi / steps
+            for i in range(steps):
+                x = math.sin(i * angstep + offset) * radius + ox
+                y = math.cos(i * angstep + offset) * radius + oy
+                r.append((x, y))
+            return r
+        
+        l = self.length
+        excircle_radius = math.sqrt(3) / 3 * l
+        c = circle2d_coords(excircle_radius, 3, 0, 0, 0)
+        h = l / 3 * math.sqrt(6)
+        dv = [(c[0][0], c[0][1], 0, ),
+              (c[1][0], c[1][1], 0, ),
+              (c[2][0], c[2][1], 0, ),
+              (0, 0, h, ), ]
+        df = ([(0, 1, 2),
+               (3, 2, 1),
+               (3, 1, 0),
+               (3, 0, 2), ])
+        return dv, [], df
+
+
+class EquilateralTriangleMeshGenerator(InstanceMeshGenerator):
+    def __init__(self, length=1.0, offset=0.0, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        if(length <= 0):
+            log("got ridiculous length value (smaller or equal to 0).. setting to 0.001", 1)
+            length = 0.001
+        self.length = length
+        self.offset = offset
+        super(EquilateralTriangleMeshGenerator, self).__init__()
+    
+    def generate(self):
+        def circle2d_coords(radius, steps, offset, ox, oy):
+            r = []
+            angstep = 2 * math.pi / steps
+            for i in range(steps):
+                x = math.sin(i * angstep + offset) * radius + ox
+                y = math.cos(i * angstep + offset) * radius + oy
+                r.append((x, y))
+            return r
+        
+        r = math.sqrt(3) / 3 * self.length
+        c = circle2d_coords(r, 3, self.offset, 0, 0)
+        dv = []
+        for i in c:
+            dv.append((i[0], i[1], 0, ))
+        df = [(0, 2, 1, ), ]
+        return dv, [], df
+
+
+class IcoSphereMeshGenerator(InstanceMeshGenerator):
+    def __init__(self, radius=1, recursion=1, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        if(radius <= 0):
+            log("radius is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
+            radius = 0.001
+        self.radius = radius
+        recursion = int(recursion)
+        if(recursion < 0):
+            log("recursion is (or less than) 0, which is ridiculous. setting to 0..", 1)
+            recursion = 0
+        self.recursion = recursion
+        super(IcoSphereMeshGenerator, self).__init__()
+    
+    def generate(self):
+        def generate_icosphere(recursion, radius, ):
+            # http://blog.andreaskahler.com/2009/06/creating-icosphere-mesh-in-code.html
+            # http://www.kynd.info/library/mathandphysics/Icosphere/
+            # http://www.csee.umbc.edu/~squire/reference/polyhedra.shtml
+            
+            verts = []
+            faces = []
+            cache = {}
+            
+            phiaa = 26.56505
+            r = 1.0
+            phia = math.pi * phiaa / 180.0
+            theb = math.pi * 36.0 / 180.0
+            the72 = math.pi * 72.0 / 180
+            
+            verts.append((0.0, 0.0, r))
+            the = 0.0
+            for i in range(5):
+                verts.append((r * math.cos(the) * math.cos(phia),
+                              r * math.sin(the) * math.cos(phia),
+                              r * math.sin(phia), ))
+                the = the + the72
+            
+            the = theb
+            for i in range(5):
+                verts.append((r * math.cos(the) * math.cos(-phia),
+                              r * math.sin(the) * math.cos(-phia),
+                              r * math.sin(-phia), ))
+                the = the + the72
+            verts.append((0.0, 0.0, -r))
+            
+            faces = [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 5), (0, 5, 1), (11, 7, 6), (11, 8, 7), (11, 9, 8), (11, 10, 9), (11, 6, 10),
+                     (1, 6, 2), (2, 7, 3), (3, 8, 4), (4, 9, 5), (5, 10, 1), (6, 7, 2), (7, 8, 3), (8, 9, 4), (9, 10, 5), (10, 6, 1), ]
+            
+            def add_vert(x, y, z):
+                l = math.sqrt(x * x + y * y + z * z)
+                verts.append((x / l, y / l, z / l))
+                return len(verts) - 1
+            
+            def get_middle(i1, i2):
+                p1 = i1
+                p2 = i2
+                firstIsSmaller = p1 < p2
+                if(firstIsSmaller):
+                    smallerIndex = p1
+                    greaterIndex = p2
+                else:
+                    smallerIndex = p2
+                    greaterIndex = p1
+                
+                key = (smallerIndex << 32) + greaterIndex
+                if(str(key) in cache):
+                    return cache[str(key)]
+            
+                middle = ((verts[p1][0] + verts[p2][0]) / 2,
+                          (verts[p1][1] + verts[p2][1]) / 2,
+                          (verts[p1][2] + verts[p2][2]) / 2, )
+                i = add_vert(middle[0], middle[1], middle[2])
+                cache[str(key)] = i
+                return i
+            
+            for i in range(recursion):
+                faces2 = []
+                for j in range(len(faces)):
+                    a = get_middle(faces[j][0], faces[j][1])
+                    b = get_middle(faces[j][1], faces[j][2])
+                    c = get_middle(faces[j][2], faces[j][0])
+                    faces2.append((faces[j][0], a, c))
+                    faces2.append((faces[j][1], b, a))
+                    faces2.append((faces[j][2], c, b))
+                    faces2.append((a, b, c))
+                faces = faces2
+            
+            return verts, [], faces
+        
+        dv, de, df = generate_icosphere(self.recursion, self.radius)
+        return dv, de, df
+
+
+class CubeMeshGenerator(InstanceMeshGenerator):
+    def __init__(self, length=1.0, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        if(length <= 0):
+            log("less is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
+            radius = 0.001
+        self.length = length
+        super(CubeMeshGenerator, self).__init__()
+    
+    def generate(self):
+        l = self.length / 2
+        dv = [(+l, +l, -l),
+              (+l, -l, -l),
+              (-l, -l, -l),
+              (-l, +l, -l),
+              (+l, +l, +l),
+              (+l, -l, +l),
+              (-l, -l, +l),
+              (-l, +l, +l), ]
+        df = [(0, 1, 2, 3),
+              (4, 7, 6, 5),
+              (0, 4, 5, 1),
+              (1, 5, 6, 2),
+              (2, 6, 7, 3),
+              (4, 0, 3, 7), ]
+        return dv, [], df
+
+
+class PCMeshInstancer():
+    def __init__(self, name, points, generator=None, matrix=None, size=0.01, normal_align=False, vcols=False, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        
+        self.name = name
+        self.points = points
+        if(generator is None):
+            generator = InstanceMeshGenerator()
+        self.generator = generator
+        if(matrix is None):
+            matrix = Matrix()
+        self.matrix = matrix
+        self.size = size
+        self.normal_align = normal_align
+        self.vcols = vcols
+        
+        self.uuid = uuid.uuid1()
+        
+        log("calculating matrices..", 1)
+        self.calc_matrices()
+        
+        log("calculating mesh..", 1)
+        self.calc_mesh_data()
+        
+        log("creating mesh..", 1)
+        self.mesh = bpy.data.meshes.new(self.name)
+        self.mesh.from_pydata(self.verts, self.edges, self.faces)
+        self.object = self.add_object(self.name, self.mesh)
+        self.object.matrix_world = self.matrix
+        self.mesh.show_double_sided = False
+        self.activate_object(self.object)
+        
+        if(self.vcols):
+            log("making vertex colors..", 1)
+            self.make_vcols()
+        
+        log("cleanup..", 1)
+        
+        context = bpy.context
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        collection.objects.unlink(self.def_object)
+        bpy.data.objects.remove(self.def_object)
+        bpy.data.meshes.remove(self.def_mesh)
+        
+        log("done.", 1)
+    
+    def add_object(self, name, data, ):
+        so = bpy.context.scene.objects
+        for i in so:
+            i.select_set(False)
+        o = bpy.data.objects.new(name, data)
+        context = bpy.context
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        collection.objects.link(o)
+        o.select_set(True)
+        view_layer.objects.active = o
+        return o
+    
+    def activate_object(self, obj, ):
+        bpy.ops.object.select_all(action='DESELECT')
+        context = bpy.context
+        view_layer = context.view_layer
+        obj.select_set(True)
+        view_layer.objects.active = obj
+    
+    def calc_matrices(self):
+        def split(p):
+            co = (p[0], p[1], p[2])
+            no = (p[3], p[4], p[5])
+            rgb = (p[6], p[7], p[8])
+            return co, no, rgb
+        
+        def rotation_to(a, b):
+            """Calculates shortest Quaternion from Vector a to Vector b"""
+            # a - up vector
+            # b - direction to point to
+            
+            # http://stackoverflow.com/questions/1171849/finding-quaternion-representing-the-rotation-from-one-vector-to-another
+            # https://github.com/toji/gl-matrix/blob/f0583ef53e94bc7e78b78c8a24f09ed5e2f7a20c/src/gl-matrix/quat.js#L54
+            
+            a = a.normalized()
+            b = b.normalized()
+            q = Quaternion()
+            
+            tmpvec3 = Vector()
+            xUnitVec3 = Vector((1, 0, 0))
+            yUnitVec3 = Vector((0, 1, 0))
+            
+            dot = a.dot(b)
+            if(dot < -0.999999):
+                # tmpvec3 = cross(xUnitVec3, a)
+                tmpvec3 = xUnitVec3.cross(a)
+                if(tmpvec3.length < 0.000001):
+                    tmpvec3 = yUnitVec3.cross(a)
+                tmpvec3.normalize()
+                # q = Quaternion(tmpvec3, Math.PI)
+                q = Quaternion(tmpvec3, math.pi)
+            elif(dot > 0.999999):
+                q.x = 0
+                q.y = 0
+                q.z = 0
+                q.w = 1
+            else:
+                tmpvec3 = a.cross(b)
+                q.x = tmpvec3[0]
+                q.y = tmpvec3[1]
+                q.z = tmpvec3[2]
+                q.w = 1 + dot
+                q.normalize()
+            return q
+        
+        _, _, osv = self.matrix.decompose()
+        osm = Matrix(((osv.x, 0.0, 0.0, 0.0), (0.0, osv.y, 0.0, 0.0), (0.0, 0.0, osv.z, 0.0), (0.0, 0.0, 0.0, 1.0))).inverted()
+        
+        # calculate instance matrices from points..
+        self.matrices = []
+        for i, p in enumerate(self.points):
+            co, no, rgb = split(p)
+            # location
+            ml = Matrix.Translation(co).to_4x4()
+            if(self.normal_align):
+                # rotation from normal
+                quat = rotation_to(Vector((0, 0, 1)), Vector(no))
+                mr = quat.to_matrix().to_4x4()
+            else:
+                mr = Matrix.Rotation(0.0, 4, 'Z')
+            # scale
+            s = self.size
+            ms = Matrix(((s, 0.0, 0.0, 0.0), (0.0, s, 0.0, 0.0), (0.0, 0.0, s, 0.0), (0.0, 0.0, 0.0, 1.0)))
+            # combine
+            m = ml @ mr @ ms @ osm
+            self.matrices.append(m)
+    
+    def calc_mesh_data(self):
+        # initialize lists
+        l = len(self.matrices)
+        self.verts = [(0, 0, 0)] * (l * len(self.generator.def_verts))
+        self.edges = [(0, 0)] * (l * len(self.generator.def_edges))
+        self.faces = [(0)] * (l * len(self.generator.def_faces))
+        self.colors = [None] * l
+        
+        # generator data
+        v, e, f = self.generator.generate()
+        self.def_verts = v
+        self.def_edges = e
+        self.def_faces = f
+        
+        # def object
+        self.def_mesh = bpy.data.meshes.new("PCInstancer-def_mesh-{}".format(self.uuid))
+        self.def_mesh.from_pydata(v, e, f)
+        self.def_object = self.add_object("PCInstancer-def_object-{}".format(self.uuid), self.def_mesh)
+        
+        # loop over matrices
+        for i, m in enumerate(self.matrices):
+            # transform mesh
+            self.def_mesh.transform(m)
+            # store
+            self.write_pydata_chunk(i)
+            # reset mesh
+            for j, v in enumerate(self.def_object.data.vertices):
+                v.co = Vector(self.def_verts[j])
+    
+    def write_pydata_chunk(self, i, ):
+        # exponents
+        ev = len(self.generator.def_verts)
+        ee = len(self.generator.def_edges)
+        ef = len(self.generator.def_faces)
+        # vertices
+        for j in range(ev):
+            self.verts[(i * ev) + j] = self.def_mesh.vertices[j].co.to_tuple()
+        # edges
+        if(len(self.def_edges) is not 0):
+            for j in range(ee):
+                self.edges[(i * ee) + j] = ((i * ev) + self.def_edges[j][0],
+                                            (i * ev) + self.def_edges[j][1], )
+        # faces
+        if(len(self.def_faces) is not 0):
+            for j in range(ef):
+                # tris
+                if(len(self.def_faces[j]) == 3):
+                    self.faces[(i * ef) + j] = ((i * ev) + self.def_faces[j][0],
+                                                (i * ev) + self.def_faces[j][1],
+                                                (i * ev) + self.def_faces[j][2], )
+                # quads
+                elif(len(self.def_faces[j]) == 4):
+                    self.faces[(i * ef) + j] = ((i * ev) + self.def_faces[j][0],
+                                                (i * ev) + self.def_faces[j][1],
+                                                (i * ev) + self.def_faces[j][2],
+                                                (i * ev) + self.def_faces[j][3], )
+                # ngons
+                else:
+                    ngon = []
+                    for a in range(len(self.def_faces[j])):
+                        ngon.append((i * ev) + self.def_faces[j][a])
+                    self.faces[(i * ef) + j] = tuple(ngon)
+    
+    def make_vcols(self):
+        if(len(self.mesh.loops) != 0):
+            colors = []
+            for i, v in enumerate(self.points):
+                rgb = (v[6], v[7], v[8])
+                col = (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
+                # colors.append(Color(col))
+                colors.append(col)
+            
+            num = len(self.def_verts)
+            vc = self.mesh.vertex_colors.new()
+            for l in self.mesh.loops:
+                vi = l.vertex_index
+                li = l.index
+                c = colors[int(vi / num)]
+                # vc.data[li].color = (c.r, c.g, c.b, 1.0, )
+                vc.data[li].color = c + (1.0, )
+        else:
+            log("no mesh loops in mesh", 2, )
 
 
 class BinPlyPointCloudReader():
@@ -536,6 +966,7 @@ def load_ply_to_cache(operator, context, ):
     pcv.uuid = u
     
     d = PCVManager.new()
+    d['filepath'] = filepath
     d['uuid'] = u
     d['stats'] = len(vs)
     d['vertices'] = vs
@@ -665,6 +1096,10 @@ class PCVManager():
             # update stored reference
             ci['object'] = o
             pcv = o.point_cloud_visualizer
+            # push back correct uuid, since undo changed it, why? WHY? why do i even bother?
+            pcv.uuid = uuid
+            # push back filepath, it might get lost during undo/redo
+            pcv.filepath = ci['filepath']
         
         if(ci['illumination'] != pcv.illumination):
             if(pcv.illumination):
@@ -1112,6 +1547,85 @@ class PCV_OT_animation(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_convert(Operator):
+    bl_idname = "point_cloud_visualizer.convert"
+    bl_label = "Convert"
+    bl_description = "Convert point cloud to mesh"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        scene = context.scene
+        pcv = context.object.point_cloud_visualizer
+        o = context.object
+        
+        # def real_length_to_relative(matrix, length, ):
+        #     """From matrix_world and desired real size length in meters, calculate relative length
+        #     without matrix applied. Apply matrix, and you will get desired length."""
+        #     l, r, s = matrix.decompose()
+        #     ms = Matrix.Scale(s.x, 4)
+        #     l = Vector((length, 0, 0))
+        #     v = ms.inverted() @ l
+        #     # v = ms @ l
+        #     return v.x
+        
+        def apply_matrix(points, matrix):
+            log("apply_matrix:", 0, )
+            ms = str(matrix).replace('            ', ', ').replace('\n', '')
+            log("points: {0}, matrix: {1}".format(len(points), ms), 1)
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            r = [None] * len(points)
+            for i, p in enumerate(points):
+                co = matrix @ Vector((p[0], p[1], p[2]))
+                no = matrot @ Vector((p[3], p[4], p[5]))
+                r[i] = (co.x, co.y, co.z, no.x, no.y, no.z, p[6], p[7], p[8])
+            return r
+        
+        g = None
+        if(pcv.mesh_type == 'VERTEX'):
+            g = VertexMeshGenerator()
+        elif(pcv.mesh_type == 'TRIANGLE'):
+            g = EquilateralTriangleMeshGenerator()
+        elif(pcv.mesh_type == 'TETRAHEDRON'):
+            g = TetrahedronMeshGenerator()
+        elif(pcv.mesh_type == 'CUBE'):
+            g = CubeMeshGenerator()
+        elif(pcv.mesh_type == 'ICOSPHERE'):
+            g = IcoSphereMeshGenerator()
+        else:
+            pass
+        
+        _, t = os.path.split(pcv.filepath)
+        n, _ = os.path.splitext(t)
+        m = o.matrix_world.copy()
+        points = PlyPointCloudReader(pcv.filepath).points
+        points = apply_matrix(points, m)
+        # s = real_length_to_relative(m, pcv.mesh_size)
+        s = pcv.mesh_size
+        a = pcv.mesh_normal_align
+        c = pcv.mesh_vcols
+        
+        d = {'name': n, 'points': points, 'generator': g, 'matrix': Matrix(),
+             'size': s, 'normal_align': a, 'vcols': c, }
+        instancer = PCMeshInstancer(**d)
+        
+        o = instancer.object
+        me = o.data
+        me.transform(m.inverted())
+        o.matrix_world = m
+        
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -1226,6 +1740,30 @@ class PCV_PT_render(Panel):
         c.enabled = PCV_OT_render.poll(context)
 
 
+class PCV_PT_convert(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Convert"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        sub = l.column()
+        c = sub.column()
+        c.prop(pcv, 'mesh_type')
+        cc = c.column()
+        cc.prop(pcv, 'mesh_size')
+        cc.prop(pcv, 'mesh_normal_align')
+        cc.prop(pcv, 'mesh_vcols')
+        if(pcv.mesh_type == 'VERTEX'):
+            cc.enabled = False
+        c.operator('point_cloud_visualizer.convert')
+        c.enabled = PCV_OT_convert.poll(context)
+
+
 class PCV_PT_debug(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -1325,6 +1863,15 @@ class PCV_properties(PropertyGroup):
     shadow_intensity: FloatProperty(name="Shadow Intensity", description="Shadow intensity", default=0.2, min=0, max=1, subtype='FACTOR', )
     show_normals: BoolProperty(name="Colorize By Vertex Normals", description="", default=False, )
     
+    mesh_type: EnumProperty(name="Type", items=[('VERTEX', "Vertex", ""),
+                                                ('TRIANGLE', "Equilateral Triangle", ""),
+                                                ('TETRAHEDRON', "Tetrahedron", ""),
+                                                ('CUBE', "Cube", ""),
+                                                ('ICOSPHERE', "Ico Sphere", ""), ], default='CUBE', description="Instance mesh type", )
+    mesh_size: FloatProperty(name="Size", description="Mesh instance size, instanced mesh has size 1.0", default=0.01, min=0.000001, precision=4, max=100.0, )
+    mesh_normal_align: BoolProperty(name="Align To Normal", description="Align instance to point normal", default=True, )
+    mesh_vcols: BoolProperty(name="Colors", description="Assign point color to instance vertex colors", default=True, )
+    
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, )
     
     @classmethod
@@ -1345,11 +1892,13 @@ classes = (
     PCV_properties,
     PCV_PT_panel,
     PCV_PT_render,
+    PCV_PT_convert,
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
     PCV_OT_render,
     PCV_OT_animation,
+    PCV_OT_convert,
 )
 if(DEBUG):
     classes = classes + (
@@ -1373,4 +1922,10 @@ def unregister():
 
 
 if __name__ == "__main__":
+    """
+    > Well, that doesn't explain... why you've come all the way out here, all the way out here to hell.
+    > I, uh, have a job out in the town of Machine.
+    > Machine? That's the end of the line.
+    Jim Jarmusch, Dead Man (1995)
+    """
     register()
