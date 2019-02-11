@@ -46,7 +46,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 * `Illumination` works only when vertex normals are present
 * When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
 * Single point cloud can be rendered on transparent and composed over regular render
-* For rendering in regular render engine you can conver cloud to colored mesh
+* For rendering in regular render engine you can convert cloud to colored mesh
 
 ##### Display Options:
 
