@@ -371,12 +371,10 @@ class PCMeshInstancer():
             
             dot = a.dot(b)
             if(dot < -0.999999):
-                # tmpvec3 = cross(xUnitVec3, a)
                 tmpvec3 = xUnitVec3.cross(a)
                 if(tmpvec3.length < 0.000001):
                     tmpvec3 = yUnitVec3.cross(a)
                 tmpvec3.normalize()
-                # q = Quaternion(tmpvec3, Math.PI)
                 q = Quaternion(tmpvec3, math.pi)
             elif(dot > 0.999999):
                 q.x = 0
