@@ -19,7 +19,7 @@
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 2),
+           "version": (0, 3, 3),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
            "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
@@ -30,20 +30,22 @@ bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
 import os
 import time
 import datetime
-from mathutils import Matrix
+import io
+import shutil
 
 import bpy
 import bmesh
+from mathutils import Matrix
 from bpy_extras.io_utils import ExportHelper, ImportHelper, axis_conversion
 from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, FloatProperty, IntProperty
 
-from . import export_obj
 
-
-# note for myself:
-# $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
-
+USE_PY_EXPORT = False
+try:
+    from . import export_obj
+except ImportError:
+    USE_PY_EXPORT = True
 
 DEBUG = True
 
@@ -304,6 +306,307 @@ class FastOBJReader():
         # log("completed in {}.".format(d), 1)
 
 
+class FastOBJWriter():
+    def __init__(self, o, path, apply_modifiers=False, apply_transformation=True, convert_axes=True, triangulate=False, use_uv=True, use_shading=False, use_vertex_colors=False, use_vcols_mrgb=True, use_vcols_ext=False, global_scale=1.0, precision=6, ):
+        log("{}: {}".format(self.__class__.__name__, o.name))
+        log("will write .obj at: {}".format(path), 1)
+        
+        log("prepare..", 1)
+        me = None
+        if(apply_modifiers):
+            me = o.to_mesh(bpy.context.depsgraph, apply_modifiers, )
+        
+        bm = bmesh.new()
+        if(me is not None):
+            bm.from_mesh(me)
+        else:
+            bm.from_mesh(o.data)
+        
+        log_args_align = 25
+        log("{} {}".format("{}: ".format("triangulate").ljust(log_args_align, "."), triangulate), 1)
+        if(triangulate):
+            bmesh.ops.triangulate(bm, faces=bm.faces)
+        log("{} {}".format("{}: ".format("apply_transformation").ljust(log_args_align, "."), apply_transformation), 1)
+        if(apply_transformation):
+            m = o.matrix_world.copy()
+            bm.transform(m)
+        log("{} {}".format("{}: ".format("convert_axes").ljust(log_args_align, "."), convert_axes), 1)
+        if(convert_axes):
+            axis_forward = '-Z'
+            axis_up = 'Y'
+            cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
+            bm.transform(cm)
+        
+        log("{} {}".format("{}: ".format("use_uv").ljust(log_args_align, "."), use_uv), 1)
+        log("{} {}".format("{}: ".format("use_shading").ljust(log_args_align, "."), use_shading), 1)
+        log("{} {}".format("{}: ".format("use_vertex_colors").ljust(log_args_align, "."), use_vertex_colors), 1)
+        log("{} {}".format("{}: ".format("use_vcols_mrgb").ljust(log_args_align, "."), use_vcols_mrgb), 1)
+        log("{} {}".format("{}: ".format("use_vcols_ext").ljust(log_args_align, "."), use_vcols_ext), 1)
+        
+        log("{} {}".format("{}: ".format("global_scale").ljust(log_args_align, "."), global_scale), 1)
+        if(global_scale != 1.0):
+            sm = Matrix.Scale(global_scale, 4)
+            bm.transform(sm)
+        
+        log("{} {}".format("{}: ".format("precision").ljust(log_args_align, "."), precision), 1)
+        
+        # update normals after transforms
+        bm.normal_update()
+        
+        sio = io.StringIO(initial_value='', newline='', )
+        siov = io.StringIO(initial_value='', newline='', )
+        siovn = io.StringIO(initial_value='', newline='', )
+        siof = io.StringIO(initial_value='', newline='', )
+        siovt = io.StringIO(initial_value='', newline='', )
+        
+        # sort-of-header
+        sio.write("# Fast Wavefront^2 (.obj)\n")
+        sio.write('#\n')
+        sio.write('o %s_%s\n' % (o.name, o.data.name))
+        
+        # vertices
+        vs = bm.verts
+        bm.verts.ensure_lookup_table()
+        
+        # vertex colors
+        col_layer = None
+        if(use_vertex_colors):
+            # try to find active vertex color layer
+            col_layer = bm.loops.layers.color.active
+            if(col_layer is None):
+                # no vertex colors, turn them off
+                use_vertex_colors = False
+                use_vcols_mrgb = False
+                use_vcols_ext = False
+                log("no vertex colors found..", 1)
+            if(col_layer is not None):
+                if(use_vcols_mrgb and use_vcols_ext):
+                    # if both True, use mrgb
+                    log("using MRGB vertex colors..", 1)
+                    use_vcols_ext = False
+                if(not use_vcols_mrgb and not use_vcols_ext):
+                    # if both False, use mrgb
+                    log("using MRGB vertex colors..", 1)
+                    use_vcols_mrgb = True
+        
+        fwv = siov.write
+        vfmt = 'v %.{0}f %.{0}f %.{0}f\n'.format(precision)
+        vfmtvcolext = 'v %.{0}f %.{0}f %.{0}f %.{0}f %.{0}f %.{0}f\n'.format(precision)
+        if(use_vertex_colors and use_vcols_ext):
+            # write vertices and vertex colors in extended format
+            log("writing vertices and extended obj format vertex colors..", 1)
+            cols = [[] for i in range(len(vs))]
+            rgbf = []
+            bm.faces.ensure_lookup_table()
+            # get all colors for single vertex, ie, colors of all loops belonging to vertex
+            if(col_layer is not None):
+                fs = bm.faces
+                for f in fs:
+                    ls = f.loops
+                    for l in ls:
+                        vi = l.vert.index
+                        # get rgb only
+                        c = l[col_layer][:3]
+                        cols[vi].append(c)
+            # average color values
+            for cl in cols:
+                r = 0
+                g = 0
+                b = 0
+                l = len(cl)
+                for c in cl:
+                    r += c[0]
+                    g += c[1]
+                    b += c[2]
+                
+                def limit(v):
+                    if(v < 0.0):
+                        v = 0.0
+                    if(v > 1.0):
+                        v = 1.0
+                    return v
+                
+                rgbf.append((limit(r / l), limit(g / l), limit(b / l)))
+            
+            for v in vs:
+                fwv(vfmtvcolext % tuple(v.co[:] + rgbf[v.index]))
+        else:
+            # no ext vcols, write regular vertices
+            log("writing vertices..", 1)
+            for v in vs:
+                fwv(vfmt % v.co[:])
+        
+        if(use_vertex_colors and use_vcols_mrgb):
+            # vertex colors in mrgb format
+            log("writing mrgb vertex colors..", 1)
+            # '#MRGB ' block polypaint and mask as 4hex values per vertex.
+            # format is MMRRGGBB with up to 64 entries per line
+            cols = [[] for i in range(len(vs))]
+            hexc = []
+            bm.faces.ensure_lookup_table()
+            # get all colors from loops for each vertex
+            if(col_layer is not None):
+                fs = bm.faces
+                for f in fs:
+                    ls = f.loops
+                    for l in ls:
+                        vi = l.vert.index
+                        # get rgb only
+                        c = l[col_layer][:3]
+                        cols[vi].append(c)
+            
+            # average colors and convert to 0-255 format and then to hexadecimal values, leave 'm' to ff
+            for cl in cols:
+                r = 0
+                g = 0
+                b = 0
+                l = len(cl)
+                for c in cl:
+                    r += c[0]
+                    g += c[1]
+                    b += c[2]
+                
+                def limit(v):
+                    if(v < 0):
+                        v = 0
+                    if(v > 255):
+                        v = 255
+                    return v
+                
+                rgb8 = (limit(int((r / l) * 255.0)), limit(int((g / l) * 255.0)), limit(int((b / l) * 255.0)))
+                h = 'ff%02x%02x%02x' % rgb8
+                hexc.append(h)
+            
+            for i in range(0, len(hexc), 64):
+                # write in chunks of 64 entries per line as per specification directly after vertices
+                ch = hexc[i:i + 64]
+                s = "".join(ch)
+                fwv('#MRGB %s\n' % s)
+        
+        # faces
+        log("writing normals, faces and texture coordinates..", 1)
+        fs = bm.faces
+        fs.ensure_lookup_table()
+        # texture coordinates stuff
+        vtlocs = dict()
+        vtmaps = dict()
+        vtli = 0
+        uvl = None
+        if(use_uv):
+            uvl = bm.loops.layers.uv.active
+        if(uvl is None):
+            use_uv = False
+        # smoothing stuff
+        fsmooth = None
+        normap = dict()
+        norlen = 0
+        nori = 0
+        # shortcuts
+        fwvn = siovn.write
+        vnfmt = 'vn %.{0}f %.{0}f %.{0}f\n'.format(precision)
+        fwf = siof.write
+        fwvt = siovt.write
+        vtfmt = 'vt %.{0}f %.{0}f\n'.format(precision)
+        
+        if(use_uv):
+            # if using texture coordinates, precalculate them first, each coordinate should be reused, no duplicates
+            for f in fs:
+                fl = f.loops
+                for l in fl:
+                    uv = l[uvl].uv[:]
+                    vi = l.vert.index
+                    li = l.index
+                    fi = f.index
+                    
+                    if(uv not in vtlocs):
+                        vtlocs[uv] = vtli
+                        vtli += 1
+                        fwvt(vtfmt % uv)
+                    
+                    e = [fi, vi, li, vtlocs[uv]]
+                    if(fi not in vtmaps):
+                        vtmaps[fi] = [e, ]
+                    else:
+                        vtmaps[fi].append(e)
+        
+        for f in fs:
+            if(use_shading):
+                # write shading flag, only change when flag is changed for following face
+                if(fsmooth != f.smooth):
+                    fsmooth = f.smooth
+                    if(fsmooth):
+                        fwf("s 1\n")
+                    else:
+                        fwf("s off\n")
+            
+            # start writing face
+            fwf("f")
+            fi = f.index
+            vs = f.verts
+            n = len(vs)
+            
+            for i in range(n):
+                if(use_shading):
+                    if(fsmooth):
+                        # write smooth face with vertex normals
+                        nor = vs[i].normal[:]
+                    else:
+                        # write flat face with face normal
+                        nor = f.normal[:]
+                    if(nor in normap):
+                        # use already defined normal
+                        nori = normap[nor]
+                    else:
+                        # create new normal
+                        normap[nor] = norlen + 1
+                        norlen += 1
+                        nori = norlen
+                        fwvn(vnfmt % nor)
+                
+                vi = vs[i].index
+                if(use_uv):
+                    # get correct texture coordinates
+                    m = vtmaps[fi]
+                    uvi = None
+                    for j in m:
+                        if(j[1] == vi):
+                            uvi = j[3]
+                            break
+                    # write face vertex with uv and normal
+                    fwf(" %d/%d/%d" % (vi + 1, uvi + 1, nori, ))
+                else:
+                    # write face vertex and normal
+                    fwf(" %d//%d" % (vi + 1, nori))
+            # finish face
+            fwf("\n")
+        
+        # put it all to one string
+        log("writing to disk..", 1)
+        tp = "{}.tmp".format(path)
+        sio.write(siov.getvalue())
+        sio.write(siovt.getvalue())
+        sio.write(siovn.getvalue())
+        sio.write(siof.getvalue())
+        # write to temporary file
+        with open(tp, mode='w', encoding='utf-8', newline="\n", ) as of:
+            of.write(sio.getvalue())
+        sio.close()
+        siov.close()
+        siovn.close()
+        siof.close()
+        siovt.close()
+        # remove existing file
+        if(os.path.exists(path)):
+            os.remove(path)
+        # rename to final file name
+        shutil.move(tp, path)
+        
+        log("cleanup..", 1)
+        if(me is not None):
+            bpy.data.meshes.remove(me)
+        bm.free()
+
+
 class ExportFastOBJ(Operator, ExportHelper):
     bl_idname = "export_mesh.fast_obj"
     bl_label = 'Export Fast OBJ (Cython)'
@@ -347,6 +650,27 @@ class ExportFastOBJ(Operator, ExportHelper):
         t = time.time()
         
         o = context.active_object
+        
+        if(USE_PY_EXPORT):
+            log("WARNING: cython module not found, using python implementation")
+            d = {'o': o,
+                 'path': self.filepath,
+                 'apply_modifiers': self.apply_modifiers,
+                 'apply_transformation': self.apply_transformation,
+                 'convert_axes': self.convert_axes,
+                 'triangulate': self.triangulate,
+                 'use_uv': self.use_uv,
+                 'use_shading': False,
+                 'use_vertex_colors': self.use_vcols,
+                 'use_vcols_mrgb': True,
+                 'use_vcols_ext': False,
+                 'global_scale': self.global_scale,
+                 'precision': self.precision, }
+            w = FastOBJWriter(**d)
+            
+            log("completed in {}.".format(datetime.timedelta(seconds=time.time() - t)))
+            return {'FINISHED'}
+        
         m = o.to_mesh(bpy.context.depsgraph, self.apply_modifiers, )
         if(self.apply_transformation):
             mw = o.matrix_world.copy()
