@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 0),
+           "version": (0, 8, 1),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -628,6 +628,23 @@ class PlyPointCloudReader():
         else:
             self._data_binary()
         log("loaded {} vertices".format(len(self.points)), 1)
+        # remove alpha if present
+        self.points = self.points[[b for b in list(self.points.dtype.names) if b != 'alpha']]
+        # some info
+        nms = self.points.dtype.names
+        self.has_vertices = True
+        self.has_normals = True
+        self.has_colors = True
+        if(not set(('x', 'y', 'z')).issubset(nms)):
+            self.has_vertices = False
+        if(not set(('nx', 'ny', 'nz')).issubset(nms)):
+            self.has_normals = False
+        if(not set(('red', 'green', 'blue')).issubset(nms)):
+            self.has_colors = False
+        log('has_vertices: {}'.format(self.has_vertices), 2)
+        log('has_normals: {}'.format(self.has_normals), 2)
+        log('has_colors: {}'.format(self.has_colors), 2)
+        
         log("done.", 1)
     
     def _header(self):
@@ -694,9 +711,6 @@ class PlyPointCloudReader():
                         current_element['props'].append((n, self._types[c], self._types[t], ))
                 else:
                     _, t, n = l.split(' ')
-                    if(n == 'alpha'):
-                        # skip alpha, maybe use it in future versions, but now it is useless
-                        continue
                     if(self._ply_format == 'ascii'):
                         current_element['props'].append((n, self._types[t]))
                     else:
@@ -1605,13 +1619,49 @@ class PCV_OT_convert(Operator):
         _, t = os.path.split(pcv.filepath)
         n, _ = os.path.splitext(t)
         m = o.matrix_world.copy()
-        points = PlyPointCloudReader(pcv.filepath).points
+        r = PlyPointCloudReader(pcv.filepath)
+        points = r.points
+        if(not r.has_normals and r.has_colors):
+            _x = tuple(points['x'])
+            _y = tuple(points['y'])
+            _z = tuple(points['z'])
+            _r = tuple(points['red'])
+            _g = tuple(points['green'])
+            _b = tuple(points['blue'])
+            _n = len(points)
+            points = []
+            for i in range(_n):
+                points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, _r[i], _g[i], _b[i], ))
+        elif(r.has_normals and not r.has_colors):
+            _x = tuple(points['x'])
+            _y = tuple(points['y'])
+            _z = tuple(points['z'])
+            _x = tuple(points['nx'])
+            _y = tuple(points['ny'])
+            _z = tuple(points['nz'])
+            _n = len(points)
+            points = []
+            for i in range(_n):
+                points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], 165, 165, 165, ))
+        elif(not r.has_normals and not r.has_colors):
+            _x = tuple(points['x'])
+            _y = tuple(points['y'])
+            _z = tuple(points['z'])
+            _n = len(points)
+            points = []
+            for i in range(_n):
+                points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, 165, 165, 165, ))
+        
         points = apply_matrix(points, m)
+        
         # s = real_length_to_relative(m, pcv.mesh_size)
         s = pcv.mesh_size
         a = pcv.mesh_normal_align
         c = pcv.mesh_vcols
-        
+        if(not pcv.has_normals):
+            a = False
+        if(not pcv.has_vcols):
+            c = False
         d = {'name': n, 'points': points, 'generator': g, 'matrix': Matrix(),
              'size': s, 'normal_align': a, 'vcols': c, }
         instancer = PCMeshInstancer(**d)
@@ -1754,8 +1804,17 @@ class PCV_PT_convert(Panel):
         c.prop(pcv, 'mesh_type')
         cc = c.column()
         cc.prop(pcv, 'mesh_size')
-        cc.prop(pcv, 'mesh_normal_align')
-        cc.prop(pcv, 'mesh_vcols')
+        
+        cc_n = cc.row()
+        cc_n.prop(pcv, 'mesh_normal_align')
+        if(not pcv.has_normals):
+            cc_n.enabled = False
+        
+        cc_c = cc.row()
+        cc_c.prop(pcv, 'mesh_vcols')
+        if(not pcv.has_vcols):
+            cc_c.enabled = False
+        
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
         c.operator('point_cloud_visualizer.convert')

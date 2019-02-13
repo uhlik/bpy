@@ -93,6 +93,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 changelog:
 
+* 0.8.1 fixed ply with alpha, fixed convert to mesh when normals or colors are missing
 * 0.8.0 convert to mesh
 * 0.7.2 ui tweaks
 * 0.7.1 viewport performance fixes
