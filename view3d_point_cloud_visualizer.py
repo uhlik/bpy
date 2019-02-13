@@ -50,6 +50,8 @@ from bpy_extras.io_utils import axis_conversion
 
 
 # FIXME undo still doesn't work in some cases, from what i've seen, only when i am undoing operations on parent object, especially when you undo/redo e.g. transforms around load/draw operators, filepath property gets reset and the whole thing is drawn, but ui looks like loding never happened, i've added a quick fix storing path in cache, but it all depends on object name and this is bad.
+# FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices http://paulbourke.net/dataformats/ply/
+# FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO ~2k lines, maybe time to break into modules
 # TODO any new functionality? any ideas?
