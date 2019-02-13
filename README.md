@@ -78,20 +78,16 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
 * `Leading Zeros` - image filename frame number leading zeros count
 
-##### Conversion options:
+### Point cloud to mesh conversion:
+
+Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled. For conversion, all ply data is used, display percentage and other options have no influence on result.
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
-* `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 wven whan cloud is scaled
+* `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
 
-##### Known bugs:
-
-* If you duplicate object with cloud, duplicate will still control the original one until you load a different one. Currently there is no reliable way (as far as i know) to get unique id of an object and therefore no way to tell to which object stored properties (e.g. path to ply) belong.
-
-[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
-
-changelog:
+### Changelog:
 
 * 0.8.1 fixed ply with alpha, fixed convert to mesh when normals or colors are missing
 * 0.8.0 convert to mesh
@@ -115,6 +111,12 @@ changelog:
 * 0.2.0 display percentage
 * 0.1.0 first release
 
+##### Known bugs:
+
+* If you duplicate object with cloud, duplicate will still control the original one until you load a different one. Currently there is no reliable way (as far as i know) to get unique id of an object and therefore no way to tell to which object stored properties (e.g. path to ply) belong.
+
+[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
+
 ***
 
 ## [Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/uv_tube_unwrap.py) (for blender 2.80)
@@ -136,11 +138,11 @@ usage:
 4. hit "U" and select "Tube UV Unwrap"
 5. optionally check/uncheck 'Mark Seams' or 'Flip' in operator properties
 
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
-
 changelog:
 
 * 0.3.0 blender 2.8 update
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
 
 ***
 
@@ -199,11 +201,11 @@ usage:
 6. import done..
 7. now you can quickly swap cameras in alphabetical order in `PhotoScan Cameras Utilities` panel
 
-[BlenderArtist.org thread](https://blenderartists.org/t/addon-import-agisoft-photoscan-cameras/1140610)
-
 changelog:
 
 * 0.1.1 first release
+
+[BlenderArtist.org thread](https://blenderartists.org/t/addon-import-agisoft-photoscan-cameras/1140610)
 
 ***
 
@@ -275,8 +277,6 @@ Simple time tracker inside blender. After you install and enable it, it will log
 
 Here you can enable / disable logging, clear data collected so far, set custom data path (.csv) and see short summary of collected data and open individual project directories in file browser. The project name is determined by directory name where the blend is. For example if you have project in directory named "MyNewOutstandingProject" and all blends are inside subdirectory "models", set level number to 1 and you will see project name in results. 0 is directory directly above blend, 1 is one directory above blend, and so on. If you are like me and all your projects have the same subdirectory structure, sent directory level and you are good to go.
 
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?345129-Time-Tracker-addon)
-
 changelog:
 
 * 0.2.0 updated for 2.80
@@ -284,6 +284,8 @@ changelog:
 * 0.0.8 ui tweaks, more advanced options, minor bugfixes
 * 0.0.7 fixed performance and sorting, added tracking of files which were closed without saving once a minute (can be enabled in preferences: check Track Scene Update)
 * 0.0.6 first release
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?345129-Time-Tracker-addon)
 
 ***
 ***
@@ -305,13 +307,13 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pc.gif)
 
-[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
-
 changelog:
 
 * 0.3.0 new ply loader, can be used with any binary ply file with vertex coordinates and colors
 * 0.2.0 display percentage
 * 0.1.0 first release
+
+[BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
 
 ***
 
@@ -320,8 +322,6 @@ changelog:
 Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
 
 ![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gll2.gif)
-
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
 
 changelog:
 
@@ -332,6 +332,8 @@ changelog:
 * 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
 * 2014.08.19 first release
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?346612-The-most-efficient-OpenGL-Lights-panel-%28with-presets-system%29)
 
 ***
 
@@ -362,8 +364,6 @@ Equalizes scale of UVs of selected objects to active object.
 
 ![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/x/eq2.gif)
 
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
-
 changelog:
 
 * 0.2.3 better fix for bug fixed in previous version..
@@ -373,6 +373,8 @@ changelog:
 * 0.1.2 fixed different uv names bug
 * 0.1.1 uuid windows workaround
 * 0.1.0 first release
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
 
 ***
 
@@ -395,8 +397,6 @@ usage:
 
 ![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube2.gif)
 
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
-
 changelog:
 
 * 0.2.4 removed redundant and buggy parts
@@ -405,6 +405,8 @@ changelog:
 * 0.1.2 got rid of changing edit/object mode
 * 0.1.1 fixed accidental freeze on messy geometry, fixed first loop vertex order (also on messy geometry), uv creation part completely rewritten from scratch
 * 0.1.0 first release
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?339782-UV-Equalize-and-Tube-Unwrap-addons)
 
 ***
 
@@ -416,11 +418,11 @@ Simple time tracker inside blender. After you install and enable it, it will log
 
 Here you can enable / disable logging, clear data collected so far, set custom data path (.csv) and see short summary of collected data and open individual project directories in file browser. The project name is determined by directory name where the blend is. For example if you have project in directory named "MyNewOutstandingProject" and all blends are inside subdirectory "models", set level number to 1 and you will see project name in results. 0 is directory directly above blend, 1 is one directory above blend, and so on. If you are like me and all your projects have the same subdirectory structure, sent directory level and you are good to go.
 
-[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?345129-Time-Tracker-addon)
-
 changelog:
 
 * 0.1.0 added simple ui
 * 0.0.8 ui tweaks, more advanced options, minor bugfixes
 * 0.0.7 fixed performance and sorting, added tracking of files which were closed without saving once a minute (can be enabled in preferences: check Track Scene Update)
 * 0.0.6 first release
+
+[BlenderArtist.org thread](http://blenderartists.org/forum/showthread.php?345129-Time-Tracker-addon)
