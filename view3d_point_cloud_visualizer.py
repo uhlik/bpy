@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 2),
+           "version": (0, 8, 3),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -898,6 +898,23 @@ class PCVShaders():
             fragColor = f_color * a;
         }
     '''
+    vertex_shader_normals = '''
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        in vec3 position;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+        }
+    '''
+    fragment_shader_normals = '''
+        uniform vec4 color;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = color;
+        }
+    '''
 
 
 def load_ply_to_cache(operator, context, ):
@@ -1183,6 +1200,60 @@ class PCVManager():
             pass
         
         batch.draw(shader)
+        
+        if(pcv.vertex_normals and pcv.has_normals):
+            
+            def make_arrays(vs, ns, s, ):
+                l = len(vs)
+                coords = [None] * (l * 2)
+                indices = [None] * l
+                for i, v in enumerate(vs):
+                    n = Vector(ns[i])
+                    v = Vector(v)
+                    coords[i * 2 + 0] = v
+                    coords[i * 2 + 1] = v + (n.normalized() * s)
+                    indices[i] = (i * 2 + 0, i * 2 + 1, )
+                return coords, indices
+            
+            def make(ci):
+                s = pcv.vertex_normals_size
+                l = ci['current_display_percent']
+                vs = ci['vertices'][:l]
+                ns = ci['normals'][:l]
+                coords, indices = make_arrays(vs, ns, s, )
+                # shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+                shader = GPUShader(PCVShaders.vertex_shader_normals, PCVShaders.fragment_shader_normals)
+                batch = batch_for_shader(shader, 'LINES', {'position': coords}, indices=indices, )
+                d = {'shader': shader,
+                     'batch': batch,
+                     'coords': coords,
+                     'indices': indices,
+                     'current_display_percent': l,
+                     'size': s,
+                     'current_size': s, }
+                ci['vertex_normals'] = d
+                return shader, batch
+            
+            if("vertex_normals" not in ci.keys()):
+                shader, batch = make(ci)
+            else:
+                d = ci['vertex_normals']
+                shader = d['shader']
+                batch = d['batch']
+                ok = True
+                if(ci['current_display_percent'] != d['current_display_percent']):
+                    ok = False
+                if(d['current_size'] != pcv.vertex_normals_size):
+                    ok = False
+                if(not ok):
+                    shader, batch = make(ci)
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("color", (35 / 255, 97 / 255, 221 / 225, 1, ), )
+            batch.draw(shader)
     
     @classmethod
     def handler(cls):
@@ -1734,6 +1805,13 @@ class PCV_PT_panel(Panel):
         # r.prop(pcv, 'alpha_radius')
         # r.enabled = e
         
+        r = sub.row(align=True)
+        r.prop(pcv, 'vertex_normals', toggle=True, icon_only=True, icon='SNAP_NORMAL', )
+        r.prop(pcv, 'vertex_normals_size')
+        r.enabled = e
+        if(not pcv.has_normals):
+            r.enabled = False
+        
         sub.separator()
         
         pcv = context.object.point_cloud_visualizer
@@ -1909,6 +1987,9 @@ class PCV_properties(PropertyGroup):
         d['display_percent'] = l
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
+    
+    vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
+    vertex_normals_size: FloatProperty(name="Size", description="Length of normal size", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
     
     render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
     # render_point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )

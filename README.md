@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.0.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.3.png)
 
 ### General info
 
@@ -41,7 +41,8 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 * Install and activate addon in a usual way.
 * Add any object type to scene.
 * Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`.
-* Click `Draw` button to display point cloud, `Erase` to hide point cloud.
+* Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display` and point size with `Size`.
+* Display point normals as lines - click `Normal` icon, adjust line length with `Size` next to it. *Pro tip: for large clouds, set Display to some small percentage, adjust size to appropriate value and then set Display back.*
 * Transforming parent object transforms point cloud as well.
 * `Illumination` works only when vertex normals are present
 * When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
@@ -52,7 +53,8 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 * `Display` - percentage of displayed points
 * `Size` - point size in pixels
-* `Illumination` - enable extra illumination, works only when vertex normals can be loaded.
+* `Normals` - display point normals as lines, adjust line length with `Size` next to it
+* `Illumination` - enable extra illumination, works only when vertex normals can be loaded
 * `Light Direction` - light direction
 * `Light Intensity` - light intensity
 * `Shadow Intensity` - shadow intensity
@@ -89,6 +91,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.3 display normals
 * 0.8.2 fixed shader unknown attribute name
 * 0.8.1 fixed ply with alpha, fixed convert to mesh when normals or colors are missing
 * 0.8.0 convert to mesh
