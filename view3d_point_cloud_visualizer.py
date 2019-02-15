@@ -1989,7 +1989,7 @@ class PCV_properties(PropertyGroup):
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
     vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
-    vertex_normals_size: FloatProperty(name="Size", description="Length of normal size", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
+    vertex_normals_size: FloatProperty(name="Length", description="Length of point normal line", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
     
     render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
     # render_point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
