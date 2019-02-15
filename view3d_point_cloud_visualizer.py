@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 1),
+           "version": (0, 8, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -867,7 +867,6 @@ class PCVShaders():
     '''
     vertex_shader_simple = '''
         in vec3 position;
-        in vec3 normal;
         in vec4 color;
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
@@ -877,7 +876,6 @@ class PCVShaders():
         out float f_alpha_radius;
         void main()
         {
-            vec3 n = normal;
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
             gl_PointSize = point_size;
             f_color = color;
@@ -999,9 +997,10 @@ def load_ply_to_cache(operator, context, ):
     d['illumination'] = ienabled
     if(ienabled):
         shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
     else:
         shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-    batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
     
     d['shader'] = shader
     d['batch'] = batch
@@ -1096,7 +1095,10 @@ class PCVManager():
             vs = ci['vertices']
             cs = ci['colors']
             ns = ci['normals']
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+            if(ci['illumination']):
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+            else:
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
             ci['batch'] = batch
         
         o = ci['object']
@@ -1116,17 +1118,18 @@ class PCVManager():
             pcv.filepath = ci['filepath']
         
         if(ci['illumination'] != pcv.illumination):
-            if(pcv.illumination):
-                shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-                ci['illumination'] = True
-            else:
-                shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-                ci['illumination'] = False
             vs = ci['vertices']
             cs = ci['colors']
             ns = ci['normals']
             l = ci['current_display_percent']
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+            if(pcv.illumination):
+                shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+                ci['illumination'] = True
+            else:
+                shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                ci['illumination'] = False
             ci['shader'] = shader
             ci['batch'] = batch
         
@@ -1456,9 +1459,10 @@ class PCV_OT_render(Operator):
             
             if(pcv.illumination):
                 shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             else:
                 shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
             shader.bind()
             
             view_matrix = cam.matrix_world.inverted()

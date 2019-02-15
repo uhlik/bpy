@@ -89,6 +89,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.2 fixed shader unknown attribute name
 * 0.8.1 fixed ply with alpha, fixed convert to mesh when normals or colors are missing
 * 0.8.0 convert to mesh
 * 0.7.2 ui tweaks
