@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.3.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.3a.png)
 
 ### General info
 
@@ -42,7 +42,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 * Add any object type to scene.
 * Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`.
 * Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display` and point size with `Size`.
-* Display point normals as lines - click `Normal` icon, adjust line length with `Size` next to it. *Pro tip: for large clouds, set Display to some small percentage, adjust size to appropriate value and then set Display back.*
+* Display point normals as lines - click `Normal` icon, adjust line length with `Length` next to it. *Pro tip: for large clouds, set Display to some small percentage, adjust Length to appropriate value and then set Display back.*
 * Transforming parent object transforms point cloud as well.
 * `Illumination` works only when vertex normals are present
 * When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
@@ -53,7 +53,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 * `Display` - percentage of displayed points
 * `Size` - point size in pixels
-* `Normals` - display point normals as lines, adjust line length with `Size` next to it
+* `Normals` - display point normals as lines, adjust line length with `Length` next to it
 * `Illumination` - enable extra illumination, works only when vertex normals can be loaded
 * `Light Direction` - light direction
 * `Light Intensity` - light intensity
