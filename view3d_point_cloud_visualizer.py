@@ -19,12 +19,12 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 3),
+           "version": (0, 8, 4),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
-           "wiki_url": "",
-           "tracker_url": "",
+           "wiki_url": "https://github.com/uhlik/bpy",
+           "tracker_url": "https://github.com/uhlik/bpy/issues",
            "category": "3D View", }
 
 
@@ -38,7 +38,7 @@ import numpy as np
 
 import bpy
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
-from bpy.types import PropertyGroup, Panel, Operator
+from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences
 import gpu
 from gpu.types import GPUOffScreen, GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
@@ -54,7 +54,6 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO ~2k lines, maybe time to break into modules
-# TODO any new functionality? any ideas?
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 #      W293 blank line contains whitespace              --> and i will do it, i hate caret jumping all around
@@ -983,10 +982,19 @@ def load_ply_to_cache(operator, context, ):
         cs = cs.astype(np.float32)
     else:
         n = len(points)
-        default_color = 0.65
-        cs = np.column_stack((np.full(n, default_color, dtype=np.float32, ),
-                              np.full(n, default_color, dtype=np.float32, ),
-                              np.full(n, default_color, dtype=np.float32, ),
+        # default_color = 0.65
+        # cs = np.column_stack((np.full(n, default_color, dtype=np.float32, ),
+        #                       np.full(n, default_color, dtype=np.float32, ),
+        #                       np.full(n, default_color, dtype=np.float32, ),
+        #                       np.ones(n, dtype=np.float32, ), ))
+        
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        col = addon_prefs.default_vertex_color[:]
+        col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+        cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
+                              np.full(n, col[1], dtype=np.float32, ),
+                              np.full(n, col[2], dtype=np.float32, ),
                               np.ones(n, dtype=np.float32, ), ))
     
     u = str(uuid.uuid1())
@@ -1034,6 +1042,22 @@ def load_ply_to_cache(operator, context, ):
     __d = datetime.timedelta(seconds=time.time() - __t)
     log("load and process completed in {}.".format(__d))
     log("-" * 50)
+    
+    h, t = os.path.split(pcv.filepath)
+    n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
+    # # pcv.ply_info = 'Info: {}: {} points'.format(t, n)
+    # a = []
+    # if(pcv.has_normals):
+    #     a.append("VN")
+    # if(pcv.has_vcols):
+    #     a.append("VC")
+    # if(len(a)):
+    #     pcv.ply_info = '{}\n{} points\n{}'.format(t, n, ', '.join(a), )
+    # else:
+    #     pcv.ply_info = '{}\n{} points'.format(t, n, )
+    pcv.ply_info = '{}\n{} points'.format(t, n, )
+    
+    # pcv.ply_display_info = 'Displayed: {} points'.format(l)
     
     return True
 
@@ -1252,7 +1276,13 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("color", (35 / 255, 97 / 255, 221 / 225, 1, ), )
+            
+            preferences = bpy.context.preferences
+            addon_prefs = preferences.addons[__name__].preferences
+            col = addon_prefs.normal_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            # shader.uniform_float("color", (35 / 255, 97 / 255, 221 / 255, 1, ), )
+            shader.uniform_float("color", col, )
             batch.draw(shader)
     
     @classmethod
@@ -1779,8 +1809,11 @@ class PCV_PT_panel(Panel):
                     return p.name
             return ''
         
+        # f = 0.275
+        f = 0.33
+        
         r = sub.row(align=True, )
-        s = r.split(factor=0.33)
+        s = r.split(factor=f)
         s.label(text=prop_name(pcv, 'filepath', True, ))
         s = s.split(factor=1.0)
         r = s.row(align=True, )
@@ -1789,6 +1822,21 @@ class PCV_PT_panel(Panel):
         c.enabled = False
         r.operator('point_cloud_visualizer.load_ply_to_cache', icon='FILEBROWSER', text='', )
         # -------------- file selector
+        
+        r = sub.row()
+        s = r.split(factor=f)
+        s.row()
+        s = s.split(factor=1.0)
+        # s.prop(pcv, 'ply_info', text="", emboss=False, )
+        c = s.column()
+        ls = pcv.ply_info.split('\n')
+        for l in ls:
+            if(l == ""):
+                continue
+            c.label(text=l)
+        
+        # sub.prop(pcv, 'ply_info', text="", emboss=False, )
+        # sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
         
         e = not (pcv.filepath == "")
         r = sub.row(align=True)
@@ -1839,12 +1887,14 @@ class PCV_PT_panel(Panel):
             if(not pcv.has_normals):
                 cc.enabled = e
         
-        if(pcv.uuid in PCVManager.cache):
-            sub.separator()
-            r = sub.row()
-            h, t = os.path.split(pcv.filepath)
-            n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
-            r.label(text='{}: {} points'.format(t, n))
+        # if(pcv.uuid in PCVManager.cache):
+        #     sub.separator()
+        #     # r = sub.row()
+        #     # h, t = os.path.split(pcv.filepath)
+        #     # n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
+        #     # r.label(text='{}: {} points'.format(t, n))
+        #     sub.prop(pcv, 'ply_info', text="", emboss=False, )
+        #     sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
 
 
 class PCV_PT_render(Panel):
@@ -1968,7 +2018,7 @@ class PCV_PT_debug(Panel):
 
 
 class PCV_properties(PropertyGroup):
-    filepath: StringProperty(name="PLY file", default="", description="", )
+    filepath: StringProperty(name="PLY File", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     # point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Point size", )
     # point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
@@ -1987,6 +2037,9 @@ class PCV_properties(PropertyGroup):
         d['display_percent'] = l
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
+    
+    ply_info: StringProperty(name="PLY Info", default="", description="", )
+    # ply_display_info: StringProperty(name="PLY Display Info", default="Display:", description="", )
     
     vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
     vertex_normals_size: FloatProperty(name="Length", description="Length of point normal line", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
@@ -2016,7 +2069,17 @@ class PCV_properties(PropertyGroup):
     mesh_normal_align: BoolProperty(name="Align To Normal", description="Align instance to point normal", default=True, )
     mesh_vcols: BoolProperty(name="Colors", description="Assign point color to instance vertex colors", default=True, )
     
-    debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, )
+    def _debug_update(self, context, ):
+        global DEBUG, debug_classes
+        DEBUG = self.debug
+        if(DEBUG):
+            for cls in debug_classes:
+                bpy.utils.register_class(cls)
+        else:
+            for cls in reversed(debug_classes):
+                bpy.utils.unregister_class(cls)
+    
+    debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
     
     @classmethod
     def register(cls):
@@ -2027,6 +2090,19 @@ class PCV_properties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
+class PCV_preferences(AddonPreferences):
+    bl_idname = __name__
+    
+    default_vertex_color: FloatVectorProperty(name="Default Color", default=(0.65, 0.65, 0.65, ), min=0, max=1, subtype='COLOR', size=3, description="Default color to be used upon loading PLY to cache when vertex colors are missing", )
+    normal_color: FloatVectorProperty(name="Normal Color", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals", )
+    
+    def draw(self, context):
+        l = self.layout
+        r = l.row()
+        r.prop(self, "default_vertex_color")
+        r.prop(self, "normal_color")
+
+
 @persistent
 def watcher(scene):
     PCVManager.deinit()
@@ -2034,6 +2110,7 @@ def watcher(scene):
 
 classes = (
     PCV_properties,
+    PCV_preferences,
     PCV_PT_panel,
     PCV_PT_render,
     PCV_PT_convert,
@@ -2044,13 +2121,14 @@ classes = (
     PCV_OT_animation,
     PCV_OT_convert,
 )
+debug_classes = (
+    PCV_PT_debug,
+    PCV_OT_init,
+    PCV_OT_deinit,
+    PCV_OT_gc,
+)
 if(DEBUG):
-    classes = classes + (
-        PCV_PT_debug,
-        PCV_OT_init,
-        PCV_OT_deinit,
-        PCV_OT_gc,
-    )
+    classes = classes + debug_classes
 
 
 def register():
