@@ -89,6 +89,11 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
 
+### Addon Preferences:
+
+* `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing
+* `Normal Color` - Display color for vertex normals
+
 ### Changelog:
 
 * 0.8.4 preferences, ui tweaks
