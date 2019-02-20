@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.5.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.6.png)
 
 ### General info
 
@@ -97,6 +97,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.5 ui tweaks, a few minor optimizations
 * 0.8.5 convert to mesh all or subset
 * 0.8.4 preferences, ui tweaks
 * 0.8.3 display normals

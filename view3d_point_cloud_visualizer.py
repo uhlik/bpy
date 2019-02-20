@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 5),
+           "version": (0, 8, 6),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -159,97 +159,29 @@ class EquilateralTriangleMeshGenerator(InstanceMeshGenerator):
 
 
 class IcoSphereMeshGenerator(InstanceMeshGenerator):
-    def __init__(self, radius=1, recursion=1, ):
+    def __init__(self, radius=1, subdivision=2, ):
         log("{}:".format(self.__class__.__name__), 0, )
         if(radius <= 0):
             log("radius is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
             radius = 0.001
         self.radius = radius
-        recursion = int(recursion)
-        if(recursion < 0):
-            log("recursion is (or less than) 0, which is ridiculous. setting to 0..", 1)
-            recursion = 0
-        self.recursion = recursion
+        subdivision = int(subdivision)
+        if(not (0 < subdivision <= 2)):
+            log("subdivision 1 or 2 allowed, not {}, setting to 1".format(subdivision), 1)
+            subdivision = 1
+        self.subdivision = subdivision
         super(IcoSphereMeshGenerator, self).__init__()
     
     def generate(self):
-        def generate_icosphere(recursion, radius, ):
-            # http://blog.andreaskahler.com/2009/06/creating-icosphere-mesh-in-code.html
-            # http://www.kynd.info/library/mathandphysics/Icosphere/
-            # http://www.csee.umbc.edu/~squire/reference/polyhedra.shtml
-            
-            verts = []
-            faces = []
-            cache = {}
-            
-            phiaa = 26.56505
-            r = 1.0
-            phia = math.pi * phiaa / 180.0
-            theb = math.pi * 36.0 / 180.0
-            the72 = math.pi * 72.0 / 180
-            
-            verts.append((0.0, 0.0, r))
-            the = 0.0
-            for i in range(5):
-                verts.append((r * math.cos(the) * math.cos(phia),
-                              r * math.sin(the) * math.cos(phia),
-                              r * math.sin(phia), ))
-                the = the + the72
-            
-            the = theb
-            for i in range(5):
-                verts.append((r * math.cos(the) * math.cos(-phia),
-                              r * math.sin(the) * math.cos(-phia),
-                              r * math.sin(-phia), ))
-                the = the + the72
-            verts.append((0.0, 0.0, -r))
-            
-            faces = [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 5), (0, 5, 1), (11, 7, 6), (11, 8, 7), (11, 9, 8), (11, 10, 9), (11, 6, 10),
-                     (1, 6, 2), (2, 7, 3), (3, 8, 4), (4, 9, 5), (5, 10, 1), (6, 7, 2), (7, 8, 3), (8, 9, 4), (9, 10, 5), (10, 6, 1), ]
-            
-            def add_vert(x, y, z):
-                l = math.sqrt(x * x + y * y + z * z)
-                verts.append((x / l, y / l, z / l))
-                return len(verts) - 1
-            
-            def get_middle(i1, i2):
-                p1 = i1
-                p2 = i2
-                firstIsSmaller = p1 < p2
-                if(firstIsSmaller):
-                    smallerIndex = p1
-                    greaterIndex = p2
-                else:
-                    smallerIndex = p2
-                    greaterIndex = p1
-                
-                key = (smallerIndex << 32) + greaterIndex
-                if(str(key) in cache):
-                    return cache[str(key)]
-            
-                middle = ((verts[p1][0] + verts[p2][0]) / 2,
-                          (verts[p1][1] + verts[p2][1]) / 2,
-                          (verts[p1][2] + verts[p2][2]) / 2, )
-                i = add_vert(middle[0], middle[1], middle[2])
-                cache[str(key)] = i
-                return i
-            
-            for i in range(recursion):
-                faces2 = []
-                for j in range(len(faces)):
-                    a = get_middle(faces[j][0], faces[j][1])
-                    b = get_middle(faces[j][1], faces[j][2])
-                    c = get_middle(faces[j][2], faces[j][0])
-                    faces2.append((faces[j][0], a, c))
-                    faces2.append((faces[j][1], b, a))
-                    faces2.append((faces[j][2], c, b))
-                    faces2.append((a, b, c))
-                faces = faces2
-            
-            return verts, [], faces
-        
-        dv, de, df = generate_icosphere(self.recursion, self.radius)
-        return dv, de, df
+        if(self.subdivision == 1):
+            dv = [(0.0, 0.0, -0.5), (0.3617999851703644, -0.2628600001335144, -0.22360749542713165), (-0.13819250464439392, -0.42531999945640564, -0.22360749542713165), (-0.44721248745918274, 0.0, -0.22360749542713165), (-0.13819250464439392, 0.42531999945640564, -0.22360749542713165), (0.3617999851703644, 0.2628600001335144, -0.22360749542713165), (0.13819250464439392, -0.42531999945640564, 0.22360749542713165), (-0.3617999851703644, -0.2628600001335144, 0.22360749542713165), (-0.3617999851703644, 0.2628600001335144, 0.22360749542713165), (0.13819250464439392, 0.42531999945640564, 0.22360749542713165), (0.44721248745918274, 0.0, 0.22360749542713165), (0.0, 0.0, 0.5)]
+            df = [(0, 1, 2), (1, 0, 5), (0, 2, 3), (0, 3, 4), (0, 4, 5), (1, 5, 10), (2, 1, 6), (3, 2, 7), (4, 3, 8), (5, 4, 9), (1, 10, 6), (2, 6, 7), (3, 7, 8), (4, 8, 9), (5, 9, 10), (6, 10, 11), (7, 6, 11), (8, 7, 11), (9, 8, 11), (10, 9, 11)]
+        elif(self.subdivision == 2):
+            dv = [(0.0, 0.0, -0.5), (0.36180365085601807, -0.2628626525402069, -0.22360976040363312), (-0.1381940096616745, -0.42532461881637573, -0.22360992431640625), (-0.4472131133079529, 0.0, -0.22360780835151672), (-0.1381940096616745, 0.42532461881637573, -0.22360992431640625), (0.36180365085601807, 0.2628626525402069, -0.22360976040363312), (0.1381940096616745, -0.42532461881637573, 0.22360992431640625), (-0.36180365085601807, -0.2628626525402069, 0.22360976040363312), (-0.36180365085601807, 0.2628626525402069, 0.22360976040363312), (0.1381940096616745, 0.42532461881637573, 0.22360992431640625), (0.4472131133079529, 0.0, 0.22360780835151672), (0.0, 0.0, 0.5), (-0.08122777938842773, -0.24999763071537018, -0.42532721161842346), (0.21266134083271027, -0.15450569987297058, -0.4253270924091339), (0.13143441081047058, -0.40450581908226013, -0.26286882162094116), (0.4253239333629608, 0.0, -0.2628679573535919), (0.21266134083271027, 0.15450569987297058, -0.4253270924091339), (-0.262864887714386, 0.0, -0.42532584071159363), (-0.3440946936607361, -0.24999846518039703, -0.26286810636520386), (-0.08122777938842773, 0.24999763071537018, -0.42532721161842346), (-0.3440946936607361, 0.24999846518039703, -0.26286810636520386), (0.13143441081047058, 0.40450581908226013, -0.26286882162094116), (0.47552892565727234, -0.15450631082057953, 0.0), (0.47552892565727234, 0.15450631082057953, 0.0), (0.0, -0.4999999701976776, 0.0), (0.2938928008079529, -0.4045083522796631, 0.0), (-0.47552892565727234, -0.15450631082057953, 0.0), (-0.2938928008079529, -0.4045083522796631, 0.0), (-0.2938928008079529, 0.4045083522796631, 0.0), (-0.47552892565727234, 0.15450631082057953, 0.0), (0.2938928008079529, 0.4045083522796631, 0.0), (0.0, 0.4999999701976776, 0.0), (0.3440946936607361, -0.24999846518039703, 0.26286810636520386), (-0.13143441081047058, -0.40450581908226013, 0.26286882162094116), (-0.4253239333629608, 0.0, 0.2628679573535919), (-0.13143441081047058, 0.40450581908226013, 0.26286882162094116), (0.3440946936607361, 0.24999846518039703, 0.26286810636520386), (0.08122777938842773, -0.24999763071537018, 0.4253271818161011), (0.262864887714386, 0.0, 0.42532584071159363), (-0.21266134083271027, -0.15450569987297058, 0.4253270924091339), (-0.21266134083271027, 0.15450569987297058, 0.4253270924091339), (0.08122777938842773, 0.24999763071537018, 0.4253271818161011)]
+            df = [(0, 13, 12), (1, 13, 15), (0, 12, 17), (0, 17, 19), (0, 19, 16), (1, 15, 22), (2, 14, 24), (3, 18, 26), (4, 20, 28), (5, 21, 30), (1, 22, 25), (2, 24, 27), (3, 26, 29), (4, 28, 31), (5, 30, 23), (6, 32, 37), (7, 33, 39), (8, 34, 40), (9, 35, 41), (10, 36, 38), (38, 41, 11), (38, 36, 41), (36, 9, 41), (41, 40, 11), (41, 35, 40), (35, 8, 40), (40, 39, 11), (40, 34, 39), (34, 7, 39), (39, 37, 11), (39, 33, 37), (33, 6, 37), (37, 38, 11), (37, 32, 38), (32, 10, 38), (23, 36, 10), (23, 30, 36), (30, 9, 36), (31, 35, 9), (31, 28, 35), (28, 8, 35), (29, 34, 8), (29, 26, 34), (26, 7, 34), (27, 33, 7), (27, 24, 33), (24, 6, 33), (25, 32, 6), (25, 22, 32), (22, 10, 32), (30, 31, 9), (30, 21, 31), (21, 4, 31), (28, 29, 8), (28, 20, 29), (20, 3, 29), (26, 27, 7), (26, 18, 27), (18, 2, 27), (24, 25, 6), (24, 14, 25), (14, 1, 25), (22, 23, 10), (22, 15, 23), (15, 5, 23), (16, 21, 5), (16, 19, 21), (19, 4, 21), (19, 20, 4), (19, 17, 20), (17, 3, 20), (17, 18, 3), (17, 12, 18), (12, 2, 18), (15, 16, 5), (15, 13, 16), (13, 0, 16), (12, 14, 2), (12, 13, 14), (13, 1, 14)]
+        else:
+            raise ValueError("IcoSphereMeshGenerator: unsupported subdivision: {}".format(self.subdivision))
+        return dv, [], df
 
 
 class CubeMeshGenerator(InstanceMeshGenerator):
@@ -355,10 +287,6 @@ class PCMeshInstancer():
             return co, no, rgb
         
         def rotation_to(a, b):
-            """Calculates shortest Quaternion from Vector a to Vector b"""
-            # a - up vector
-            # b - direction to point to
-            
             # http://stackoverflow.com/questions/1171849/finding-quaternion-representing-the-rotation-from-one-vector-to-another
             # https://github.com/toji/gl-matrix/blob/f0583ef53e94bc7e78b78c8a24f09ed5e2f7a20c/src/gl-matrix/quat.js#L54
             
@@ -1899,14 +1827,17 @@ class PCV_PT_panel(Panel):
                         ok = True
         
         c = sub.column()
-        c.prop(pcv, 'illumination', toggle=True, )
+        r = c.row(align=True)
+        r.prop(pcv, 'illumination', toggle=True, )
+        r.prop(pcv, 'illumination_edit', toggle=True, icon_only=True, icon='TOOL_SETTINGS', )
+        # r.prop(pcv, 'illumination_edit', toggle=True, icon_only=True, icon='SETTINGS', )
         if(ok):
             if(not pcv.has_normals):
                 c.label(text="Missing vertex normals.", icon='ERROR', )
                 c.enabled = False
         else:
             c.enabled = False
-        if(pcv.illumination):
+        if(pcv.illumination_edit):
             cc = c.column()
             cc.prop(pcv, 'light_direction', text="", )
             ccc = cc.column(align=True)
@@ -2089,9 +2020,10 @@ class PCV_properties(PropertyGroup):
     render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
     render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
     
-    has_normals: BoolProperty(default=False)
-    has_vcols: BoolProperty(default=False)
+    has_normals: BoolProperty(default=False, options={'HIDDEN', }, )
+    has_vcols: BoolProperty(default=False, options={'HIDDEN', }, )
     illumination: BoolProperty(name="Illumination", description="Enable extra illumination on point cloud", default=False, )
+    illumination_edit: BoolProperty(name="Edit", description="Edit illumination properties", default=False, )
     light_direction: FloatVectorProperty(name="Light Direction", description="Light direction", default=(0.0, 1.0, 0.0), subtype='DIRECTION', size=3, )
     # light_color: FloatVectorProperty(name="Light Color", description="", default=(0.2, 0.2, 0.2), min=0, max=1, subtype='COLOR', size=3, )
     light_intensity: FloatProperty(name="Light Intensity", description="Light intensity", default=0.3, min=0, max=1, subtype='FACTOR', )
