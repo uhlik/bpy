@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 4),
+           "version": (0, 8, 5),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1726,9 +1726,37 @@ class PCV_OT_convert(Operator):
         _, t = os.path.split(pcv.filepath)
         n, _ = os.path.splitext(t)
         m = o.matrix_world.copy()
-        r = PlyPointCloudReader(pcv.filepath)
-        points = r.points
-        if(not r.has_normals and r.has_colors):
+        
+        if(pcv.mesh_all):
+            r = PlyPointCloudReader(pcv.filepath)
+            points = r.points
+            has_normals = r.has_normals
+            has_colors = r.has_colors
+        else:
+            _cache = PCVManager.cache[pcv.uuid]
+            _mps = pcv.mesh_percentage
+            _nump = _cache['stats']
+            _l = int((_nump / 100) * _mps)
+            if(_mps >= 99):
+                _l = _nump
+            _vs = _cache['vertices'][:_l]
+            _ns = _cache['normals'][:_l]
+            _cs = _cache['colors'][:_l]
+            
+            points = []
+            for i in range(_l):
+                _r = 255 * _cs[i][0]
+                _g = 255 * _cs[i][1]
+                _b = 255 * _cs[i][2]
+                points.append(tuple(_vs[i]) + tuple(_ns[i]) + (_r, _g, _b, ))
+            
+            _dtype = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+            points = np.array(points, dtype=_dtype)
+            
+            has_normals = pcv.has_normals
+            has_colors = pcv.has_vcols
+            
+        if(not has_normals and has_colors):
             _x = tuple(points['x'])
             _y = tuple(points['y'])
             _z = tuple(points['z'])
@@ -1739,18 +1767,18 @@ class PCV_OT_convert(Operator):
             points = []
             for i in range(_n):
                 points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, _r[i], _g[i], _b[i], ))
-        elif(r.has_normals and not r.has_colors):
+        elif(has_normals and not has_colors):
             _x = tuple(points['x'])
             _y = tuple(points['y'])
             _z = tuple(points['z'])
-            _x = tuple(points['nx'])
-            _y = tuple(points['ny'])
-            _z = tuple(points['nz'])
+            _nx = tuple(points['nx'])
+            _ny = tuple(points['ny'])
+            _nz = tuple(points['nz'])
             _n = len(points)
             points = []
             for i in range(_n):
                 points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], 165, 165, 165, ))
-        elif(not r.has_normals and not r.has_colors):
+        elif(not has_normals and not has_colors):
             _x = tuple(points['x'])
             _y = tuple(points['y'])
             _z = tuple(points['z'])
@@ -1936,6 +1964,16 @@ class PCV_PT_convert(Panel):
         sub = l.column()
         c = sub.column()
         c.prop(pcv, 'mesh_type')
+        
+        f = 0.245
+        r = c.row(align=True)
+        s = r.split(factor=f, align=True, )
+        s.prop(pcv, 'mesh_all', toggle=True, )
+        s = s.split(factor=1.0, align=True, )
+        s.prop(pcv, 'mesh_percentage')
+        if(pcv.mesh_all):
+            s.enabled = False
+        
         cc = c.column()
         cc.prop(pcv, 'mesh_size')
         
@@ -2068,6 +2106,8 @@ class PCV_properties(PropertyGroup):
     mesh_size: FloatProperty(name="Size", description="Mesh instance size, instanced mesh has size 1.0", default=0.01, min=0.000001, precision=4, max=100.0, )
     mesh_normal_align: BoolProperty(name="Align To Normal", description="Align instance to point normal", default=True, )
     mesh_vcols: BoolProperty(name="Colors", description="Assign point color to instance vertex colors", default=True, )
+    mesh_all: BoolProperty(name="All", description="Convert all points", default=True, )
+    mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes

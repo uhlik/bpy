@@ -32,7 +32,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with any PLY fil
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv280.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.4.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.5.png)
 
 ### General info
 
@@ -85,6 +85,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled. For conversion, all ply data is used, display percentage and other options have no influence on result.
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
+* `All`, `Subset` - Use all points or random subset of by given percentage
 * `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
@@ -96,6 +97,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.5 convert to mesh all or subset
 * 0.8.4 preferences, ui tweaks
 * 0.8.3 display normals
 * 0.8.2 fixed shader unknown attribute name
