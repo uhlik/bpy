@@ -54,6 +54,7 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO ~2k lines, maybe time to break into modules
+# FIXME convert operator is kinda messy, better to skip loading completely and use already loaded values from cache where are stored all points anyway
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 #      W293 blank line contains whitespace              --> and i will do it, i hate caret jumping all around
