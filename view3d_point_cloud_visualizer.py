@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 6),
+           "version": (0, 8, 7),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1683,7 +1683,7 @@ class PCV_OT_convert(Operator):
             
             has_normals = pcv.has_normals
             has_colors = pcv.has_vcols
-            
+        
         if(not has_normals and has_colors):
             _x = tuple(points['x'])
             _y = tuple(points['y'])
@@ -1714,6 +1714,21 @@ class PCV_OT_convert(Operator):
             points = []
             for i in range(_n):
                 points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, 165, 165, 165, ))
+        else:
+            # just sort to (x,y,z,nx,ny,nz,r,g,b), it might be shuffled if loaded directly from ply
+            _x = tuple(points['x'])
+            _y = tuple(points['y'])
+            _z = tuple(points['z'])
+            _nx = tuple(points['nx'])
+            _ny = tuple(points['ny'])
+            _nz = tuple(points['nz'])
+            _r = tuple(points['red'])
+            _g = tuple(points['green'])
+            _b = tuple(points['blue'])
+            _n = len(points)
+            points = []
+            for i in range(_n):
+                points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], _r[i], _g[i], _b[i], ))
         
         points = apply_matrix(points, m)
         
