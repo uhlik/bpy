@@ -82,7 +82,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ### Point cloud to mesh conversion:
 
-Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled. For conversion, all ply data is used, display percentage and other options have no influence on result.
+Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
 * `All`, `Subset` - Use all points or random subset of by given percentage
