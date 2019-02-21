@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 7),
+           "version": (0, 8, 8),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -54,7 +54,6 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO ~2k lines, maybe time to break into modules
-# FIXME convert operator is kinda messy, better to skip loading completely and use already loaded values from cache where are stored all points anyway
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 #      W293 blank line contains whitespace              --> and i will do it, i hate caret jumping all around
@@ -70,16 +69,6 @@ def log(msg, indent=0, ):
     m = "{0}> {1}".format("    " * indent, msg)
     if(DEBUG):
         print(m)
-
-
-def human_readable_number(num, suffix='', ):
-    # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
-    f = 1000.0
-    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
-        if(abs(num) < f):
-            return "{:3.1f}{}{}".format(num, unit, suffix)
-        num /= f
-    return "{:.1f}{}{}".format(num, 'Y', suffix)
 
 
 class InstanceMeshGenerator():
@@ -973,6 +962,16 @@ def load_ply_to_cache(operator, context, ):
     log("-" * 50)
     
     h, t = os.path.split(pcv.filepath)
+    
+    def human_readable_number(num, suffix='', ):
+        # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+        f = 1000.0
+        for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
+            if(abs(num) < f):
+                return "{:3.1f}{}{}".format(num, unit, suffix)
+            num /= f
+        return "{:.1f}{}{}".format(num, 'Y', suffix)
+    
     n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
     # # pcv.ply_info = 'Info: {}: {} points'.format(t, n)
     # a = []
@@ -1616,46 +1615,30 @@ class PCV_OT_convert(Operator):
         pcv = context.object.point_cloud_visualizer
         o = context.object
         
-        # def real_length_to_relative(matrix, length, ):
-        #     """From matrix_world and desired real size length in meters, calculate relative length
-        #     without matrix applied. Apply matrix, and you will get desired length."""
-        #     l, r, s = matrix.decompose()
-        #     ms = Matrix.Scale(s.x, 4)
-        #     l = Vector((length, 0, 0))
-        #     v = ms.inverted() @ l
-        #     # v = ms @ l
-        #     return v.x
+        cache = PCVManager.cache[pcv.uuid]
         
-        def apply_matrix(points, matrix):
-            log("apply_matrix:", 0, )
-            ms = str(matrix).replace('            ', ', ').replace('\n', '')
-            log("points: {0}, matrix: {1}".format(len(points), ms), 1)
-            matrot = matrix.decompose()[1].to_matrix().to_4x4()
-            r = [None] * len(points)
-            for i, p in enumerate(points):
-                co = matrix @ Vector((p[0], p[1], p[2]))
-                no = matrot @ Vector((p[3], p[4], p[5]))
-                r[i] = (co.x, co.y, co.z, no.x, no.y, no.z, p[6], p[7], p[8])
-            return r
+        l = cache['stats']
+        if(not pcv.mesh_all):
+            nump = l
+            mps = pcv.mesh_percentage
+            l = int((nump / 100) * mps)
+            if(mps >= 99):
+                l = nump
         
-        g = None
-        if(pcv.mesh_type == 'VERTEX'):
-            g = VertexMeshGenerator()
-        elif(pcv.mesh_type == 'TRIANGLE'):
-            g = EquilateralTriangleMeshGenerator()
-        elif(pcv.mesh_type == 'TETRAHEDRON'):
-            g = TetrahedronMeshGenerator()
-        elif(pcv.mesh_type == 'CUBE'):
-            g = CubeMeshGenerator()
-        elif(pcv.mesh_type == 'ICOSPHERE'):
-            g = IcoSphereMeshGenerator()
-        else:
-            pass
+        vs = cache['vertices'][:l]
+        ns = cache['normals'][:l]
+        cs = cache['colors'][:l]
         
-        _, t = os.path.split(pcv.filepath)
-        n, _ = os.path.splitext(t)
-        m = o.matrix_world.copy()
+        points = []
+        for i in range(l):
+            c = tuple([int(255 * cs[i][j]) for j in range(3)])
+            points.append(tuple(vs[i]) + tuple(ns[i]) + c)
+        # dtype = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+        # points = np.array(points, dtype=dtype)
+        # has_normals = pcv.has_normals
+        # has_colors = pcv.has_vcols
         
+        '''
         if(pcv.mesh_all):
             r = PlyPointCloudReader(pcv.filepath)
             points = r.points
@@ -1730,10 +1713,40 @@ class PCV_OT_convert(Operator):
             points = []
             for i in range(_n):
                 points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], _r[i], _g[i], _b[i], ))
+        '''
+        
+        def apply_matrix(points, matrix):
+            # log("apply_matrix:", 0, )
+            # ms = str(matrix).replace('            ', ', ').replace('\n', '')
+            # log("points: {0}, matrix: {1}".format(len(points), ms), 1)
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            r = [None] * len(points)
+            for i, p in enumerate(points):
+                co = matrix @ Vector((p[0], p[1], p[2]))
+                no = matrot @ Vector((p[3], p[4], p[5]))
+                r[i] = (co.x, co.y, co.z, no.x, no.y, no.z, p[6], p[7], p[8])
+            return r
+        
+        _, t = os.path.split(pcv.filepath)
+        n, _ = os.path.splitext(t)
+        m = o.matrix_world.copy()
         
         points = apply_matrix(points, m)
         
-        # s = real_length_to_relative(m, pcv.mesh_size)
+        g = None
+        if(pcv.mesh_type == 'VERTEX'):
+            g = VertexMeshGenerator()
+        elif(pcv.mesh_type == 'TRIANGLE'):
+            g = EquilateralTriangleMeshGenerator()
+        elif(pcv.mesh_type == 'TETRAHEDRON'):
+            g = TetrahedronMeshGenerator()
+        elif(pcv.mesh_type == 'CUBE'):
+            g = CubeMeshGenerator()
+        elif(pcv.mesh_type == 'ICOSPHERE'):
+            g = IcoSphereMeshGenerator()
+        else:
+            pass
+        
         s = pcv.mesh_size
         a = pcv.mesh_normal_align
         c = pcv.mesh_vcols
