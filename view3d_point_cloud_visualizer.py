@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 8),
+           "version": (0, 8, 9),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -961,87 +961,7 @@ def load_ply_to_cache(operator, context, ):
     log("load and process completed in {}.".format(__d))
     log("-" * 50)
     
-    h, t = os.path.split(pcv.filepath)
-    
-    def human_readable_number(num, suffix='', ):
-        # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
-        f = 1000.0
-        for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
-            if(abs(num) < f):
-                return "{:3.1f}{}{}".format(num, unit, suffix)
-            num /= f
-        return "{:.1f}{}{}".format(num, 'Y', suffix)
-    
-    n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
-    # # pcv.ply_info = 'Info: {}: {} points'.format(t, n)
-    # a = []
-    # if(pcv.has_normals):
-    #     a.append("VN")
-    # if(pcv.has_vcols):
-    #     a.append("VC")
-    # if(len(a)):
-    #     pcv.ply_info = '{}\n{} points\n{}'.format(t, n, ', '.join(a), )
-    # else:
-    #     pcv.ply_info = '{}\n{} points'.format(t, n, )
-    pcv.ply_info = '{}\n{} points'.format(t, n, )
-    
-    # pcv.ply_display_info = 'Displayed: {} points'.format(l)
-    
     return True
-
-
-def save_render(operator, scene, image, render_suffix, render_zeros, ):
-    f = False
-    n = render_suffix
-    rs = bpy.context.scene.render
-    op = rs.filepath
-    if(len(op) > 0):
-        if(not op.endswith(os.path.sep)):
-            f = True
-            op, n = os.path.split(op)
-    else:
-        log("error: output path is not set".format(e))
-        operator.report({'ERROR'}, "Output path is not set.")
-        return
-    
-    if(f):
-        n = "{}_{}".format(n, render_suffix)
-    
-    fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
-    p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
-    
-    s = rs.image_settings
-    ff = s.file_format
-    cm = s.color_mode
-    cd = s.color_depth
-    
-    vs = scene.view_settings
-    vsvt = vs.view_transform
-    vsl = vs.look
-    vs.view_transform = 'Default'
-    vs.look = 'None'
-    
-    s.file_format = 'PNG'
-    s.color_mode = 'RGBA'
-    s.color_depth = '8'
-    
-    try:
-        image.save_render(p)
-        log("image '{}' saved".format(p))
-    except Exception as e:
-        s.file_format = ff
-        s.color_mode = cm
-        s.color_depth = cd
-        
-        log("error: {}".format(e))
-        operator.report({'ERROR'}, "Unable to save render image, see console for details.")
-        return
-    
-    s.file_format = ff
-    s.color_mode = cm
-    s.color_depth = cd
-    vs.view_transform = vsvt
-    vs.look = vsl
 
 
 class PCVManager():
@@ -1555,6 +1475,59 @@ class PCV_OT_render(Operator):
         image.pixels = [v / 255 for v in buffer]
         
         # save as image file
+        def save_render(operator, scene, image, render_suffix, render_zeros, ):
+            f = False
+            n = render_suffix
+            rs = bpy.context.scene.render
+            op = rs.filepath
+            if(len(op) > 0):
+                if(not op.endswith(os.path.sep)):
+                    f = True
+                    op, n = os.path.split(op)
+            else:
+                log("error: output path is not set".format(e))
+                operator.report({'ERROR'}, "Output path is not set.")
+                return
+            
+            if(f):
+                n = "{}_{}".format(n, render_suffix)
+            
+            fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
+            p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
+            
+            s = rs.image_settings
+            ff = s.file_format
+            cm = s.color_mode
+            cd = s.color_depth
+            
+            vs = scene.view_settings
+            vsvt = vs.view_transform
+            vsl = vs.look
+            vs.view_transform = 'Default'
+            vs.look = 'None'
+            
+            s.file_format = 'PNG'
+            s.color_mode = 'RGBA'
+            s.color_depth = '8'
+            
+            try:
+                image.save_render(p)
+                log("image '{}' saved".format(p))
+            except Exception as e:
+                s.file_format = ff
+                s.color_mode = cm
+                s.color_depth = cd
+        
+                log("error: {}".format(e))
+                operator.report({'ERROR'}, "Unable to save render image, see console for details.")
+                return
+            
+            s.file_format = ff
+            s.color_mode = cm
+            s.color_depth = cd
+            vs.view_transform = vsvt
+            vs.look = vsl
+        
         save_render(self, scene, image, render_suffix, render_zeros, )
         
         # restore
@@ -1808,17 +1781,51 @@ class PCV_PT_panel(Panel):
         r.operator('point_cloud_visualizer.load_ply_to_cache', icon='FILEBROWSER', text='', )
         # -------------- file selector
         
-        r = sub.row()
-        s = r.split(factor=f)
-        s.row()
-        s = s.split(factor=1.0)
-        # s.prop(pcv, 'ply_info', text="", emboss=False, )
-        c = s.column()
-        ls = pcv.ply_info.split('\n')
-        for l in ls:
-            if(l == ""):
-                continue
-            c.label(text=l)
+        # # info block
+        # r = sub.row()
+        # s = r.split(factor=f)
+        # s.row()
+        # s = s.split(factor=1.0)
+        # # s.prop(pcv, 'ply_info', text="", emboss=False, )
+        # c = s.column()
+        # c.scale_y = 0.66
+        # ls = pcv.ply_info.split('\n')
+        # for l in ls:
+        #     if(l == ""):
+        #         continue
+        #     c.label(text=l)
+        # r = sub.row()
+        
+        # r.operator('point_cloud_visualizer.show_file', text="", icon='FORWARD', )
+        
+        if(pcv.filepath != ""):
+            c = sub.column(align=True)
+            c.scale_y = 0.66
+            
+            r = c.row(align=True)
+            _, t = os.path.split(pcv.filepath)
+            r.label(text="Loaded: {}".format(t))
+            
+            if(pcv.uuid in PCVManager.cache):
+                def human_readable_number(num, suffix='', ):
+                    # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+                    f = 1000.0
+                    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
+                        if(abs(num) < f):
+                            return "{:3.1f}{}{}".format(num, unit, suffix)
+                        num /= f
+                    return "{:.1f}{}{}".format(num, 'Y', suffix)
+                
+                cache = PCVManager.cache[pcv.uuid]
+                
+                r = c.row(align=True)
+                n = human_readable_number(cache['display_percent'])
+                # if(n == "0.0"):
+                #     n = "0"
+                if(not cache['draw']):
+                    n = "0.0"
+                t = "Displayed {} of {} points".format(n, human_readable_number(cache['stats']))
+                r.label(text=t)
         
         # sub.prop(pcv, 'ply_info', text="", emboss=False, )
         # sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
@@ -2036,7 +2043,7 @@ class PCV_properties(PropertyGroup):
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
-    ply_info: StringProperty(name="PLY Info", default="", description="", )
+    # ply_info: StringProperty(name="PLY Info", default="", description="", )
     # ply_display_info: StringProperty(name="PLY Display Info", default="Display:", description="", )
     
     vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
