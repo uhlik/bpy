@@ -1786,27 +1786,37 @@ class PCV_PT_panel(Panel):
                 num /= f
             return "{:.1f}{}{}".format(num, 'Y', suffix)
         
-        l0 = "Selected: n/a"
-        # l1 = "Displayed: {} of {} points".format("0.0", "n/a")
-        l1 = "Displayed: {} of {}".format("0.0", "n/a")
+        l0c0 = "Selected: "
+        l0c1 = "{}".format("n/a")
+        l1c0 = "Displayed: "
+        l1c1 = "{} of {}".format("0.0", "n/a")
+        
         if(pcv.filepath != ""):
             _, t = os.path.split(pcv.filepath)
-            l0 = "Selected: {}".format(t)
+            l0c1 = "{}".format(t)
             if(pcv.uuid in PCVManager.cache):
-                l0 = "Loaded: {}".format(t)
+                l0c0 = "Loaded: "
+                l0c1 = "{}".format(t)
                 cache = PCVManager.cache[pcv.uuid]
                 n = human_readable_number(cache['display_percent'])
                 if(not cache['draw']):
                     n = "0.0"
-                # l1 = "Displayed: {} of {} points".format(n, human_readable_number(cache['stats']))
-                l1 = "Displayed: {} of {}".format(n, human_readable_number(cache['stats']))
+                nn = human_readable_number(cache['stats'])
+                l1c1 = "{} of {}".format(n, nn)
         
+        f = 0.33
         c = sub.column()
         c.scale_y = 0.66
         r = c.row()
-        r.label(text=l0)
+        s = r.split(factor=f)
+        s.label(text=l0c0)
+        s = s.split(factor=1.0)
+        s.label(text=l0c1)
         r = c.row()
-        r.label(text=l1)
+        s = r.split(factor=f)
+        s.label(text=l1c0)
+        s = s.split(factor=1.0)
+        s.label(text=l1c1)
         
         sub.separator()
         # <<<----------- info block
