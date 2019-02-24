@@ -1753,7 +1753,7 @@ class PCV_PT_panel(Panel):
         l = self.layout
         sub = l.column()
         
-        # -------------- file selector
+        # ----------->>> file selector
         def prop_name(cls, prop, colon=False, ):
             for p in cls.bl_rna.properties:
                 if(p.identifier == prop):
@@ -1774,72 +1774,42 @@ class PCV_PT_panel(Panel):
         c.prop(pcv, 'filepath', text='', )
         c.enabled = False
         r.operator('point_cloud_visualizer.load_ply_to_cache', icon='FILEBROWSER', text='', )
-        # -------------- file selector
+        # <<<----------- file selector
         
-        # # info block
-        # r = sub.row()
-        # s = r.split(factor=f)
-        # s.row()
-        # s = s.split(factor=1.0)
-        # # s.prop(pcv, 'ply_info', text="", emboss=False, )
-        # c = s.column()
-        # c.scale_y = 0.66
-        # ls = pcv.ply_info.split('\n')
-        # for l in ls:
-        #     if(l == ""):
-        #         continue
-        #     c.label(text=l)
-        # r = sub.row()
+        # ----------->>> info block
+        def human_readable_number(num, suffix='', ):
+            # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+            f = 1000.0
+            for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
+                if(abs(num) < f):
+                    return "{:3.1f}{}{}".format(num, unit, suffix)
+                num /= f
+            return "{:.1f}{}{}".format(num, 'Y', suffix)
         
-        # r.operator('point_cloud_visualizer.show_file', text="", icon='FORWARD', )
-        
+        l0 = "Selected: n/a"
+        # l1 = "Displayed: {} of {} points".format("0.0", "n/a")
+        l1 = "Displayed: {} of {}".format("0.0", "n/a")
         if(pcv.filepath != ""):
-            c = sub.column(align=True)
-            c.scale_y = 0.66
-            
-            r = c.row(align=True)
             _, t = os.path.split(pcv.filepath)
+            l0 = "Selected: {}".format(t)
             if(pcv.uuid in PCVManager.cache):
-                r.label(text="Loaded: {}".format(t))
-            else:
-                r.label(text="Selected: {}".format(t))
-            
-            if(pcv.uuid in PCVManager.cache):
-                def human_readable_number(num, suffix='', ):
-                    # https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
-                    f = 1000.0
-                    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
-                        if(abs(num) < f):
-                            return "{:3.1f}{}{}".format(num, unit, suffix)
-                        num /= f
-                    return "{:.1f}{}{}".format(num, 'Y', suffix)
-                
+                l0 = "Loaded: {}".format(t)
                 cache = PCVManager.cache[pcv.uuid]
-                
-                r = c.row(align=True)
                 n = human_readable_number(cache['display_percent'])
-                # if(n == "0.0"):
-                #     n = "0"
                 if(not cache['draw']):
                     n = "0.0"
-                t = "Displayed: {} of {} points".format(n, human_readable_number(cache['stats']))
-                r.label(text=t)
-            else:
-                r = c.row(align=True)
-                t = "Displayed: {} of {} points".format("0.0", "n/a")
-                r.label(text=t)
-        else:
-            c = sub.column(align=True)
-            c.scale_y = 0.66
-            
-            r = c.row(align=True)
-            r.label(text="Selected: {}".format(None))
-            
-            r = c.row(align=True)
-            t = "Displayed: {} of {} points".format("0.0", "n/a")
-            r.label(text=t)
+                # l1 = "Displayed: {} of {} points".format(n, human_readable_number(cache['stats']))
+                l1 = "Displayed: {} of {}".format(n, human_readable_number(cache['stats']))
+        
+        c = sub.column()
+        c.scale_y = 0.66
+        r = c.row()
+        r.label(text=l0)
+        r = c.row()
+        r.label(text=l1)
         
         sub.separator()
+        # <<<----------- info block
         
         # sub.prop(pcv, 'ply_info', text="", emboss=False, )
         # sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
