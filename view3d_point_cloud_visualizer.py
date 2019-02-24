@@ -50,16 +50,11 @@ from bpy_extras.io_utils import axis_conversion
 
 
 # FIXME undo still doesn't work in some cases, from what i've seen, only when i am undoing operations on parent object, especially when you undo/redo e.g. transforms around load/draw operators, filepath property gets reset and the whole thing is drawn, but ui looks like loding never happened, i've added a quick fix storing path in cache, but it all depends on object name and this is bad.
-# FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices http://paulbourke.net/dataformats/ply/
+# FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
-# TODO ~2k lines, maybe time to break into modules
-
+# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
-#      W293 blank line contains whitespace              --> and i will do it, i hate caret jumping all around
-#      E501 line too long (81 > 79 characters)          --> yea sure, i have 24" screen and i will write in small stripe in the middle, fantastic
-#      E741 ambiguous variable name 'l'                 --> this one is new? good old pep8, never had an issue to confuse letters, sorry, i like one letter variables and i will keep using them
-#      E402 module level import not at top of file      --> hmm, why do we have to have bl_info on top? 99% of other addons have it too
 
 
 DEBUG = False
@@ -834,140 +829,140 @@ class PCVShaders():
     '''
 
 
-def load_ply_to_cache(operator, context, ):
-    pcv = context.object.point_cloud_visualizer
-    filepath = pcv.filepath
-    
-    __t = time.time()
-    
-    log('load data..')
-    _t = time.time()
-    
-    points = []
-    try:
-        # points = BinPlyPointCloudReader(filepath).points
-        points = PlyPointCloudReader(filepath).points
-    except Exception as e:
-        if(operator is not None):
-            operator.report({'ERROR'}, str(e))
-        else:
-            raise e
-    if(len(points) == 0):
-        operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
-        return False
-    
-    _d = datetime.timedelta(seconds=time.time() - _t)
-    log("completed in {}.".format(_d))
-    
-    log('shuffle data..')
-    _t = time.time()
-    
-    np.random.shuffle(points)
-    
-    _d = datetime.timedelta(seconds=time.time() - _t)
-    log("completed in {}.".format(_d))
-    
-    log('process data..')
-    _t = time.time()
-    
-    if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
-        # this is very unlikely..
-        operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
-        return False
-    normals = True
-    if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
-        normals = False
-    pcv.has_normals = normals
-    if(not pcv.has_normals):
-        pcv.illumination = False
-    vcols = True
-    if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
-        vcols = False
-    pcv.has_vcols = vcols
-    
-    vs = np.column_stack((points['x'], points['y'], points['z'], ))
-    
-    if(normals):
-        ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
-    else:
-        n = len(points)
-        ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
-                              np.full(n, 0.0, dtype=np.float32, ),
-                              np.full(n, 1.0, dtype=np.float32, ), ))
-    
-    if(vcols):
-        cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
-        cs = cs.astype(np.float32)
-    else:
-        n = len(points)
-        # default_color = 0.65
-        # cs = np.column_stack((np.full(n, default_color, dtype=np.float32, ),
-        #                       np.full(n, default_color, dtype=np.float32, ),
-        #                       np.full(n, default_color, dtype=np.float32, ),
-        #                       np.ones(n, dtype=np.float32, ), ))
-        
-        preferences = bpy.context.preferences
-        addon_prefs = preferences.addons[__name__].preferences
-        col = addon_prefs.default_vertex_color[:]
-        col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
-        cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
-                              np.full(n, col[1], dtype=np.float32, ),
-                              np.full(n, col[2], dtype=np.float32, ),
-                              np.ones(n, dtype=np.float32, ), ))
-    
-    u = str(uuid.uuid1())
-    o = context.object
-    
-    pcv.uuid = u
-    
-    d = PCVManager.new()
-    d['filepath'] = filepath
-    d['uuid'] = u
-    d['stats'] = len(vs)
-    d['vertices'] = vs
-    d['colors'] = cs
-    d['normals'] = ns
-    
-    d['length'] = len(vs)
-    dp = pcv.display_percent
-    l = int((len(vs) / 100) * dp)
-    if(dp >= 99):
-        l = len(vs)
-    d['display_percent'] = l
-    d['current_display_percent'] = l
-    
-    ienabled = pcv.illumination
-    d['illumination'] = ienabled
-    if(ienabled):
-        shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
-    else:
-        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
-    
-    d['shader'] = shader
-    d['batch'] = batch
-    d['ready'] = True
-    d['object'] = o
-    d['name'] = o.name
-    
-    PCVManager.add(d)
-    
-    _d = datetime.timedelta(seconds=time.time() - _t)
-    log("completed in {}.".format(_d))
-    
-    log("-" * 50)
-    __d = datetime.timedelta(seconds=time.time() - __t)
-    log("load and process completed in {}.".format(__d))
-    log("-" * 50)
-    
-    return True
-
-
 class PCVManager():
     cache = {}
     handle = None
     initialized = False
+    
+    @classmethod
+    def load_ply_to_cache(cls, operator, context, ):
+        pcv = context.object.point_cloud_visualizer
+        filepath = pcv.filepath
+        
+        __t = time.time()
+        
+        log('load data..')
+        _t = time.time()
+        
+        points = []
+        try:
+            # points = BinPlyPointCloudReader(filepath).points
+            points = PlyPointCloudReader(filepath).points
+        except Exception as e:
+            if(operator is not None):
+                operator.report({'ERROR'}, str(e))
+            else:
+                raise e
+        if(len(points) == 0):
+            operator.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
+            return False
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d))
+        
+        log('shuffle data..')
+        _t = time.time()
+        
+        np.random.shuffle(points)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d))
+        
+        log('process data..')
+        _t = time.time()
+        
+        if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
+            # this is very unlikely..
+            operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
+            return False
+        normals = True
+        if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
+            normals = False
+        pcv.has_normals = normals
+        if(not pcv.has_normals):
+            pcv.illumination = False
+        vcols = True
+        if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
+            vcols = False
+        pcv.has_vcols = vcols
+        
+        vs = np.column_stack((points['x'], points['y'], points['z'], ))
+        
+        if(normals):
+            ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+        else:
+            n = len(points)
+            ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 1.0, dtype=np.float32, ), ))
+        
+        if(vcols):
+            cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+            cs = cs.astype(np.float32)
+        else:
+            n = len(points)
+            # default_color = 0.65
+            # cs = np.column_stack((np.full(n, default_color, dtype=np.float32, ),
+            #                       np.full(n, default_color, dtype=np.float32, ),
+            #                       np.full(n, default_color, dtype=np.float32, ),
+            #                       np.ones(n, dtype=np.float32, ), ))
+            
+            preferences = bpy.context.preferences
+            addon_prefs = preferences.addons[__name__].preferences
+            col = addon_prefs.default_vertex_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
+                                  np.full(n, col[1], dtype=np.float32, ),
+                                  np.full(n, col[2], dtype=np.float32, ),
+                                  np.ones(n, dtype=np.float32, ), ))
+        
+        u = str(uuid.uuid1())
+        o = context.object
+        
+        pcv.uuid = u
+        
+        d = PCVManager.new()
+        d['filepath'] = filepath
+        d['uuid'] = u
+        d['stats'] = len(vs)
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        
+        d['length'] = len(vs)
+        dp = pcv.display_percent
+        l = int((len(vs) / 100) * dp)
+        if(dp >= 99):
+            l = len(vs)
+        d['display_percent'] = l
+        d['current_display_percent'] = l
+        
+        ienabled = pcv.illumination
+        d['illumination'] = ienabled
+        if(ienabled):
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        else:
+            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        
+        d['shader'] = shader
+        d['batch'] = batch
+        d['ready'] = True
+        d['object'] = o
+        d['name'] = o.name
+        
+        PCVManager.add(d)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d))
+        
+        log("-" * 50)
+        __d = datetime.timedelta(seconds=time.time() - __t)
+        log("load and process completed in {}.".format(__d))
+        log("-" * 50)
+        
+        return True
     
     @classmethod
     def render(cls, uuid, ):
@@ -1255,7 +1250,7 @@ class PCV_OT_draw(Operator):
         
         if(pcv.uuid not in PCVManager.cache):
             pcv.uuid = ""
-            ok = load_ply_to_cache(self, context)
+            ok = PCVManager.load_ply_to_cache(self, context)
             if(not ok):
                 return {'CANCELLED'}
         
@@ -1325,7 +1320,7 @@ class PCV_OT_load(Operator):
                 PCVManager.cache[pcv.uuid]['kill'] = True
                 PCVManager.gc()
         
-        ok = load_ply_to_cache(self, context)
+        ok = PCVManager.load_ply_to_cache(self, context)
         
         if(not ok):
             return {'CANCELLED'}
@@ -1804,7 +1799,10 @@ class PCV_PT_panel(Panel):
             
             r = c.row(align=True)
             _, t = os.path.split(pcv.filepath)
-            r.label(text="Loaded: {}".format(t))
+            if(pcv.uuid in PCVManager.cache):
+                r.label(text="Loaded: {}".format(t))
+            else:
+                r.label(text="Selected: {}".format(t))
             
             if(pcv.uuid in PCVManager.cache):
                 def human_readable_number(num, suffix='', ):
@@ -1824,8 +1822,24 @@ class PCV_PT_panel(Panel):
                 #     n = "0"
                 if(not cache['draw']):
                     n = "0.0"
-                t = "Displayed {} of {} points".format(n, human_readable_number(cache['stats']))
+                t = "Displayed: {} of {} points".format(n, human_readable_number(cache['stats']))
                 r.label(text=t)
+            else:
+                r = c.row(align=True)
+                t = "Displayed: {} of {} points".format("0.0", "n/a")
+                r.label(text=t)
+        else:
+            c = sub.column(align=True)
+            c.scale_y = 0.66
+            
+            r = c.row(align=True)
+            r.label(text="Selected: {}".format(None))
+            
+            r = c.row(align=True)
+            t = "Displayed: {} of {} points".format("0.0", "n/a")
+            r.label(text=t)
+        
+        sub.separator()
         
         # sub.prop(pcv, 'ply_info', text="", emboss=False, )
         # sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
@@ -1904,17 +1918,20 @@ class PCV_PT_render(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
-        c = sub.column()
-        r = c.row(align=True)
-        r.operator('point_cloud_visualizer.render')
-        r.operator('point_cloud_visualizer.animation')
+        
         c = sub.column()
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
-        c.separator()
         c.prop(pcv, 'render_suffix')
         c.prop(pcv, 'render_zeros')
-        c.enabled = PCV_OT_render.poll(context)
+        
+        sub.separator()
+        
+        r = sub.row(align=True)
+        r.operator('point_cloud_visualizer.render')
+        r.operator('point_cloud_visualizer.animation')
+        
+        sub.enabled = PCV_OT_render.poll(context)
 
 
 class PCV_PT_convert(Panel):
@@ -1956,6 +1973,8 @@ class PCV_PT_convert(Panel):
         
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
+        
+        # c.separator()
         c.operator('point_cloud_visualizer.convert')
         c.enabled = PCV_OT_convert.poll(context)
 
@@ -2054,7 +2073,8 @@ class PCV_properties(PropertyGroup):
     render_point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
     render_display_percent: FloatProperty(name="Count", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of points rendered", )
     render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
-    render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
+    # render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
+    render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, description="Number of leading zeros in render filename", )
     
     has_normals: BoolProperty(default=False, options={'HIDDEN', }, )
     has_vcols: BoolProperty(default=False, options={'HIDDEN', }, )
