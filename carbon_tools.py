@@ -19,7 +19,7 @@
 bl_info = {"name": "Carbon Tools",
            "description": "Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.",
            "author": "Jakub Uhlik",
-           "version": (0, 2, 2),
+           "version": (0, 2, 3),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Carbon Tools",
            "warning": "",
@@ -723,38 +723,6 @@ class CARBON_OT_select_non_manifold_extra(Operator):
         return {'FINISHED'}
 
 
-class CARBON_OT_shade_smooth(Operator):
-    bl_idname = "carbon_tools.shade_smooth"
-    bl_label = "Shade Smooth"
-    bl_description = "Shade Smooth"
-    bl_options = {'REGISTER', 'UNDO', }
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        return (o and o.type == 'MESH')
-    
-    def execute(self, context):
-        bpy.ops.object.shade_smooth()
-        return {'FINISHED'}
-
-
-class CARBON_OT_shade_flat(Operator):
-    bl_idname = "carbon_tools.shade_flat"
-    bl_label = "Shade Flat"
-    bl_description = "Shade Flat"
-    bl_options = {'REGISTER', 'UNDO', }
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        return (o and o.type == 'MESH')
-    
-    def execute(self, context):
-        bpy.ops.object.shade_flat()
-        return {'FINISHED'}
-
-
 class CARBON_OT_texture_to_vertex_colors(Operator):
     bl_idname = "carbon_tools.texture_to_vertex_colors"
     bl_label = "UVTex > VCols"
@@ -1161,8 +1129,8 @@ class CARBON_OT_calc_active_uv_coverage(Operator):
 
 
 class CARBON_properties(PropertyGroup):
-    utils_expanded: BoolProperty(default=False)
-    conversions_expanded: BoolProperty(default=False)
+    # utils_expanded: BoolProperty(default=False)
+    # conversions_expanded: BoolProperty(default=False)
     
     extract_protect: BoolProperty(name="Protect Mesh Borders", default=False, description="Hide mesh borders to protect them from modification.", )
     dyntopo_resolution: IntProperty(name="Resolution", default=500, min=0, max=1000, description="Dyntopo constant resolution, this is just initial value. Change in Dyntopo settings afterwards.", )
@@ -1284,58 +1252,122 @@ class CARBON_PT_carbon_tools(Panel):
         r.operator('carbon_tools.end_current_procedure', text="End", )
         r.prop(ctp, 'end_keep_wire', toggle=True, text='', icon='SHADING_WIRE', icon_only=True, )
         
-        l.separator()
-        b = l.box()
-        r = b.row()
-        r.prop(ctp, 'utils_expanded', icon='TRIA_DOWN' if ctp.utils_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-        r.label(text="Utilities")
-        if(ctp.utils_expanded):
-            c = b.column(align=True)
-            r = c.row(align=True)
-            r.operator('carbon_tools.shade_smooth', text="Smooth", )
-            r.operator('carbon_tools.shade_flat', text="Flat", )
-            c.operator('carbon_tools.calc_active_uv_coverage')
-            c.operator('carbon_tools.mark_seams_from_uv_islands', text="Seams From Islands", )
-            c.operator('carbon_tools.select_seams', text="Select Seams", )
-            c.operator('carbon_tools.visualize_uv_seams_as_wireframe_mesh', text="Seams > Wireframe", )
-            
-            r = c.row(align=True)
-            r.operator('carbon_tools.export_uv_layout', text="Export UV Layout", )
-            r.prop(ctp, 'export_uv_layout_resolution', text="", )
-            if(ob and ob.type == 'MESH' and context.mode == 'OBJECT' and len(ob.data.uv_layers) > 0):
-                r.active = True
-            else:
-                r.active = False
-            
-            c.operator('carbon_tools.toggle_unselected_wireframe', text="Wireframe", )
-            
-            r = c.row(align=True)
-            r.operator('carbon_tools.select_non_manifold_extra')
-            r.prop(ctp, 'select_non_manifold_extra_auto_view', toggle=True, text='', icon='HIDE_OFF' if ctp.select_non_manifold_extra_auto_view else 'HIDE_ON', icon_only=True, )
+        # l.separator()
+        # b = l.box()
+        # r = b.row()
+        # r.prop(ctp, 'utils_expanded', icon='TRIA_DOWN' if ctp.utils_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        # r.label(text="Utilities")
+        # if(ctp.utils_expanded):
+        #     c = b.column(align=True)
+        #     c.operator('carbon_tools.calc_active_uv_coverage')
+        #     c.operator('carbon_tools.mark_seams_from_uv_islands', text="Seams From Islands", )
+        #     c.operator('carbon_tools.select_seams', text="Select Seams", )
+        #     c.operator('carbon_tools.visualize_uv_seams_as_wireframe_mesh', text="Seams > Wireframe", )
+        #
+        #     r = c.row(align=True)
+        #     r.operator('carbon_tools.export_uv_layout', text="Export UV Layout", )
+        #     r.prop(ctp, 'export_uv_layout_resolution', text="", )
+        #     if(ob and ob.type == 'MESH' and context.mode == 'OBJECT' and len(ob.data.uv_layers) > 0):
+        #         r.active = True
+        #     else:
+        #         r.active = False
+        #
+        #     c.operator('carbon_tools.toggle_unselected_wireframe', text="Wireframe", )
+        #
+        #     r = c.row(align=True)
+        #     r.operator('carbon_tools.select_non_manifold_extra')
+        #     r.prop(ctp, 'select_non_manifold_extra_auto_view', toggle=True, text='', icon='HIDE_OFF' if ctp.select_non_manifold_extra_auto_view else 'HIDE_ON', icon_only=True, )
         
-        b = l.box()
-        r = b.row()
-        r.prop(ctp, 'conversions_expanded', icon='TRIA_DOWN' if ctp.conversions_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-        r.label(text="Conversions")
-        if(ctp.conversions_expanded):
-            c = b.column(align=True)
-            c.label(text="Conversions")
-            c.operator('carbon_tools.texture_to_vertex_colors')
-            c.operator('carbon_tools.vertex_group_to_vertex_colors')
-            c.operator('carbon_tools.vertex_colors_to_vertex_group')
-            
-            c = b.column(align=True)
-            c.prop(ctp, 'diff_search_distance')
-            c.prop(ctp, 'diff_sigma')
-            r = c.row(align=True)
-            r.prop(ctp, 'diff_positive', toggle=True, )
-            r.prop(ctp, 'diff_negative', toggle=True, )
-            c.operator('carbon_tools.two_meshes_difference_to_vertex_group')
-            c.enabled = CARBON_OT_two_meshes_difference_to_vertex_group.poll(context)
+        # b = l.box()
+        # r = b.row()
+        # r.prop(ctp, 'conversions_expanded', icon='TRIA_DOWN' if ctp.conversions_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        # r.label(text="Conversions")
+        # if(ctp.conversions_expanded):
+        #     c = b.column(align=True)
+        #     c.label(text="Conversions")
+        #     c.operator('carbon_tools.texture_to_vertex_colors')
+        #     c.operator('carbon_tools.vertex_group_to_vertex_colors')
+        #     c.operator('carbon_tools.vertex_colors_to_vertex_group')
+        #
+        #     c = b.column(align=True)
+        #     c.prop(ctp, 'diff_search_distance')
+        #     c.prop(ctp, 'diff_sigma')
+        #     r = c.row(align=True)
+        #     r.prop(ctp, 'diff_positive', toggle=True, )
+        #     r.prop(ctp, 'diff_negative', toggle=True, )
+        #     c.operator('carbon_tools.two_meshes_difference_to_vertex_group')
+        #     c.enabled = CARBON_OT_two_meshes_difference_to_vertex_group.poll(context)
         
         r = l.row()
         r.label(text='Carbon Tools {}'.format(ctp.version))
         r.enabled = False
+
+
+class CARBON_PT_carbon_tools_utils(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Carbon Tools'
+    bl_label = "Utils"
+    bl_parent_id = "CARBON_PT_carbon_tools"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        ctp = context.scene.carbon_tools
+        ob = context.active_object
+        
+        l = self.layout
+        sub = l.column()
+        
+        c = sub.column(align=True)
+        c.operator('carbon_tools.calc_active_uv_coverage')
+        c.operator('carbon_tools.mark_seams_from_uv_islands', text="Seams From Islands", )
+        c.operator('carbon_tools.select_seams', text="Select Seams", )
+        c.operator('carbon_tools.visualize_uv_seams_as_wireframe_mesh', text="Seams > Wireframe", )
+        
+        r = c.row(align=True)
+        r.operator('carbon_tools.export_uv_layout', text="Export UV Layout", )
+        r.prop(ctp, 'export_uv_layout_resolution', text="", )
+        if(ob and ob.type == 'MESH' and context.mode == 'OBJECT' and len(ob.data.uv_layers) > 0):
+            r.active = True
+        else:
+            r.active = False
+        
+        c.operator('carbon_tools.toggle_unselected_wireframe', text="Wireframe", )
+        
+        r = c.row(align=True)
+        r.operator('carbon_tools.select_non_manifold_extra')
+        r.prop(ctp, 'select_non_manifold_extra_auto_view', toggle=True, text='', icon='HIDE_OFF' if ctp.select_non_manifold_extra_auto_view else 'HIDE_ON', icon_only=True, )
+
+
+class CARBON_PT_carbon_tools_conversions(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Carbon Tools'
+    bl_label = "Conversions"
+    bl_parent_id = "CARBON_PT_carbon_tools"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        ctp = context.scene.carbon_tools
+        ob = context.active_object
+        
+        l = self.layout
+        sub = l.column()
+        
+        c = sub.column(align=True)
+        c.label(text="Conversions")
+        c.operator('carbon_tools.texture_to_vertex_colors')
+        c.operator('carbon_tools.vertex_group_to_vertex_colors')
+        c.operator('carbon_tools.vertex_colors_to_vertex_group')
+        
+        c = sub.column(align=True)
+        c.prop(ctp, 'diff_search_distance')
+        c.prop(ctp, 'diff_sigma')
+        r = c.row(align=True)
+        r.prop(ctp, 'diff_positive', toggle=True, )
+        r.prop(ctp, 'diff_negative', toggle=True, )
+        c.operator('carbon_tools.two_meshes_difference_to_vertex_group')
+        c.enabled = CARBON_OT_two_meshes_difference_to_vertex_group.poll(context)
 
 
 classes = (
@@ -1357,8 +1389,6 @@ classes = (
     CARBON_OT_toggle_unselected_wireframe,
     CARBON_OT_visualize_uv_seams_as_wireframe_mesh,
     CARBON_OT_select_non_manifold_extra,
-    CARBON_OT_shade_smooth,
-    CARBON_OT_shade_flat,
     CARBON_OT_texture_to_vertex_colors,
     CARBON_OT_vertex_group_to_vertex_colors,
     CARBON_OT_vertex_colors_to_vertex_group,
@@ -1366,6 +1396,8 @@ classes = (
     CARBON_OT_calc_active_uv_coverage,
     CARBON_properties,
     CARBON_PT_carbon_tools,
+    CARBON_PT_carbon_tools_utils,
+    CARBON_PT_carbon_tools_conversions,
 )
 
 
