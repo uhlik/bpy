@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display colored point cloud PLY files in 3D viewport.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 9),
+           "version": (0, 8, 10),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1555,7 +1555,7 @@ class PCV_OT_animation(Operator):
             return {'CANCELLED'}
         
         fc = scene.frame_current
-        for i in range(scene.frame_start, scene.frame_end, 1):
+        for i in range(scene.frame_start, scene.frame_end + 1, 1):
             scene.frame_set(i)
             bpy.ops.point_cloud_visualizer.render()
         scene.frame_set(fc)
@@ -1704,14 +1704,19 @@ class PCV_OT_convert(Operator):
         g = None
         if(pcv.mesh_type == 'VERTEX'):
             g = VertexMeshGenerator()
+            n = "{}-vertices".format(n)
         elif(pcv.mesh_type == 'TRIANGLE'):
             g = EquilateralTriangleMeshGenerator()
+            n = "{}-triangles".format(n)
         elif(pcv.mesh_type == 'TETRAHEDRON'):
             g = TetrahedronMeshGenerator()
+            n = "{}-tetrahedrons".format(n)
         elif(pcv.mesh_type == 'CUBE'):
             g = CubeMeshGenerator()
+            n = "{}-cubes".format(n)
         elif(pcv.mesh_type == 'ICOSPHERE'):
             g = IcoSphereMeshGenerator()
+            n = "{}-icospheres".format(n)
         else:
             pass
         
