@@ -17,7 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {"name": "Point Cloud Visualizer",
-           "description": "Display colored point cloud PLY files in 3D viewport.",
+           "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
            "version": (0, 8, 10),
            "blender": (2, 80, 0),
