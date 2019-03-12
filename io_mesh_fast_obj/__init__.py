@@ -636,6 +636,12 @@ class ExportFastOBJ(Operator, ExportHelper):
     def draw(self, context):
         l = self.layout
         sub = l.column()
+        
+        if(USE_PY_EXPORT):
+            sub.label(text='Cython module not found.', icon='ERROR', )
+            sub.label(text='Using python implementation.', icon='ERROR', )
+            sub.separator()
+        
         sub.prop(self, 'apply_modifiers')
         sub.prop(self, 'apply_transformation')
         sub.prop(self, 'convert_axes')
