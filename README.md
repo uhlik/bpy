@@ -200,7 +200,7 @@ changelog:
 
 ## [Import Agisoft PhotoScan Cameras](https://github.com/uhlik/bpy/tree/master/io_import_photoscan_cameras.py)
 
-Import cameras from Agisoft PhotoScan xml. Works with xml version 1.4.0 which is exported from PhotoScan 1.4.x versions. If you want to have images actually aligned with model, undistort images first. This is done in PhotoScan by `Export > Undistort Photos..`. Because you can't in Blender set resolution for cameras independently, xml with different cameras or image resolutions might not work well.
+Import cameras from Agisoft PhotoScan xml. Works with xml version 1.4.0 which is exported from PhotoScan 1.4.x versions and xml versions 1.5.0 from Agisoft Metashape 1.5.x versions. If you want to have images actually aligned with model, undistort images first. This is done in PhotoScan by `Export > Undistort Photos..`. Because you can't in Blender set resolution for cameras independently, xml with different cameras or image resolutions might not work well.
 
 ![Import Agisoft PhotoScan Cameras](https://raw.githubusercontent.com/uhlik/bpy/master/x/pscamerasui.png)
 
@@ -224,6 +224,7 @@ usage:
 
 changelog:
 
+* 0.1.2 compatibility with Agisoft Metashape XML (1.5.x)
 * 0.1.1 first release
 
 [BlenderArtist.org thread](https://blenderartists.org/t/addon-import-agisoft-photoscan-cameras/1140610)

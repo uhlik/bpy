@@ -1,7 +1,7 @@
 bl_info = {"name": "Import Agisoft PhotoScan Cameras (.xml)",
            "description": "",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 1),
+           "version": (0, 1, 2),
            "blender": (2, 80, 0),
            "location": "Properties > Scene > Import Agisoft PhotoScan Cameras",
            "warning": "work in progress",
@@ -23,7 +23,7 @@ from bpy_extras.io_utils import axis_conversion
 from bl_ui.properties_scene import SceneButtonsPanel
 
 
-PHOTOSCAN_VERSION_COMPATIBILITY = (1, 4, 0)
+PHOTOSCAN_VERSION_COMPATIBILITY = [(1, 4, 0), (1, 5, 0)]
 CHECK_VERSION = True
 DEBUG = True
 
@@ -683,7 +683,7 @@ class PSCXMLImport():
             ver_str = root.attrib["version"]
             ver_split = ver_str.split(".")
             ver = tuple(int(i) for i in ver_split)
-            if(ver != PHOTOSCAN_VERSION_COMPATIBILITY):
+            if(ver not in PHOTOSCAN_VERSION_COMPATIBILITY):
                 raise PSCVersionException("{}: incompatible xml version: ({})".format(self.__class__.__name__, ver))
             else:
                 log("checking file version: {0}: {1}".format(ver, "ok"))
