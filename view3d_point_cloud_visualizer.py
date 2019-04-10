@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 10),
+           "version": (0, 8, 11),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1833,6 +1833,7 @@ class PCV_PT_panel(Panel):
         r = sub.row(align=True)
         r.operator('point_cloud_visualizer.draw')
         r.operator('point_cloud_visualizer.erase')
+        r.scale_y = 1.5
         r.enabled = e
         r = sub.row()
         r.prop(pcv, 'display_percent')
