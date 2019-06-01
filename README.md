@@ -3,6 +3,7 @@
 ### addons for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
+* [Color Management Presets](#color-management-presets-for-blender-280)
 * [Tube UV Unwrap](#tube-uv-unwrap-for-blender-280)
 * [Fast Wavefront^2](#fast-wavefront2-for-blender-280)
 * [Import Agisoft PhotoScan Cameras](#import-agisoft-photoscan-cameras)
@@ -11,6 +12,7 @@
 
 ### addons for blender 2.7x
 
+* [Color Management Presets](#color-management-presets-for-blender-27x)
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-27x)
 * [OpenGL Lights](#opengl-lights)
 * [Fast Wavefront (.obj)](#fast-wavefront-for-blender-27x)
@@ -137,6 +139,14 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 * If you duplicate object with cloud, duplicate will still control the original one until you load a different one. Currently there is no reliable way (as far as i know) to get unique id of an object and therefore no way to tell to which object stored properties (e.g. path to ply) belong.
 
 [BlenderArtist.org thread](https://blenderartists.org/forum/showthread.php?416158-Addon-Point-Cloud-Visualizer)
+
+***
+
+## [Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/color_management_presets.py) (for blender 2.80)
+
+Presets support for Render > Color Management panel, nothing more, nothing less.. Comes with a few presets i use which are created upon activation.
+
+![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/x/cmp280.png)
 
 ***
 
@@ -315,6 +325,14 @@ changelog:
 ### addons for blender 2.7x
 
 ***
+***
+
+## [Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/color_management_presets.py) (for blender 2.7x)
+
+Presets support for Scene > Color Management panel, nothing more, nothing less.. Comes with a few presets i use which are created upon activation.
+
+![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/x/cmp.png)
+
 ***
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/2.7x/view3d_point_cloud_visualizer.py) (for blender 2.7x)
