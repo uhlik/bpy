@@ -103,6 +103,8 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.12 fixes
+* 0.8.11 ui tweaks
 * 0.8.10 fixes
 * 0.8.9 ui tweaks, code cleanup
 * 0.8.8 refactored convert to mesh

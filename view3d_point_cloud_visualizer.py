@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 11),
+           "version": (0, 8, 12),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -226,7 +226,6 @@ class PCMeshInstancer():
         self.mesh.from_pydata(self.verts, self.edges, self.faces)
         self.object = self.add_object(self.name, self.mesh)
         self.object.matrix_world = self.matrix
-        self.mesh.show_double_sided = False
         self.activate_object(self.object)
         
         if(self.vcols):
@@ -1410,7 +1409,8 @@ class PCV_OT_render(Operator):
             shader.bind()
             
             view_matrix = cam.matrix_world.inverted()
-            camera_matrix = cam.calc_matrix_camera(bpy.context.depsgraph, x=render.resolution_x, y=render.resolution_y, scale_x=render.pixel_aspect_x, scale_y=render.pixel_aspect_y, )
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            camera_matrix = cam.calc_matrix_camera(depsgraph, x=render.resolution_x, y=render.resolution_y, scale_x=render.pixel_aspect_x, scale_y=render.pixel_aspect_y, )
             perspective_matrix = camera_matrix @ view_matrix
             
             shader.uniform_float("perspective_matrix", perspective_matrix)
@@ -1498,7 +1498,7 @@ class PCV_OT_render(Operator):
             vs = scene.view_settings
             vsvt = vs.view_transform
             vsl = vs.look
-            vs.view_transform = 'Default'
+            vs.view_transform = 'Standard'
             vs.look = 'None'
             
             s.file_format = 'PNG'
