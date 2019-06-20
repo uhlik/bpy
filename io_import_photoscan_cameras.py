@@ -283,10 +283,11 @@ class PSCCamera():
         self.label = xml.attrib["label"]
         self.sensor_id = int(xml.attrib["sensor_id"])
         
-        if(xml.attrib["enabled"] == "true"):
-            self.enabled = True
-        else:
-            self.enabled = False
+        # if(xml.attrib["enabled"] == "true"):
+        #     self.enabled = True
+        # else:
+        #     self.enabled = False
+        self.enabled = True
         
         self.resolution = {"width": sensor.resolution['width'], "height": sensor.resolution['height'], }
         
