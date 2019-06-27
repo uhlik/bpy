@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 12),
+           "version": (0, 8, 13),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -53,6 +53,7 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
+# TODO try to remove manual depth test during offscreen rendering
 # NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
@@ -966,6 +967,7 @@ class PCVManager():
     @classmethod
     def render(cls, uuid, ):
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
         
         ci = PCVManager.cache[uuid]
         
@@ -1126,6 +1128,8 @@ class PCVManager():
             # shader.uniform_float("color", (35 / 255, 97 / 255, 221 / 255, 1, ), )
             shader.uniform_float("color", col, )
             batch.draw(shader)
+        
+        bgl.glDisable(bgl.GL_DEPTH_TEST)
     
     @classmethod
     def handler(cls):
