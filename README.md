@@ -103,6 +103,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.8.14 fixes
 * 0.8.13 fixes
 * 0.8.12 fixes
 * 0.8.11 ui tweaks

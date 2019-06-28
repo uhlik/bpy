@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 13),
+           "version": (0, 8, 14),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -54,6 +54,7 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO try to remove manual depth test during offscreen rendering
+# NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
 # NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
@@ -1001,6 +1002,12 @@ class PCVManager():
             pcv.uuid = uuid
             # push back filepath, it might get lost during undo/redo
             pcv.filepath = ci['filepath']
+        
+        if(not o.visible_get()):
+            # if parent object is not visible, skip drawing
+            # this should checked earlier, but until now i can't be sure i have correct object reference
+            bgl.glDisable(bgl.GL_DEPTH_TEST)
+            return
         
         if(ci['illumination'] != pcv.illumination):
             vs = ci['vertices']
