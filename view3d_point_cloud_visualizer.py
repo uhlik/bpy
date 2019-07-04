@@ -498,7 +498,8 @@ class PCParticles():
         # make new nodes
         links = mat.node_tree.links
         node_attr = nodes.new(type='ShaderNodeAttribute')
-        node_attr.attribute_name = o.data.vertex_colors.active.name
+        if(o.data.vertex_colors.active is not None):
+            node_attr.attribute_name = o.data.vertex_colors.active.name
         node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
         link = links.new(node_attr.outputs[0], node_diff.inputs[0])
         node_output = nodes.new(type='ShaderNodeOutputMaterial')
