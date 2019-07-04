@@ -94,7 +94,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
 
-Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inverits color of corresponding face it emit from.
+Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from.
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
 * `All`, `Subset` - Use all points or random subset of by given percentage
