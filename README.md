@@ -38,7 +38,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9-full.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.0.png)
 
 ### General info
 
@@ -88,13 +88,19 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ### Point cloud to mesh conversion:
 
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-convert.jpg)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-psys.jpg)
+
 Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
+Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inverits color of corresponding face it emit from.
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
 * `All`, `Subset` - Use all points or random subset of by given percentage
 * `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
+* `Sphere Subdivisions` - Conversion to particles only, number of subdivisions of particle system instanced ico sphere
 
 ### Addon Preferences:
 
@@ -103,6 +109,7 @@ Convert point cloud to mesh. May result in very large meshes, e.g. 1m point clou
 
 ### Changelog:
 
+* 0.9.0 conversion to particles
 * 0.8.14 fixes
 * 0.8.13 fixes
 * 0.8.12 fixes

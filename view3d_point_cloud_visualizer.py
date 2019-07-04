@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 8, 14),
+           "version": (0, 9, 0),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -37,6 +37,7 @@ import math
 import numpy as np
 
 import bpy
+import bmesh
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
 from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences
 import gpu
@@ -54,6 +55,7 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO try to remove manual depth test during offscreen rendering
+# TODO rendering, do something with resolution and render path setting, either add props to panel directly from render panels or make everything from scratch independent on scene settings
 # NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
 # NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
@@ -409,6 +411,182 @@ class PCMeshInstancer():
                 vc.data[li].color = c + (1.0, )
         else:
             log("no mesh loops in mesh", 2, )
+
+
+class PCParticles():
+    def __init__(self, o, mesh_size, base_sphere_subdivisions, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        
+        base_sphere_radius = mesh_size / 2
+        
+        # make uv layout of neatly packed triangles to bake vertex colors
+        num_tri = len(o.data.polygons)
+        num_sq = math.ceil(num_tri / 4)
+        sq_per_uv_side = math.ceil(math.sqrt(num_sq))
+        sq_size = 1 / sq_per_uv_side
+        
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        uv_layer = bm.loops.layers.uv.new("PCParticlesUVMap")
+        
+        def tri_uv(i, x, y, q):
+            # *---------------*
+            # |  \    3    /  |
+            # |    \     /    |
+            # | 4     *    2  |
+            # |    /     \    |
+            # |  /    1    \  |
+            # *---------------*
+            # 1  0.0,0.0  1.0,0.0  0.5,0.5
+            # 2  1.0,0.0  1.0,1.0  0.5,0.5
+            # 3  1.0,1.0  0.0,1.0  0.5,0.5
+            # 4  0.0,1.0  0.0,0.0  0.5,0.5
+            
+            if(i == 0):
+                return ((x + (0.0 * q), y + (0.0 * q), ),
+                        (x + (1.0 * q), y + (0.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 1):
+                return ((x + (1.0 * q), y + (0.0 * q), ),
+                        (x + (1.0 * q), y + (1.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 2):
+                return ((x + (1.0 * q), y + (1.0 * q), ),
+                        (x + (0.0 * q), y + (1.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 3):
+                return ((x + (0.0 * q), y + (1.0 * q), ),
+                        (x + (0.0 * q), y + (0.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            else:
+                raise Exception("You're not supposed to do that..")
+        
+        sq_c = 0
+        xsqn = 0
+        ysqn = 0
+        for face in bm.faces:
+            co = tri_uv(sq_c, xsqn * sq_size, ysqn * sq_size, sq_size)
+            coi = 0
+            for loop in face.loops:
+                loop[uv_layer].uv = co[coi]
+                coi += 1
+            sq_c += 1
+            if(sq_c == 4):
+                sq_c = 0
+                xsqn += 1
+                if(xsqn == sq_per_uv_side):
+                    xsqn = 0
+                    ysqn += 1
+        
+        bm.to_mesh(o.data)
+        bm.free()
+        
+        # bake vertex colors
+        _engine = bpy.context.scene.render.engine
+        bpy.context.scene.render.engine = 'CYCLES'
+        
+        tex_size = sq_per_uv_side * 8
+        img = bpy.data.images.new("PCParticlesBakedColors", tex_size, tex_size, )
+        
+        mat = bpy.data.materials.new('PCParticlesBakeMaterial')
+        o.data.materials.append(mat)
+        mat.use_nodes = True
+        # remove all nodes
+        nodes = mat.node_tree.nodes
+        for node in nodes:
+            nodes.remove(node)
+        # make new nodes
+        links = mat.node_tree.links
+        node_attr = nodes.new(type='ShaderNodeAttribute')
+        node_attr.attribute_name = o.data.vertex_colors.active.name
+        node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
+        link = links.new(node_attr.outputs[0], node_diff.inputs[0])
+        node_output = nodes.new(type='ShaderNodeOutputMaterial')
+        link = links.new(node_diff.outputs[0], node_output.inputs[0])
+        node_tcoord = nodes.new(type='ShaderNodeTexCoord')
+        node_tex = nodes.new(type='ShaderNodeTexImage')
+        node_tex.image = img
+        link = links.new(node_tcoord.outputs[2], node_tex.inputs[0])
+        # set image texture selected and active
+        node_tex.select = True
+        nodes.active = node_tex
+        
+        # do the baking
+        scene = bpy.context.scene
+        _bake_type = scene.cycles.bake_type
+        scene.cycles.bake_type = 'DIFFUSE'
+        _samples = scene.cycles.samples
+        scene.cycles.samples = 32
+        bake = scene.render.bake
+        _use_pass_direct = bake.use_pass_direct
+        _use_pass_indirect = bake.use_pass_indirect
+        _use_pass_color = bake.use_pass_color
+        _use_pass_color = bake.use_pass_color
+        bake.use_pass_direct = False
+        bake.use_pass_indirect = False
+        bake.use_pass_color = False
+        bake.use_pass_color = True
+        _margin = bake.margin
+        bake.margin = 0
+        bpy.ops.object.bake(type='DIFFUSE', )
+        
+        # cleanup, return original values to all changed bake settings
+        scene.cycles.bake_type = _bake_type
+        scene.cycles.samples = _samples
+        bake.use_pass_direct = _use_pass_direct
+        bake.use_pass_indirect = _use_pass_indirect
+        bake.use_pass_color = _use_pass_color
+        bake.use_pass_color = _use_pass_color
+        bake.margin = _margin
+        bpy.context.scene.render.engine = _engine
+        
+        # make particles
+        pmod = o.modifiers.new('PCParticleSystem', type='PARTICLE_SYSTEM', )
+        settings = pmod.particle_system.settings
+        settings.count = num_tri
+        settings.frame_end = 1
+        settings.normal_factor = 0
+        settings.emit_from = 'FACE'
+        settings.use_emit_random = False
+        settings.use_even_distribution = False
+        settings.userjit = 1
+        settings.render_type = 'OBJECT'
+        settings.particle_size = 1
+        settings.display_method = 'DOT'
+        settings.display_size = base_sphere_radius
+        settings.physics_type = 'NO'
+        
+        o.show_instancer_for_render = False
+        
+        # make instance
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=base_sphere_subdivisions, radius=base_sphere_radius, location=(0, 0, 0), )
+        sphere = bpy.context.active_object
+        sphere.parent = o
+        
+        # make material for sphere instances
+        mat = bpy.data.materials.new('PCParticlesMaterial')
+        sphere.data.materials.append(mat)
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        for node in nodes:
+            nodes.remove(node)
+        links = mat.node_tree.links
+        node_tcoord = nodes.new(type='ShaderNodeTexCoord')
+        node_tcoord.from_instancer = True
+        node_tex = nodes.new(type='ShaderNodeTexImage')
+        node_tex.image = img
+        link = links.new(node_tcoord.outputs[2], node_tex.inputs[0])
+        # node_emit = nodes.new(type='ShaderNodeEmission')
+        # link = links.new(node_tex.outputs[0], node_emit.inputs[0])
+        # node_output = nodes.new(type='ShaderNodeOutputMaterial')
+        # link = links.new(node_emit.outputs[0], node_output.inputs[0])
+        node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
+        link = links.new(node_tex.outputs[0], node_diff.inputs[0])
+        node_output = nodes.new(type='ShaderNodeOutputMaterial')
+        link = links.new(node_diff.outputs[0], node_output.inputs[0])
+        
+        # assign sphere to particles
+        settings.instance_object = sphere
 
 
 class BinPlyPointCloudReader():
@@ -1612,92 +1790,8 @@ class PCV_OT_convert(Operator):
         for i in range(l):
             c = tuple([int(255 * cs[i][j]) for j in range(3)])
             points.append(tuple(vs[i]) + tuple(ns[i]) + c)
-        # dtype = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-        # points = np.array(points, dtype=dtype)
-        # has_normals = pcv.has_normals
-        # has_colors = pcv.has_vcols
-        
-        '''
-        if(pcv.mesh_all):
-            r = PlyPointCloudReader(pcv.filepath)
-            points = r.points
-            has_normals = r.has_normals
-            has_colors = r.has_colors
-        else:
-            _cache = PCVManager.cache[pcv.uuid]
-            _mps = pcv.mesh_percentage
-            _nump = _cache['stats']
-            _l = int((_nump / 100) * _mps)
-            if(_mps >= 99):
-                _l = _nump
-            _vs = _cache['vertices'][:_l]
-            _ns = _cache['normals'][:_l]
-            _cs = _cache['colors'][:_l]
-            
-            points = []
-            for i in range(_l):
-                _r = 255 * _cs[i][0]
-                _g = 255 * _cs[i][1]
-                _b = 255 * _cs[i][2]
-                points.append(tuple(_vs[i]) + tuple(_ns[i]) + (_r, _g, _b, ))
-            
-            _dtype = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-            points = np.array(points, dtype=_dtype)
-            
-            has_normals = pcv.has_normals
-            has_colors = pcv.has_vcols
-        
-        if(not has_normals and has_colors):
-            _x = tuple(points['x'])
-            _y = tuple(points['y'])
-            _z = tuple(points['z'])
-            _r = tuple(points['red'])
-            _g = tuple(points['green'])
-            _b = tuple(points['blue'])
-            _n = len(points)
-            points = []
-            for i in range(_n):
-                points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, _r[i], _g[i], _b[i], ))
-        elif(has_normals and not has_colors):
-            _x = tuple(points['x'])
-            _y = tuple(points['y'])
-            _z = tuple(points['z'])
-            _nx = tuple(points['nx'])
-            _ny = tuple(points['ny'])
-            _nz = tuple(points['nz'])
-            _n = len(points)
-            points = []
-            for i in range(_n):
-                points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], 165, 165, 165, ))
-        elif(not has_normals and not has_colors):
-            _x = tuple(points['x'])
-            _y = tuple(points['y'])
-            _z = tuple(points['z'])
-            _n = len(points)
-            points = []
-            for i in range(_n):
-                points.append((_x[i], _y[i], _z[i], 0.0, 0.0, 1.0, 165, 165, 165, ))
-        else:
-            # just sort to (x,y,z,nx,ny,nz,r,g,b), it might be shuffled if loaded directly from ply
-            _x = tuple(points['x'])
-            _y = tuple(points['y'])
-            _z = tuple(points['z'])
-            _nx = tuple(points['nx'])
-            _ny = tuple(points['ny'])
-            _nz = tuple(points['nz'])
-            _r = tuple(points['red'])
-            _g = tuple(points['green'])
-            _b = tuple(points['blue'])
-            _n = len(points)
-            points = []
-            for i in range(_n):
-                points.append((_x[i], _y[i], _z[i], _nx[i], _ny[i], _nz[i], _r[i], _g[i], _b[i], ))
-        '''
         
         def apply_matrix(points, matrix):
-            # log("apply_matrix:", 0, )
-            # ms = str(matrix).replace('            ', ', ').replace('\n', '')
-            # log("points: {0}, matrix: {1}".format(len(points), ms), 1)
             matrot = matrix.decompose()[1].to_matrix().to_4x4()
             r = [None] * len(points)
             for i, p in enumerate(points):
@@ -1728,8 +1822,14 @@ class PCV_OT_convert(Operator):
         elif(pcv.mesh_type == 'ICOSPHERE'):
             g = IcoSphereMeshGenerator()
             n = "{}-icospheres".format(n)
+        elif(pcv.mesh_type == 'PARTICLES'):
+            g = EquilateralTriangleMeshGenerator()
+            n = "{}-particles".format(n)
         else:
             pass
+        
+        # hide the point cloud, 99% of time i go back, hide cloud and then go to conversion product again..
+        bpy.ops.point_cloud_visualizer.erase()
         
         s = pcv.mesh_size
         a = pcv.mesh_normal_align
@@ -1746,6 +1846,9 @@ class PCV_OT_convert(Operator):
         me = o.data
         me.transform(m.inverted())
         o.matrix_world = m
+        
+        if(pcv.mesh_type == 'PARTICLES'):
+            pcp = PCParticles(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
         
         return {'FINISHED'}
 
@@ -1919,6 +2022,15 @@ class PCV_PT_render(Panel):
         c = sub.column()
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
+        
+        # render = context.scene.render
+        # c = sub.column(align=True)
+        # c.prop(render, 'resolution_x')
+        # c.prop(render, 'resolution_y')
+        # c.prop(render, 'resolution_percentage')
+        # c.prop(render, 'filepath', text='Output', )
+        #
+        # c = sub.column(align=True)
         c.prop(pcv, 'render_suffix')
         c.prop(pcv, 'render_zeros')
         
@@ -1957,6 +2069,9 @@ class PCV_PT_convert(Panel):
         
         cc = c.column()
         cc.prop(pcv, 'mesh_size')
+        
+        if(pcv.mesh_type == 'PARTICLES'):
+            cc.prop(pcv, 'mesh_base_sphere_subdivisions')
         
         cc_n = cc.row()
         cc_n.prop(pcv, 'mesh_normal_align')
@@ -2087,12 +2202,14 @@ class PCV_properties(PropertyGroup):
                                                 ('TRIANGLE', "Equilateral Triangle", ""),
                                                 ('TETRAHEDRON', "Tetrahedron", ""),
                                                 ('CUBE', "Cube", ""),
-                                                ('ICOSPHERE', "Ico Sphere", ""), ], default='CUBE', description="Instance mesh type", )
+                                                ('ICOSPHERE', "Ico Sphere", ""),
+                                                ('PARTICLES', "Particle System", ""), ], default='CUBE', description="Instance mesh type", )
     mesh_size: FloatProperty(name="Size", description="Mesh instance size, instanced mesh has size 1.0", default=0.01, min=0.000001, precision=4, max=100.0, )
     mesh_normal_align: BoolProperty(name="Align To Normal", description="Align instance to point normal", default=True, )
     mesh_vcols: BoolProperty(name="Colors", description="Assign point color to instance vertex colors", default=True, )
     mesh_all: BoolProperty(name="All", description="Convert all points", default=True, )
     mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
+    mesh_base_sphere_subdivisions: IntProperty(name="Sphere Subdivisions", default=2, min=1, max=6, description="Particle instance (Ico Sphere) subdivisions, instance mesh can be change later", )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
