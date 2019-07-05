@@ -71,11 +71,13 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ##### Usage:
 
+* Blend file has to be saved
 * Load and display ply first.
 * Make a camera and adjust as needed.
-* Set render image size in `Properties > Output > Dimensions`. Resolution X, Y and % are used.
-* Set render path in `Properties > Output > Output`. Just path is used.
 * Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
+* Set render path in `Output`.
+* Set render image size with `Resolution X`, `Resolution Y` and `Resolution %`.
+* At default resolution settings are taken from scene, to make them independent, click chain icon next to properties, correct aspect ratio is not calculated, if you link properties again, values are copied from scene.
 * If `Illumination` is enabled it will be rendered as well
 * Hit `Render` or `Animation`
 
@@ -83,8 +85,11 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 * `Size` - point render size in pixels
 * `Count` - percentage of rendered points
-* `Suffix` - rendered image filename suffix. If filename in `Output` path is defined result filename will be `NAME_SUFFIX_######.png`, if only path is given, result is `SUFFIX_######.png`
-* `Leading Zeros` - image filename frame number leading zeros count
+* `Output` - path where to save rendered images, `#` characters defines the position and length of frame numbers, image is always saved, filetype is always png, accepts relative paths, upon hitting `Render` path is validated, changed to absolute and written back
+* `Resolution X` - image width in pixels
+* `Resolution Y` - image height in pixels
+* `Resolution %` - percentage scale for resolution
+* `Resolution Linked` - when enabled, settings are taken from scene, if not they are independent on scene, but aspect ratio is not calculated
 
 ### Point cloud to mesh conversion:
 
@@ -110,6 +115,7 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 
 ### Changelog:
 
+* 0.9.1 all new render settings
 * 0.9.0 conversion to particles
 * 0.8.14 fixes
 * 0.8.13 fixes

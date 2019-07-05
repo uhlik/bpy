@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 0),
+           "version": (0, 9, 1),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -35,6 +35,7 @@ import time
 import datetime
 import math
 import numpy as np
+import re
 
 import bpy
 import bmesh
@@ -55,7 +56,6 @@ from bpy_extras.io_utils import axis_conversion
 # FIXME checking for normals/colors in points is kinda scattered all over
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO try to remove manual depth test during offscreen rendering
-# TODO rendering, do something with resolution and render path setting, either add props to panel directly from render panels or make everything from scratch independent on scene settings
 # NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
 # NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
@@ -416,10 +416,12 @@ class PCMeshInstancer():
 class PCParticles():
     def __init__(self, o, mesh_size, base_sphere_subdivisions, ):
         log("{}:".format(self.__class__.__name__), 0, )
+        _t = time.time()
         
         base_sphere_radius = mesh_size / 2
         
         # make uv layout of neatly packed triangles to bake vertex colors
+        log("calculating uv layout..", 1)
         num_tri = len(o.data.polygons)
         num_sq = math.ceil(num_tri / 4)
         sq_per_uv_side = math.ceil(math.sqrt(num_sq))
@@ -482,6 +484,7 @@ class PCParticles():
         bm.free()
         
         # bake vertex colors
+        log("baking vertex colors..", 1)
         _engine = bpy.context.scene.render.engine
         bpy.context.scene.render.engine = 'CYCLES'
         
@@ -542,6 +545,7 @@ class PCParticles():
         bpy.context.scene.render.engine = _engine
         
         # make particles
+        log("setting up particle system..", 1)
         pmod = o.modifiers.new('PCParticleSystem', type='PARTICLE_SYSTEM', )
         settings = pmod.particle_system.settings
         settings.count = num_tri
@@ -560,6 +564,7 @@ class PCParticles():
         o.show_instancer_for_render = False
         
         # make instance
+        log("making ico sphere instance mesh with material..", 1)
         bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=base_sphere_subdivisions, radius=base_sphere_radius, location=(0, 0, 0), )
         sphere = bpy.context.active_object
         sphere.parent = o
@@ -588,6 +593,9 @@ class PCParticles():
         
         # assign sphere to particles
         settings.instance_object = sphere
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
 
 
 class BinPlyPointCloudReader():
@@ -1542,19 +1550,91 @@ class PCV_OT_render(Operator):
         original_depth = image_settings.color_depth
         image_settings.color_depth = '8'
         
-        scale = render.resolution_percentage / 100
-        width = int(render.resolution_x * scale)
-        height = int(render.resolution_y * scale)
-        
         pcv = context.object.point_cloud_visualizer
+        
+        if(pcv.render_resolution_linked):
+            scale = render.resolution_percentage / 100
+            width = int(render.resolution_x * scale)
+            height = int(render.resolution_y * scale)
+        else:
+            scale = pcv.render_resolution_percentage / 100
+            width = int(pcv.render_resolution_x * scale)
+            height = int(pcv.render_resolution_y * scale)
+        
         cloud = PCVManager.cache[pcv.uuid]
         cam = scene.camera
         if(cam is None):
             self.report({'ERROR'}, "No camera found.")
             return {'CANCELLED'}
         
-        render_suffix = pcv.render_suffix
-        render_zeros = pcv.render_zeros
+        def get_output_path():
+            p = bpy.path.abspath(pcv.render_path)
+            ok = True
+            
+            # ensure soem directory and filename
+            h, t = os.path.split(p)
+            if(h == ''):
+                # next to blend file
+                h = bpy.path.abspath('//')
+            
+            if(not os.path.exists(h)):
+                self.report({'ERROR'}, "Directory does not exist ('{}').".format(h))
+                ok = False
+            if(not os.path.isdir(h)):
+                self.report({'ERROR'}, "Not a directory ('{}').".format(h))
+                ok = False
+            
+            if(t == ''):
+                # default name
+                t = 'pcv_render_###.png'
+            
+            # ensure extension
+            p = os.path.join(h, t)
+            p = bpy.path.ensure_ext(p, '.png', )
+            h, t = os.path.split(p)
+            
+            # ensure frame number
+            if('#' not in t):
+                n, e = os.path.splitext(t)
+                n = '{}_###'.format(n)
+                t = '{}{}'.format(n, e)
+            
+            # return with a bit of luck valid path
+            p = os.path.join(h, t)
+            return ok, p
+        
+        def swap_frame_number(p):
+            fn = scene.frame_current
+            h, t = os.path.split(p)
+            
+            # swap all occurences of # with zfilled frame number
+            pattern = r'#+'
+            
+            def repl(m):
+                l = len(m.group(0))
+                return str(fn).zfill(l)
+            
+            t = re.sub(pattern, repl, t, )
+            p = os.path.join(h, t)
+            return p
+        
+        bd = context.blend_data
+        if(bd.filepath == "" and not bd.is_saved):
+            self.report({'ERROR'}, "Save .blend file first.")
+            return {'CANCELLED'}
+        
+        ok, output_path = get_output_path()
+        if(not ok):
+            return {'CANCELLED'}
+        
+        # path is ok, write it back..
+        pcv.render_path = output_path
+        
+        # swap frame number
+        output_path = swap_frame_number(output_path)
+        
+        # render_suffix = pcv.render_suffix
+        # render_zeros = pcv.render_zeros
         
         offscreen = GPUOffScreen(width, height)
         offscreen.bind()
@@ -1660,26 +1740,27 @@ class PCV_OT_render(Operator):
         image.pixels = [v / 255 for v in buffer]
         
         # save as image file
-        def save_render(operator, scene, image, render_suffix, render_zeros, ):
-            f = False
-            n = render_suffix
-            rs = bpy.context.scene.render
-            op = rs.filepath
-            if(len(op) > 0):
-                if(not op.endswith(os.path.sep)):
-                    f = True
-                    op, n = os.path.split(op)
-            else:
-                log("error: output path is not set".format(e))
-                operator.report({'ERROR'}, "Output path is not set.")
-                return
+        def save_render(operator, scene, image, output_path, ):
+            # f = False
+            # n = render_suffix
+            # rs = bpy.context.scene.render
+            # op = rs.filepath
+            # if(len(op) > 0):
+            #     if(not op.endswith(os.path.sep)):
+            #         f = True
+            #         op, n = os.path.split(op)
+            # else:
+            #     log("error: output path is not set".format(e))
+            #     operator.report({'ERROR'}, "Output path is not set.")
+            #     return
+            #
+            # if(f):
+            #     n = "{}_{}".format(n, render_suffix)
+            #
+            # fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
+            # p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
             
-            if(f):
-                n = "{}_{}".format(n, render_suffix)
-            
-            fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
-            p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
-            
+            rs = scene.render
             s = rs.image_settings
             ff = s.file_format
             cm = s.color_mode
@@ -1696,13 +1777,15 @@ class PCV_OT_render(Operator):
             s.color_depth = '8'
             
             try:
-                image.save_render(p)
-                log("image '{}' saved".format(p))
+                image.save_render(output_path)
+                log("image '{}' saved".format(output_path))
             except Exception as e:
                 s.file_format = ff
                 s.color_mode = cm
                 s.color_depth = cd
-        
+                vs.view_transform = vsvt
+                vs.look = vsl
+                
                 log("error: {}".format(e))
                 operator.report({'ERROR'}, "Unable to save render image, see console for details.")
                 return
@@ -1713,10 +1796,14 @@ class PCV_OT_render(Operator):
             vs.view_transform = vsvt
             vs.look = vsl
         
-        save_render(self, scene, image, render_suffix, render_zeros, )
+        # save_render(self, scene, image, render_suffix, render_zeros, )
+        save_render(self, scene, image, output_path, )
         
         # restore
         image_settings.color_depth = original_depth
+        
+        # cleanup
+        bpy.data.images.remove(image)
         
         return {'FINISHED'}
 
@@ -1909,7 +1996,8 @@ class PCV_PT_panel(Panel):
         l0c0 = "Selected: "
         l0c1 = "{}".format("n/a")
         l1c0 = "Displayed: "
-        l1c1 = "{} of {}".format("0.0", "n/a")
+        # l1c1 = "{} of {}".format("0.0", "n/a")
+        l1c1 = "{}".format("n/a")
         
         if(pcv.filepath != ""):
             _, t = os.path.split(pcv.filepath)
@@ -1918,9 +2006,15 @@ class PCV_PT_panel(Panel):
                 l0c0 = "Loaded: "
                 l0c1 = "{}".format(t)
                 cache = PCVManager.cache[pcv.uuid]
+                
                 n = human_readable_number(cache['display_percent'])
+                # don't use it when less or equal to 999
+                if(cache['display_percent'] < 1000):
+                    n = str(cache['display_percent'])
+                
                 if(not cache['draw']):
-                    n = "0.0"
+                    # n = "0.0"
+                    n = "0"
                 nn = human_readable_number(cache['stats'])
                 l1c1 = "{} of {}".format(n, nn)
         
@@ -2024,16 +2118,36 @@ class PCV_PT_render(Panel):
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
         
-        # render = context.scene.render
-        # c = sub.column(align=True)
-        # c.prop(render, 'resolution_x')
-        # c.prop(render, 'resolution_y')
-        # c.prop(render, 'resolution_percentage')
-        # c.prop(render, 'filepath', text='Output', )
-        #
-        # c = sub.column(align=True)
-        c.prop(pcv, 'render_suffix')
-        c.prop(pcv, 'render_zeros')
+        sub.separator()
+        
+        c = sub.column()
+        # c.prop(pcv, 'render_path', text='Output', )
+        
+        f = 0.33
+        r = sub.row(align=True, )
+        s = r.split(factor=f)
+        s.label(text='Output')
+        s = s.split(factor=1.0)
+        r = s.row(align=True, )
+        c = r.column(align=True)
+        c.prop(pcv, 'render_path', text='', )
+        
+        r = sub.row(align=True)
+        c0 = r.column(align=True)
+        c0.prop(pcv, 'render_resolution_linked', toggle=True, text='', icon='LINKED' if pcv.render_resolution_linked else 'UNLINKED', icon_only=True, )
+        c0.prop(pcv, 'render_resolution_linked', toggle=True, text='', icon='LINKED' if pcv.render_resolution_linked else 'UNLINKED', icon_only=True, )
+        c0.prop(pcv, 'render_resolution_linked', toggle=True, text='', icon='LINKED' if pcv.render_resolution_linked else 'UNLINKED', icon_only=True, )
+        c1 = r.column(align=True)
+        if(pcv.render_resolution_linked):
+            render = context.scene.render
+            c1.prop(render, 'resolution_x')
+            c1.prop(render, 'resolution_y')
+            c1.prop(render, 'resolution_percentage')
+            c1.active = False
+        else:
+            c1.prop(pcv, 'render_resolution_x')
+            c1.prop(pcv, 'render_resolution_y')
+            c1.prop(pcv, 'render_resolution_percentage')
         
         sub.separator()
         
@@ -2087,7 +2201,7 @@ class PCV_PT_convert(Panel):
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
         
-        # c.separator()
+        c.separator()
         c.operator('point_cloud_visualizer.convert')
         c.enabled = PCV_OT_convert.poll(context)
 
@@ -2108,23 +2222,54 @@ class PCV_PT_debug(Panel):
         sub.label(text="properties:")
         b = sub.box()
         c = b.column()
+        
+        # c.label(text="uuid: {}".format(pcv.uuid))
+        # c.label(text="filepath: {}".format(pcv.filepath))
+        # c.label(text="point_size: {}".format(pcv.point_size))
+        # c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
+        # c.label(text="display_percent: {}".format(pcv.display_percent))
+        # c.label(text="render_expanded: {}".format(pcv.render_expanded))
+        # c.label(text="render_point_size: {}".format(pcv.render_point_size))
+        # c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
+        # # c.label(text="render_suffix: {}".format(pcv.render_suffix))
+        # # c.label(text="render_zeros: {}".format(pcv.render_zeros))
+        # c.label(text="has_normals: {}".format(pcv.has_normals))
+        # c.label(text="has_vcols: {}".format(pcv.has_vcols))
+        # c.label(text="illumination: {}".format(pcv.illumination))
+        # c.label(text="light_direction: {}".format(pcv.light_direction))
+        # c.label(text="light_intensity: {}".format(pcv.light_intensity))
+        # c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
+        
         c.label(text="uuid: {}".format(pcv.uuid))
         c.label(text="filepath: {}".format(pcv.filepath))
+        c.label(text="has_normals: {}".format(pcv.has_normals))
+        c.label(text="has_vcols: {}".format(pcv.has_vcols))
         c.label(text="point_size: {}".format(pcv.point_size))
         c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
         c.label(text="display_percent: {}".format(pcv.display_percent))
-        c.label(text="render_expanded: {}".format(pcv.render_expanded))
-        c.label(text="render_point_size: {}".format(pcv.render_point_size))
-        c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
-        c.label(text="render_suffix: {}".format(pcv.render_suffix))
-        c.label(text="render_zeros: {}".format(pcv.render_zeros))
-        
-        c.label(text="has_normals: {}".format(pcv.has_normals))
-        c.label(text="has_vcols: {}".format(pcv.has_vcols))
         c.label(text="illumination: {}".format(pcv.illumination))
+        c.label(text="illumination_edit: {}".format(pcv.illumination_edit))
         c.label(text="light_direction: {}".format(pcv.light_direction))
         c.label(text="light_intensity: {}".format(pcv.light_intensity))
         c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
+        c.label(text="show_normals: {}".format(pcv.show_normals))
+        c.label(text="vertex_normals: {}".format(pcv.vertex_normals))
+        c.label(text="vertex_normals_size: {}".format(pcv.vertex_normals_size))
+        c.label(text="render_expanded: {}".format(pcv.render_expanded))
+        c.label(text="render_point_size: {}".format(pcv.render_point_size))
+        c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
+        c.label(text="render_path: {}".format(pcv.render_path))
+        c.label(text="render_resolution_x: {}".format(pcv.render_resolution_x))
+        c.label(text="render_resolution_y: {}".format(pcv.render_resolution_y))
+        c.label(text="render_resolution_percentage: {}".format(pcv.render_resolution_percentage))
+        c.label(text="render_resolution_linked: {}".format(pcv.render_resolution_linked))
+        c.label(text="mesh_type: {}".format(pcv.mesh_type))
+        c.label(text="mesh_size: {}".format(pcv.mesh_size))
+        c.label(text="mesh_normal_align: {}".format(pcv.mesh_normal_align))
+        c.label(text="mesh_vcols: {}".format(pcv.mesh_vcols))
+        c.label(text="mesh_all: {}".format(pcv.mesh_all))
+        c.label(text="mesh_percentage: {}".format(pcv.mesh_percentage))
+        c.label(text="mesh_base_sphere_subdivisions: {}".format(pcv.mesh_base_sphere_subdivisions))
         
         c.label(text="debug: {}".format(pcv.debug))
         c.scale_y = 0.5
@@ -2185,9 +2330,24 @@ class PCV_properties(PropertyGroup):
     # render_point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
     render_point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
     render_display_percent: FloatProperty(name="Count", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of points rendered", )
-    render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
-    # render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
-    render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, description="Number of leading zeros in render filename", )
+    # render_suffix: StringProperty(name="Suffix", default="pcv_frame", description="Render filename or suffix, depends on render output path. Frame number will be appended automatically", )
+    # # render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, subtype='FACTOR', description="Number of leading zeros in render filename", )
+    # render_zeros: IntProperty(name="Leading Zeros", default=6, min=3, max=10, description="Number of leading zeros in render filename", )
+    
+    render_path: StringProperty(name="Output Path", default="//pcv_render_###.png", description="Directory/name to save rendered images, # characters defines the position and length of frame numbers, filetype is always png", subtype='FILE_PATH', )
+    render_resolution_x: IntProperty(name="Resolution X", default=1920, min=4, max=65536, description="Number of horizontal pixels in rendered image", subtype='PIXEL', )
+    render_resolution_y: IntProperty(name="Resolution Y", default=1080, min=4, max=65536, description="Number of vertical pixels in rendered image", subtype='PIXEL', )
+    render_resolution_percentage: IntProperty(name="Resolution %", default=100, min=1, max=100, description="Percentage scale for render resolution", subtype='PERCENTAGE', )
+    
+    def _render_resolution_linked_update(self, context, ):
+        if(not self.render_resolution_linked):
+            # now it is False, so it must have been True, so for convenience, copy values
+            r = context.scene.render
+            self.render_resolution_x = r.resolution_x
+            self.render_resolution_y = r.resolution_y
+            self.render_resolution_percentage = r.resolution_percentage
+    
+    render_resolution_linked: BoolProperty(name="Resolution Linked", description="Link resolution settings to scene", default=True, update=_render_resolution_linked_update, )
     
     has_normals: BoolProperty(default=False, options={'HIDDEN', }, )
     has_vcols: BoolProperty(default=False, options={'HIDDEN', }, )
