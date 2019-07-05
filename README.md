@@ -34,7 +34,7 @@
 
 Display colored point cloud PLY in Blender's 3d viewport. Optionally render point cloud to png sequence or convert to various mesh types with vertex colors for regular rendering. 
 
-Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional. Color values must be in 0-255 range.
+Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional.
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9.gif)
 
@@ -112,9 +112,12 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 
 * `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing
 * `Normal Color` - Display color for vertex normals
+* `Convert 16bit Colors` - Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype
+* `Gamma Correct 16bit Colors` - When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'
 
 ### Changelog:
 
+* 0.9.2 load ply with 16bit colors
 * 0.9.1 all new render settings
 * 0.9.0 conversion to particles
 * 0.8.14 fixes

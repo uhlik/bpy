@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 1),
+           "version": (0, 9, 2),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1085,8 +1085,24 @@ class PCVManager():
                                   np.full(n, 1.0, dtype=np.float32, ), ))
         
         if(vcols):
-            cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
-            cs = cs.astype(np.float32)
+            preferences = bpy.context.preferences
+            addon_prefs = preferences.addons[__name__].preferences
+            if(addon_prefs.convert_16bit_colors and points['red'].dtype == 'uint16'):
+                r8 = (points['red'] / 256).astype('uint8')
+                g8 = (points['green'] / 256).astype('uint8')
+                b8 = (points['blue'] / 256).astype('uint8')
+                if(addon_prefs.gamma_correct_16bit_colors):
+                    cs = np.column_stack(((r8 / 255) ** (1 / 2.2),
+                                          (g8 / 255) ** (1 / 2.2),
+                                          (b8 / 255) ** (1 / 2.2),
+                                          np.ones(len(points), dtype=float, ), ))
+                else:
+                    cs = np.column_stack((r8 / 255, g8 / 255, b8 / 255, np.ones(len(points), dtype=float, ), ))
+                cs = cs.astype(np.float32)
+            else:
+                # 'uint8'
+                cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+                cs = cs.astype(np.float32)
         else:
             n = len(points)
             # default_color = 0.65
@@ -2398,12 +2414,20 @@ class PCV_preferences(AddonPreferences):
     
     default_vertex_color: FloatVectorProperty(name="Default Color", default=(0.65, 0.65, 0.65, ), min=0, max=1, subtype='COLOR', size=3, description="Default color to be used upon loading PLY to cache when vertex colors are missing", )
     normal_color: FloatVectorProperty(name="Normal Color", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals", )
+    convert_16bit_colors: BoolProperty(name="Convert 16bit Colors", description="Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype", default=True, )
+    gamma_correct_16bit_colors: BoolProperty(name="Gamma Correct 16bit Colors", description="When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'", default=True, )
     
     def draw(self, context):
         l = self.layout
         r = l.row()
         r.prop(self, "default_vertex_color")
         r.prop(self, "normal_color")
+        r = l.row()
+        r.prop(self, "convert_16bit_colors")
+        c = r.column()
+        c.prop(self, "gamma_correct_16bit_colors")
+        if(not self.convert_16bit_colors):
+            c.active = False
 
 
 @persistent
