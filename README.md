@@ -38,7 +38,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.0.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.2.png)
 
 ### General info
 
