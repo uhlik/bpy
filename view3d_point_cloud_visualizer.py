@@ -2142,7 +2142,7 @@ class PCV_PT_render(Panel):
         f = 0.33
         r = sub.row(align=True, )
         s = r.split(factor=f)
-        s.label(text='Output')
+        s.label(text='Output:')
         s = s.split(factor=1.0)
         r = s.row(align=True, )
         c = r.column(align=True)
