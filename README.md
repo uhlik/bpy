@@ -208,6 +208,7 @@ Only active mesh is exported. Only single mesh is expected on import. Supported 
 
 changelog:
 
+* 0.3.4 ui
 * 0.3.3 fallback python export implementation in case cython module is not available
 * 0.3.2 import 'extended' vertex colors (x,y,z,r,g,b), optionally apply gamma correction
 * 0.3.1 import obj (python only)

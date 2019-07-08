@@ -19,7 +19,7 @@
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 3),
+           "version": (0, 3, 4),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
            "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
@@ -757,36 +757,49 @@ class ImportFastOBJ(Operator, ImportHelper):
         return True
     
     def draw(self, context):
-        l = self.layout
-        sub = l.column()
-        
-        r = sub.row()
-        r.prop(self, 'convert_axes')
-        c = r.column()
-        # c.prop(self, 'apply_conversion', toggle=True, text='', icon='AXIS_TOP')
-        c.prop(self, 'apply_conversion', toggle=True, text='', icon='EMPTY_AXIS')
-        # c.prop(self, 'apply_conversion', toggle=True, text='', icon='OUTLINER_DATA_EMPTY')
-        c.enabled = self.convert_axes
-        
-        sub.prop(self, 'with_uv')
-        
-        r = sub.row()
-        r.prop(self, 'with_vertex_colors_mrgb')
-        c = r.column()
-        c.prop(self, 'use_m_as_vertex_group', toggle=True, text='', icon='GROUP_VERTEX')
-        c.enabled = self.with_vertex_colors_mrgb
-        
-        r = sub.row()
-        r.prop(self, 'with_vertex_colors_extended')
-        c = r.column()
-        c.prop(self, 'vcols_ext_with_gamma', toggle=True, text='', icon='FCURVE')
-        c.enabled = self.with_vertex_colors_extended
-        
-        sub.prop(self, 'with_polygroups')
-        sub.prop(self, 'global_scale')
+        # l = self.layout
+        # sub = l.column()
+        #
         # r = sub.row()
-        # r.prop(self, 'apply_conversion')
-        # r.enabled = self.convert_axes
+        # r.prop(self, 'convert_axes')
+        # c = r.column()
+        # c.prop(self, 'apply_conversion', toggle=True, text='', icon='EMPTY_AXIS')
+        # c.enabled = self.convert_axes
+        #
+        # sub.prop(self, 'with_uv')
+        #
+        # r = sub.row()
+        # r.prop(self, 'with_vertex_colors_mrgb')
+        # c = r.column()
+        # c.prop(self, 'use_m_as_vertex_group', toggle=True, text='', icon='GROUP_VERTEX')
+        # c.enabled = self.with_vertex_colors_mrgb
+        #
+        # r = sub.row()
+        # r.prop(self, 'with_vertex_colors_extended')
+        # c = r.column()
+        # c.prop(self, 'vcols_ext_with_gamma', toggle=True, text='', icon='FCURVE')
+        # c.enabled = self.with_vertex_colors_extended
+        #
+        # sub.prop(self, 'with_polygroups')
+        # sub.prop(self, 'global_scale')
+        
+        l = self.layout
+        c = l.column()
+        c.prop(self, 'convert_axes')
+        e = c.column()
+        e.prop(self, 'apply_conversion')
+        e.enabled = self.convert_axes
+        c.prop(self, 'with_uv')
+        c.prop(self, 'with_vertex_colors_mrgb')
+        e = c.column()
+        e.prop(self, 'use_m_as_vertex_group')
+        e.enabled = self.with_vertex_colors_mrgb
+        c.prop(self, 'with_vertex_colors_extended')
+        e = c.column()
+        e.prop(self, 'vcols_ext_with_gamma')
+        e.enabled = self.with_vertex_colors_extended
+        c.prop(self, 'with_polygroups')
+        c.prop(self, 'global_scale')
     
     def execute(self, context):
         t = time.time()
