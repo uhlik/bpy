@@ -19,7 +19,7 @@
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 4),
+           "version": (0, 3, 5),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
            "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
@@ -312,15 +312,11 @@ class FastOBJWriter():
         log("will write .obj at: {}".format(path), 1)
         
         log("prepare..", 1)
-        me = None
-        if(apply_modifiers):
-            me = o.to_mesh(bpy.context.depsgraph, apply_modifiers, )
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        me = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
         
         bm = bmesh.new()
-        if(me is not None):
-            bm.from_mesh(me)
-        else:
-            bm.from_mesh(o.data)
+        bm.from_mesh(me)
         
         log_args_align = 25
         log("{} {}".format("{}: ".format("triangulate").ljust(log_args_align, "."), triangulate), 1)
@@ -602,8 +598,7 @@ class FastOBJWriter():
         shutil.move(tp, path)
         
         log("cleanup..", 1)
-        if(me is not None):
-            bpy.data.meshes.remove(me)
+        o.to_mesh_clear()
         bm.free()
 
 
@@ -677,7 +672,9 @@ class ExportFastOBJ(Operator, ExportHelper):
             log("completed in {}.".format(datetime.timedelta(seconds=time.time() - t)))
             return {'FINISHED'}
         
-        m = o.to_mesh(bpy.context.depsgraph, self.apply_modifiers, )
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        m = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+        
         if(self.apply_transformation):
             mw = o.matrix_world.copy()
             m.transform(mw)
@@ -714,7 +711,7 @@ class ExportFastOBJ(Operator, ExportHelper):
                               precision=self.precision,
                               debug=DEBUG, )
         
-        bpy.data.meshes.remove(m)
+        o.to_mesh_clear()
         
         log("completed in {}.".format(datetime.timedelta(seconds=time.time() - t)))
         return {'FINISHED'}
