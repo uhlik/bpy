@@ -529,7 +529,7 @@ class CARBON_OT_save_all_images(Operator):
         return (ob and ob.type == 'MESH' and context.mode == 'PAINT_TEXTURE')
     
     def execute(self, context):
-        bpy.ops.image.save_dirty()
+        bpy.ops.image.save_all_modified()
         return {'FINISHED'}
 
 
