@@ -91,13 +91,15 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * `Resolution %` - percentage scale for resolution
 * `Resolution Linked` - when enabled, settings are taken from scene, if not they are independent on scene, but aspect ratio is not calculated
 
-### Point cloud to mesh conversion:
+### Point cloud to mesh/instances/particles conversion:
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-convert.jpg)
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-psys.jpg)
 
 Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
+
+Conversion to instancer specifics: points are converted to triangle mesh object, vertex colors are baked to texture, extra instanced sphere object is added as child object of main mesh, material using baked colors is added to sphere and each instance inherits color of corresponding face it is instanced from.
 
 Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from. Result is regular particle system which can be further edited, e.g. instance mesh changed, physics added etc.
 
@@ -106,7 +108,7 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 * `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
-* `Sphere Subdivisions` - Conversion to particles only, number of subdivisions of particle system instanced ico sphere
+* `Sphere Subdivisions` - Conversion to instancer / particles only, number of subdivisions of particle system instanced ico sphere
 
 ### Addon Preferences:
 
@@ -117,6 +119,7 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 
 ### Changelog:
 
+* 0.9.3 conversion to instancer
 * 0.9.2 load ply with 16bit colors
 * 0.9.1 all new render settings
 * 0.9.0 conversion to particles

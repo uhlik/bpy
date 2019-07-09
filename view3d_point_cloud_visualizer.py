@@ -19,9 +19,9 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 2),
+           "version": (0, 9, 3),
            "blender": (2, 80, 0),
-           "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
+           "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
            "wiki_url": "https://github.com/uhlik/bpy",
            "tracker_url": "https://github.com/uhlik/bpy/issues",
@@ -411,6 +411,169 @@ class PCMeshInstancer():
                 vc.data[li].color = c + (1.0, )
         else:
             log("no mesh loops in mesh", 2, )
+
+
+class PCInstancer():
+    def __init__(self, o, mesh_size, base_sphere_subdivisions, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        _t = time.time()
+        
+        base_sphere_radius = mesh_size / 2
+        
+        # make uv layout of neatly packed triangles to bake vertex colors
+        log("calculating uv layout..", 1)
+        num_tri = len(o.data.polygons)
+        num_sq = math.ceil(num_tri / 4)
+        sq_per_uv_side = math.ceil(math.sqrt(num_sq))
+        sq_size = 1 / sq_per_uv_side
+        
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        uv_layer = bm.loops.layers.uv.new("PCParticlesUVMap")
+        
+        def tri_uv(i, x, y, q):
+            # *---------------*
+            # |  \    3    /  |
+            # |    \     /    |
+            # | 4     *    2  |
+            # |    /     \    |
+            # |  /    1    \  |
+            # *---------------*
+            # 1  0.0,0.0  1.0,0.0  0.5,0.5
+            # 2  1.0,0.0  1.0,1.0  0.5,0.5
+            # 3  1.0,1.0  0.0,1.0  0.5,0.5
+            # 4  0.0,1.0  0.0,0.0  0.5,0.5
+            
+            if(i == 0):
+                return ((x + (0.0 * q), y + (0.0 * q), ),
+                        (x + (1.0 * q), y + (0.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 1):
+                return ((x + (1.0 * q), y + (0.0 * q), ),
+                        (x + (1.0 * q), y + (1.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 2):
+                return ((x + (1.0 * q), y + (1.0 * q), ),
+                        (x + (0.0 * q), y + (1.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            elif(i == 3):
+                return ((x + (0.0 * q), y + (1.0 * q), ),
+                        (x + (0.0 * q), y + (0.0 * q), ),
+                        (x + (0.5 * q), y + (0.5 * q), ), )
+            else:
+                raise Exception("You're not supposed to do that..")
+        
+        sq_c = 0
+        xsqn = 0
+        ysqn = 0
+        for face in bm.faces:
+            co = tri_uv(sq_c, xsqn * sq_size, ysqn * sq_size, sq_size)
+            coi = 0
+            for loop in face.loops:
+                loop[uv_layer].uv = co[coi]
+                coi += 1
+            sq_c += 1
+            if(sq_c == 4):
+                sq_c = 0
+                xsqn += 1
+                if(xsqn == sq_per_uv_side):
+                    xsqn = 0
+                    ysqn += 1
+        
+        bm.to_mesh(o.data)
+        bm.free()
+        
+        # bake vertex colors
+        log("baking vertex colors..", 1)
+        _engine = bpy.context.scene.render.engine
+        bpy.context.scene.render.engine = 'CYCLES'
+        
+        tex_size = sq_per_uv_side * 8
+        img = bpy.data.images.new("PCParticlesBakedColors", tex_size, tex_size, )
+        
+        mat = bpy.data.materials.new('PCParticlesBakeMaterial')
+        o.data.materials.append(mat)
+        mat.use_nodes = True
+        # remove all nodes
+        nodes = mat.node_tree.nodes
+        for node in nodes:
+            nodes.remove(node)
+        # make new nodes
+        links = mat.node_tree.links
+        node_attr = nodes.new(type='ShaderNodeAttribute')
+        if(o.data.vertex_colors.active is not None):
+            node_attr.attribute_name = o.data.vertex_colors.active.name
+        node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
+        link = links.new(node_attr.outputs[0], node_diff.inputs[0])
+        node_output = nodes.new(type='ShaderNodeOutputMaterial')
+        link = links.new(node_diff.outputs[0], node_output.inputs[0])
+        node_tcoord = nodes.new(type='ShaderNodeTexCoord')
+        node_tex = nodes.new(type='ShaderNodeTexImage')
+        node_tex.image = img
+        link = links.new(node_tcoord.outputs[2], node_tex.inputs[0])
+        # set image texture selected and active
+        node_tex.select = True
+        nodes.active = node_tex
+        
+        # do the baking
+        scene = bpy.context.scene
+        _bake_type = scene.cycles.bake_type
+        scene.cycles.bake_type = 'DIFFUSE'
+        _samples = scene.cycles.samples
+        scene.cycles.samples = 32
+        bake = scene.render.bake
+        _use_pass_direct = bake.use_pass_direct
+        _use_pass_indirect = bake.use_pass_indirect
+        _use_pass_color = bake.use_pass_color
+        _use_pass_color = bake.use_pass_color
+        bake.use_pass_direct = False
+        bake.use_pass_indirect = False
+        bake.use_pass_color = False
+        bake.use_pass_color = True
+        _margin = bake.margin
+        bake.margin = 0
+        bpy.ops.object.bake(type='DIFFUSE', )
+        
+        # cleanup, return original values to all changed bake settings
+        scene.cycles.bake_type = _bake_type
+        scene.cycles.samples = _samples
+        bake.use_pass_direct = _use_pass_direct
+        bake.use_pass_indirect = _use_pass_indirect
+        bake.use_pass_color = _use_pass_color
+        bake.use_pass_color = _use_pass_color
+        bake.margin = _margin
+        bpy.context.scene.render.engine = _engine
+        
+        # make instance
+        log("making ico sphere instance mesh with material..", 1)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=base_sphere_subdivisions, radius=base_sphere_radius, location=(0, 0, 0), )
+        sphere = bpy.context.active_object
+        sphere.parent = o
+        
+        # make material for sphere instances
+        mat = bpy.data.materials.new('PCParticlesMaterial')
+        sphere.data.materials.append(mat)
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        for node in nodes:
+            nodes.remove(node)
+        links = mat.node_tree.links
+        node_tcoord = nodes.new(type='ShaderNodeTexCoord')
+        node_tcoord.from_instancer = True
+        node_tex = nodes.new(type='ShaderNodeTexImage')
+        node_tex.image = img
+        link = links.new(node_tcoord.outputs[2], node_tex.inputs[0])
+        node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
+        link = links.new(node_tex.outputs[0], node_diff.inputs[0])
+        node_output = nodes.new(type='ShaderNodeOutputMaterial')
+        link = links.new(node_diff.outputs[0], node_output.inputs[0])
+        
+        # make instancer
+        o.instance_type = 'FACES'
+        o.show_instancer_for_render = False
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
 
 
 class PCParticles():
@@ -1926,6 +2089,9 @@ class PCV_OT_convert(Operator):
         elif(pcv.mesh_type == 'ICOSPHERE'):
             g = IcoSphereMeshGenerator()
             n = "{}-icospheres".format(n)
+        elif(pcv.mesh_type == 'INSTANCER'):
+            g = EquilateralTriangleMeshGenerator()
+            n = "{}-instancer".format(n)
         elif(pcv.mesh_type == 'PARTICLES'):
             g = EquilateralTriangleMeshGenerator()
             n = "{}-particles".format(n)
@@ -1950,6 +2116,9 @@ class PCV_OT_convert(Operator):
         me = o.data
         me.transform(m.inverted())
         o.matrix_world = m
+        
+        if(pcv.mesh_type == 'INSTANCER'):
+            pci = PCInstancer(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
         
         if(pcv.mesh_type == 'PARTICLES'):
             pcp = PCParticles(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
@@ -2201,7 +2370,7 @@ class PCV_PT_convert(Panel):
         cc = c.column()
         cc.prop(pcv, 'mesh_size')
         
-        if(pcv.mesh_type == 'PARTICLES'):
+        if(pcv.mesh_type in ('INSTANCER', 'PARTICLES', )):
             cc.prop(pcv, 'mesh_base_sphere_subdivisions')
         
         cc_n = cc.row()
@@ -2380,6 +2549,7 @@ class PCV_properties(PropertyGroup):
                                                 ('TETRAHEDRON', "Tetrahedron", ""),
                                                 ('CUBE', "Cube", ""),
                                                 ('ICOSPHERE', "Ico Sphere", ""),
+                                                ('INSTANCER', "Instancer", ""),
                                                 ('PARTICLES', "Particle System", ""), ], default='CUBE', description="Instance mesh type", )
     mesh_size: FloatProperty(name="Size", description="Mesh instance size, instanced mesh has size 1.0", default=0.01, min=0.000001, precision=4, max=100.0, )
     mesh_normal_align: BoolProperty(name="Align To Normal", description="Align instance to point normal", default=True, )
