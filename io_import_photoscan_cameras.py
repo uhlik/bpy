@@ -1,7 +1,7 @@
 bl_info = {"name": "Import Agisoft PhotoScan Cameras (.xml)",
            "description": "",
            "author": "Jakub Uhlik",
-           "version": (0, 1, 2),
+           "version": (0, 1, 3),
            "blender": (2, 80, 0),
            "location": "Properties > Scene > Import Agisoft PhotoScan Cameras",
            "warning": "work in progress",
@@ -25,7 +25,7 @@ from bl_ui.properties_scene import SceneButtonsPanel
 
 PHOTOSCAN_VERSION_COMPATIBILITY = [(1, 4, 0), (1, 5, 0)]
 CHECK_VERSION = True
-DEBUG = True
+DEBUG = False
 
 
 def log(msg, indent=0, ):
@@ -797,7 +797,7 @@ class PSCXMLImport():
 
 class PSC_import_properties(PropertyGroup):
     xml_path: StringProperty(name="Cameras XML", default="", subtype='FILE_PATH', description="Path to Agisoft PhotoScan cameras xml file", )
-    camera_draw_size: FloatProperty(name="Camera Display Size", description="Size of imported cameras in viewport", default=0.5, precision=3, )
+    camera_draw_size: FloatProperty(name="Camera Display Size", description="Size of imported cameras in viewport", default=0.25, precision=3, )
     
     load_images: BoolProperty(name="Load Camera Images", default=True, description="Load camera images", )
     images_directory: StringProperty(name="Images Directory", default="", subtype='DIR_PATH', description="Path to images directory", )
@@ -1004,7 +1004,25 @@ class PSC_PT_import_panel(SceneButtonsPanel, Panel):
         l = self.layout
         ps = bpy.context.scene.import_photoscan_cameras
         sub = l.column()
-        sub.prop(ps, 'xml_path')
+        
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        f = 0.33
+        r = sub.row(align=True, )
+        s = r.split(factor=f)
+        s.label(text=prop_name(ps, 'xml_path', True, ))
+        s = s.split(factor=1.0)
+        r = s.row(align=True, )
+        # c = r.column(align=True)
+        r.prop(ps, 'xml_path', text='', )
+        
+        # sub.prop(ps, 'xml_path')
         sub.prop(ps, 'camera_draw_size')
         
         b = sub.box()
@@ -1012,12 +1030,35 @@ class PSC_PT_import_panel(SceneButtonsPanel, Panel):
         b.prop(ps, 'load_images')
         
         c = b.column()
-        c.prop(ps, 'images_directory')
-        c.prop(ps, 'image_extension')
+        # c.prop(ps, 'images_directory')
+        
+        # f = 0.33
+        r = c.row(align=True, )
+        s = r.split(factor=f)
+        s.label(text=prop_name(ps, 'images_directory', True, ))
+        s = s.split(factor=1.0)
+        r = s.row(align=True, )
+        # c = r.column(align=True)
+        r.prop(ps, 'images_directory', text='', )
+        
+        # c.prop(ps, 'image_extension')
+        r = c.row(align=True, )
+        s = r.split(factor=f)
+        s.label(text=prop_name(ps, 'image_extension', True, ))
+        s = s.split(factor=1.0)
+        r = s.row(align=True, )
+        r.prop(ps, 'image_extension', text='', )
+        
         # c.prop(ps, 'background_images')
         # c.prop(ps, 'image_planes')
         c.prop(ps, 'background_image_alpha')
-        c.prop(ps, 'background_image_depth')
+        # c.prop(ps, 'background_image_depth')
+        r = c.row(align=True, )
+        s = r.split(factor=f)
+        s.label(text=prop_name(ps, 'background_image_depth', True, ))
+        s = s.split(factor=1.0)
+        r = s.row(align=True, )
+        r.prop(ps, 'background_image_depth', text='', )
         
         c.enabled = False
         if(ps.load_images):

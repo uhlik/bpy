@@ -260,6 +260,7 @@ usage:
 
 changelog:
 
+* 0.1.3 ui
 * 0.1.2 compatibility with Agisoft Metashape XML (1.5.x)
 * 0.1.1 first release
 
