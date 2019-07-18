@@ -42,6 +42,9 @@ from bpy.props import BoolProperty, StringProperty, IntProperty
 from bpy.app.handlers import persistent
 
 
+# TODO try to use timers for something? https://docs.blender.org/api/blender2.8/bpy.app.timers.html
+
+
 DEBUG = False
 
 
