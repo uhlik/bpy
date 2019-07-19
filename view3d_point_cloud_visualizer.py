@@ -62,7 +62,7 @@ from mathutils.kdtree import KDTree
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO try to remove manual depth test during offscreen rendering
 # NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
-# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing..
+# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing.. update: >3k now and having a sigle file is still better..
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
 
@@ -1415,6 +1415,9 @@ class PCVManager():
         l = int((len(vs) / 100) * dp)
         if(dp >= 99):
             l = len(vs)
+        
+        # FIXME: names 'display_percent' and 'current_display_percent' are really badly chosen, value is number of points displayed, not presentage, this is not the first time it confused me, rename it not so distant future, right?
+        
         d['display_percent'] = l
         d['current_display_percent'] = l
         
@@ -1668,8 +1671,11 @@ class PCVManager():
     
     @classmethod
     def new(cls):
+        # NOTE: this is redundant
         return {'uuid': None,
+                'filepath': None,
                 'vertices': None,
+                'normals': None,
                 'colors': None,
                 'display_percent': None,
                 'current_display_percent': None,
@@ -1680,6 +1686,7 @@ class PCVManager():
                 'draw': False,
                 'kill': False,
                 'stats': None,
+                'length': None,
                 'name': None,
                 'object': None, }
 
@@ -2250,9 +2257,9 @@ class PCV_OT_export(Operator, ExportHelper):
     filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
     check_extension = True
     
-    apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Apply parent object transformation to points", )
-    convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
-    visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only", )
+    # apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Apply parent object transformation to points", )
+    # convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
+    # visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only", )
     
     @classmethod
     def poll(cls, context):
@@ -2268,9 +2275,13 @@ class PCV_OT_export(Operator, ExportHelper):
     def draw(self, context):
         l = self.layout
         c = l.column()
-        c.prop(self, 'apply_transformation')
-        c.prop(self, 'convert_axes')
-        c.prop(self, 'visible_only')
+        # c.prop(self, 'apply_transformation')
+        # c.prop(self, 'convert_axes')
+        # c.prop(self, 'visible_only')
+        pcv = context.object.point_cloud_visualizer
+        c.prop(pcv, 'export_apply_transformation')
+        c.prop(pcv, 'export_convert_axes')
+        c.prop(pcv, 'export_visible_only')
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -2281,7 +2292,8 @@ class PCV_OT_export(Operator, ExportHelper):
         ns = c['normals']
         cs = c['colors']
         
-        if(self.visible_only):
+        # if(self.visible_only):
+        if(pcv.export_visible_only):
             l = c['display_percent']
             vs = vs[:l]
             ns = ns[:l]
@@ -2309,10 +2321,12 @@ class PCV_OT_export(Operator, ExportHelper):
             
             return vs, ns
         
-        if(self.apply_transformation):
+        # if(self.apply_transformation):
+        if(pcv.export_apply_transformation):
             vs, ns = apply_matrix(vs, ns, o.matrix_world.copy())
         
-        if(self.convert_axes):
+        # if(self.convert_axes):
+        if(pcv.export_convert_axes):
             axis_forward = '-Z'
             axis_up = 'Y'
             cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
@@ -2489,6 +2503,180 @@ class PCV_OT_simplify(Operator):
         # return [i.tolist() for i in samples]
         return samples
     
+    def v3(self, context):
+        scene = context.scene
+        pcv = context.object.point_cloud_visualizer
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        num_samples = pcv.modify_simplify_num_samples
+        if(num_samples >= len(vs)):
+            self.report({'ERROR'}, "Number of samples must be < number of points.")
+            return False, []
+        candidates = pcv.modify_simplify_num_candidates
+        log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
+        
+        l = len(vs)
+        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8')]
+        pool = np.empty(l, dtype=dt, )
+        pool['x'] = vs[:, 0]
+        pool['y'] = vs[:, 1]
+        pool['z'] = vs[:, 2]
+        pool['nx'] = ns[:, 0]
+        pool['ny'] = ns[:, 1]
+        pool['nz'] = ns[:, 2]
+        pool['red'] = cs[:, 0]
+        pool['green'] = cs[:, 1]
+        pool['blue'] = cs[:, 2]
+        pool['alpha'] = cs[:, 3]
+        pool['index'] = np.indices((l, ), dtype='<i8', )
+        
+        tree = KDTree(len(pool))
+        samples = np.array(pool[0])
+        last_used = 0
+        unused_pool = np.empty(0, dtype=dt, )
+        
+        tree.insert([pool[0]['x'], pool[0]['y'], pool[0]['z']], 0)
+        tree.balance()
+        
+        log("sampling:", 1)
+        use_unused = False
+        prgs = Progress(num_samples - 1, indent=2, prefix="> ")
+        for i in range(num_samples - 1):
+            prgs.step()
+            # choose candidates
+            cands = pool[last_used + 1:last_used + 1 + candidates]
+            
+            if(len(cands) <= 0):
+                # lets pretend that last set of candidates was filled full..
+                use_unused = True
+                cands = unused_pool[:candidates]
+                unused_pool = unused_pool[candidates:]
+            
+            if(len(cands) == 0):
+                # out of candidates, nothing to do here now.. number of desired samples was too close to total of points
+                return True, samples
+            
+            # get the most distant candidate
+            dists = []
+            inds = []
+            for cl in cands:
+                vec, ci, cd = tree.find((cl['x'], cl['y'], cl['z']))
+                inds.append(ci)
+                dists.append(cd)
+            maxd = 0.0
+            maxi = 0
+            for j, d in enumerate(dists):
+                if(d > maxd):
+                    maxd = d
+                    maxi = j
+            # chosen candidate
+            ncp = cands[maxi]
+            # get unused candidates to recycle
+            uncands = np.delete(cands, maxi)
+            unused_pool = np.append(unused_pool, uncands)
+            # store accepted sample
+            samples = np.append(samples, ncp)
+            # update kdtree
+            tree.insert([ncp['x'], ncp['y'], ncp['z']], ncp['index'])
+            tree.balance()
+            # use next points
+            last_used += 1 + candidates
+        
+        # return [i.tolist() for i in samples]
+        return True, samples
+    
+    def v4(self, context):
+        scene = context.scene
+        pcv = context.object.point_cloud_visualizer
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        num_samples = pcv.modify_simplify_num_samples
+        if(num_samples >= len(vs)):
+            self.report({'ERROR'}, "Number of samples must be < number of points.")
+            return False, []
+        candidates = pcv.modify_simplify_num_candidates
+        log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
+        
+        l = len(vs)
+        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8')]
+        pool = np.empty(l, dtype=dt, )
+        pool['x'] = vs[:, 0]
+        pool['y'] = vs[:, 1]
+        pool['z'] = vs[:, 2]
+        pool['nx'] = ns[:, 0]
+        pool['ny'] = ns[:, 1]
+        pool['nz'] = ns[:, 2]
+        pool['red'] = cs[:, 0]
+        pool['green'] = cs[:, 1]
+        pool['blue'] = cs[:, 2]
+        pool['alpha'] = cs[:, 3]
+        pool['index'] = np.indices((l, ), dtype='<i8', )
+        
+        tree = KDTree(len(pool))
+        samples = np.array(pool[0])
+        last_used = 0
+        # unused_pool = np.empty(0, dtype=dt, )
+        unused_pool = []
+        
+        tree.insert([pool[0]['x'], pool[0]['y'], pool[0]['z']], 0)
+        tree.balance()
+        
+        log("sampling:", 1)
+        use_unused = False
+        prgs = Progress(num_samples - 1, indent=2, prefix="> ")
+        for i in range(num_samples - 1):
+            prgs.step()
+            # choose candidates
+            cands = pool[last_used + 1:last_used + 1 + candidates]
+            
+            if(len(cands) <= 0):
+                # lets pretend that last set of candidates was filled full..
+                use_unused = True
+                cands = unused_pool[:candidates]
+                unused_pool = unused_pool[candidates:]
+            
+            if(len(cands) == 0):
+                # out of candidates, nothing to do here now.. number of desired samples was too close to total of points
+                return True, samples
+            
+            # get the most distant candidate
+            dists = []
+            inds = []
+            for cl in cands:
+                vec, ci, cd = tree.find((cl['x'], cl['y'], cl['z']))
+                inds.append(ci)
+                dists.append(cd)
+            maxd = 0.0
+            maxi = 0
+            for j, d in enumerate(dists):
+                if(d > maxd):
+                    maxd = d
+                    maxi = j
+            # chosen candidate
+            ncp = cands[maxi]
+            # get unused candidates to recycle
+            uncands = np.delete(cands, maxi)
+            # unused_pool = np.append(unused_pool, uncands)
+            unused_pool.extend(uncands)
+            # store accepted sample
+            samples = np.append(samples, ncp)
+            # update kdtree
+            tree.insert([ncp['x'], ncp['y'], ncp['z']], ncp['index'])
+            tree.balance()
+            # use next points
+            last_used += 1 + candidates
+        
+        # return [i.tolist() for i in samples]
+        return True, samples
+    
     def execute(self, context):
         log("Simplify", 0)
         _t = time.time()
@@ -2524,11 +2712,17 @@ class PCV_OT_simplify(Operator):
         # v1 vs. v2 = v2 is ~ 3.5x faster
         
         # if(DEBUG):
-        #     import cProfile, pstats, io
+        #     import cProfile
+        #     import pstats
+        #     import io
         #     pr = cProfile.Profile()
         #     pr.enable()
         
-        a = self.v2(context)
+        # a = self.v2(context)
+        # ok, a = self.v3(context)
+        ok, a = self.v4(context)
+        if(not ok):
+            return {'CANCELLED'}
         
         # if(DEBUG):
         #     pr.disable()
@@ -2681,6 +2875,8 @@ class PCV_PT_panel(Panel):
                     # n = "0.0"
                     n = "0"
                 nn = human_readable_number(cache['stats'])
+                if(nn.endswith('.0')):
+                    nn = nn[:-2]
                 l1c1 = "{} of {}".format(n, nn)
         
         f = 0.33
@@ -2889,14 +3085,31 @@ class PCV_PT_modify(Panel):
         l = self.layout
         c = l.column()
         
+        c.label(text="Something went wrong?")
+        c.operator('point_cloud_visualizer.reload')
+        c.separator()
+        
         cc = c.column(align=True)
         cc.prop(pcv, 'modify_simplify_num_samples')
         cc.prop(pcv, 'modify_simplify_num_candidates')
         cc.operator('point_cloud_visualizer.simplify')
-        
-        c.separator()
-        c.operator('point_cloud_visualizer.reload')
-        c.separator()
+
+
+class PCV_PT_export(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Export"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column(align=True)
+        c.prop(pcv, 'export_apply_transformation')
+        c.prop(pcv, 'export_convert_axes')
+        c.prop(pcv, 'export_visible_only')
         c.operator('point_cloud_visualizer.export')
 
 
@@ -3069,8 +3282,12 @@ class PCV_properties(PropertyGroup):
     mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
     mesh_base_sphere_subdivisions: IntProperty(name="Sphere Subdivisions", default=2, min=1, max=6, description="Particle instance (Ico Sphere) subdivisions, instance mesh can be change later", )
     
-    modify_simplify_num_samples: IntProperty(name="Samples", default=1000, min=1, subtype='NONE', description="Number of points in simplified point cloud", )
-    modify_simplify_num_candidates: IntProperty(name="Candidates", default=10, min=1, max=100, subtype='NONE', description="Number of candidates used during resampling, the higher value, the slower calculation, but more even", )
+    export_apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Apply parent object transformation to points", )
+    export_convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
+    export_visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only (controlled by 'Display' on main panel)", )
+    
+    modify_simplify_num_samples: IntProperty(name="Samples", default=10000, min=1, subtype='NONE', description="Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result", )
+    modify_simplify_num_candidates: IntProperty(name="Candidates", default=10, min=3, max=100, subtype='NONE', description="Number of candidates used during resampling, the higher value, the slower calculation, but more even", )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
@@ -3149,6 +3366,7 @@ classes = (
 
 experimental_classes = (
     PCV_PT_modify,
+    PCV_PT_export,
     PCV_OT_export,
     PCV_OT_simplify,
     PCV_OT_reload,
