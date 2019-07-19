@@ -38,7 +38,6 @@ import numpy as np
 import re
 import shutil
 import textwrap
-import random
 import sys
 
 import bpy
@@ -50,7 +49,7 @@ from gpu.types import GPUOffScreen, GPUShader, GPUBatch, GPUVertBuf, GPUVertForm
 from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
 import bgl
-from mathutils import Matrix, Vector, Quaternion
+from mathutils import Matrix, Vector, Quaternion, Color
 from bpy_extras.object_utils import world_to_camera_view
 from bpy_extras.io_utils import axis_conversion, ExportHelper
 from mathutils.kdtree import KDTree
@@ -2352,244 +2351,7 @@ class PCV_OT_simplify(Operator):
                         ok = True
         return ok
     
-    def v1(self, context):
-        scene = context.scene
-        pcv = context.object.point_cloud_visualizer
-        c = PCVManager.cache[pcv.uuid]
-        o = c['object']
-        vs = c['vertices']
-        ns = c['normals']
-        cs = c['colors']
-        
-        # if(DEBUG):
-        #     import cProfile, pstats, io
-        #     pr = cProfile.Profile()
-        #     pr.enable()
-        
-        num_samples = pcv.modify_simplify_num_samples
-        if(num_samples >= len(vs)):
-            self.report({'ERROR'}, "Number of samples must be < number of points.")
-            return {'CANCELLED'}
-        candidates = pcv.modify_simplify_num_candidates
-        log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
-        
-        # join data to points
-        log("creating pool..", 1)
-        pool = []
-        pl = len(vs)
-        for i in range(pl):
-            pool.append(tuple(vs[i].tolist()) + tuple(ns[i].tolist()) + tuple(cs[i].tolist()))
-        
-        samples = []
-        samples.append(pool[0])
-        # points are already shuffled from loading, so i can take candidates from beginning one by one..
-        last_used = 0
-        
-        log("sampling:", 1)
-        prgs = Progress(num_samples - 1, indent=2, prefix="> ")
-        for i in range(num_samples - 1):
-            prgs.step()
-            
-            # make kdtree from current samples, gets slower and slower..
-            tree = KDTree(len(samples))
-            indx = 0
-            for l in samples:
-                tree.insert(l[:3], indx)
-                indx += 1
-            tree.balance()
-            
-            # choose candidates
-            cands = pool[last_used + 1:last_used + 1 + candidates]
-            last_used += 1 + candidates
-            
-            # get the most distant candidate
-            dists = []
-            inds = []
-            for cl in cands:
-                vec, ci, cd = tree.find(cl[:3])
-                inds.append(ci)
-                dists.append(cd)
-            maxd = 0.0
-            maxi = 0
-            for j, d in enumerate(dists):
-                if(d > maxd):
-                    maxd = d
-                    maxi = j
-            ncp = cands[maxi]
-            samples.append(ncp)
-            # store and repeat..
-        
-        points = samples[:]
-        
-        # if(DEBUG):
-        #     pr.disable()
-        #     s = io.StringIO()
-        #     sortby = 'cumulative'
-        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        #     ps.print_stats()
-        #     print(s.getvalue())
-        
-        return points
-    
-    def v2(self, context):
-        scene = context.scene
-        pcv = context.object.point_cloud_visualizer
-        
-        c = PCVManager.cache[pcv.uuid]
-        vs = c['vertices']
-        ns = c['normals']
-        cs = c['colors']
-        
-        # FIXME: when num_samples * candidates > points, it will run out of candidates and throw error, i think i should reuse candidates, or limit number of samples, if reusing (which would be correct way), i would need keep track of used/unused and maybe iterate over all points, or remove points from pool copy, but then i might lose indexes, or add indexes to all points at the beginning? that might work..
-        
-        num_samples = pcv.modify_simplify_num_samples
-        if(num_samples >= len(vs)):
-            self.report({'ERROR'}, "Number of samples must be < number of points.")
-            return {'CANCELLED'}
-        candidates = pcv.modify_simplify_num_candidates
-        log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
-        
-        l = len(vs)
-        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8')]
-        pool = np.empty(l, dtype=dt, )
-        pool['x'] = vs[:, 0]
-        pool['y'] = vs[:, 1]
-        pool['z'] = vs[:, 2]
-        pool['nx'] = ns[:, 0]
-        pool['ny'] = ns[:, 1]
-        pool['nz'] = ns[:, 2]
-        pool['red'] = cs[:, 0]
-        pool['green'] = cs[:, 1]
-        pool['blue'] = cs[:, 2]
-        pool['alpha'] = cs[:, 3]
-        tree = KDTree(len(pool))
-        # samples = []
-        # samples.append(pool[0])
-        samples = np.array(pool[0])
-        last_used = 0
-        
-        tree.insert([pool[0]['x'], pool[0]['y'], pool[0]['z']], 0)
-        tree.balance()
-        
-        log("sampling:", 1)
-        prgs = Progress(num_samples - 1, indent=2, prefix="> ")
-        for i in range(num_samples - 1):
-            prgs.step()
-            # choose candidates
-            cands = pool[last_used + 1:last_used + 1 + candidates]
-            # get the most distant candidate
-            dists = []
-            inds = []
-            for cl in cands:
-                vec, ci, cd = tree.find((cl['x'], cl['y'], cl['z']))
-                inds.append(ci)
-                dists.append(cd)
-            maxd = 0.0
-            maxi = 0
-            for j, d in enumerate(dists):
-                if(d > maxd):
-                    maxd = d
-                    maxi = j
-            # store
-            ncp = cands[maxi]
-            # samples.append(ncp)
-            samples = np.append(samples, ncp)
-            # put chosen candidate to tree
-            tree.insert([pool[last_used + 1 + maxi]['x'], pool[last_used + 1 + maxi]['y'], pool[last_used + 1 + maxi]['z']], 0)
-            tree.balance()
-            # use next points
-            last_used += 1 + candidates
-        
-        # return [i.tolist() for i in samples]
-        return samples
-    
-    def v3(self, context):
-        scene = context.scene
-        pcv = context.object.point_cloud_visualizer
-        
-        c = PCVManager.cache[pcv.uuid]
-        vs = c['vertices']
-        ns = c['normals']
-        cs = c['colors']
-        
-        num_samples = pcv.modify_simplify_num_samples
-        if(num_samples >= len(vs)):
-            self.report({'ERROR'}, "Number of samples must be < number of points.")
-            return False, []
-        candidates = pcv.modify_simplify_num_candidates
-        log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
-        
-        l = len(vs)
-        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8')]
-        pool = np.empty(l, dtype=dt, )
-        pool['x'] = vs[:, 0]
-        pool['y'] = vs[:, 1]
-        pool['z'] = vs[:, 2]
-        pool['nx'] = ns[:, 0]
-        pool['ny'] = ns[:, 1]
-        pool['nz'] = ns[:, 2]
-        pool['red'] = cs[:, 0]
-        pool['green'] = cs[:, 1]
-        pool['blue'] = cs[:, 2]
-        pool['alpha'] = cs[:, 3]
-        pool['index'] = np.indices((l, ), dtype='<i8', )
-        
-        tree = KDTree(len(pool))
-        samples = np.array(pool[0])
-        last_used = 0
-        unused_pool = np.empty(0, dtype=dt, )
-        
-        tree.insert([pool[0]['x'], pool[0]['y'], pool[0]['z']], 0)
-        tree.balance()
-        
-        log("sampling:", 1)
-        use_unused = False
-        prgs = Progress(num_samples - 1, indent=2, prefix="> ")
-        for i in range(num_samples - 1):
-            prgs.step()
-            # choose candidates
-            cands = pool[last_used + 1:last_used + 1 + candidates]
-            
-            if(len(cands) <= 0):
-                # lets pretend that last set of candidates was filled full..
-                use_unused = True
-                cands = unused_pool[:candidates]
-                unused_pool = unused_pool[candidates:]
-            
-            if(len(cands) == 0):
-                # out of candidates, nothing to do here now.. number of desired samples was too close to total of points
-                return True, samples
-            
-            # get the most distant candidate
-            dists = []
-            inds = []
-            for cl in cands:
-                vec, ci, cd = tree.find((cl['x'], cl['y'], cl['z']))
-                inds.append(ci)
-                dists.append(cd)
-            maxd = 0.0
-            maxi = 0
-            for j, d in enumerate(dists):
-                if(d > maxd):
-                    maxd = d
-                    maxi = j
-            # chosen candidate
-            ncp = cands[maxi]
-            # get unused candidates to recycle
-            uncands = np.delete(cands, maxi)
-            unused_pool = np.append(unused_pool, uncands)
-            # store accepted sample
-            samples = np.append(samples, ncp)
-            # update kdtree
-            tree.insert([ncp['x'], ncp['y'], ncp['z']], ncp['index'])
-            tree.balance()
-            # use next points
-            last_used += 1 + candidates
-        
-        # return [i.tolist() for i in samples]
-        return True, samples
-    
-    def v4(self, context):
+    def resample(self, context):
         scene = context.scene
         pcv = context.object.point_cloud_visualizer
         
@@ -2674,42 +2436,11 @@ class PCV_OT_simplify(Operator):
             # use next points
             last_used += 1 + candidates
         
-        # return [i.tolist() for i in samples]
         return True, samples
     
     def execute(self, context):
-        log("Simplify", 0)
+        log("Simplify:", 0)
         _t = time.time()
-        
-        # v1 110k points to 10k with 10 candidates
-        # > completed in 0:00:24.026297.
-        
-        # points = self.v1(context)
-        # log("replacing data..", 1)
-        # # spli data again
-        # vs = []
-        # ns = []
-        # cs = []
-        # for p in points:
-        #     vs.append(p[:3])
-        #     ns.append(p[3:6])
-        #     cs.append(p[6:])
-        # # put to cache
-        # pcv = context.object.point_cloud_visualizer
-        # c = PCVManager.cache[pcv.uuid]
-        # c['vertices'] = np.array(vs, dtype=np.float32)
-        # c['normals'] = np.array(ns, dtype=np.float32)
-        # c['colors'] = np.array(cs, dtype=np.float32)
-        # l = len(vs)
-        # c['length'] = l
-        # c['stats'] = l
-        # c['display_percent'] = l
-        # c['current_display_percent'] = l
-        
-        # v2 110k points to 10k with 10 candidates
-        # > completed in 0:00:06.851765.
-        
-        # v1 vs. v2 = v2 is ~ 3.5x faster
         
         # if(DEBUG):
         #     import cProfile
@@ -2718,9 +2449,7 @@ class PCV_OT_simplify(Operator):
         #     pr = cProfile.Profile()
         #     pr.enable()
         
-        # a = self.v2(context)
-        # ok, a = self.v3(context)
-        ok, a = self.v4(context)
+        ok, a = self.resample(context)
         if(not ok):
             return {'CANCELLED'}
         
@@ -2735,6 +2464,175 @@ class PCV_OT_simplify(Operator):
         vs = np.column_stack((a['x'], a['y'], a['z'], ))
         ns = np.column_stack((a['nx'], a['ny'], a['nz'], ))
         cs = np.column_stack((a['red'], a['green'], a['blue'], a['alpha'], ))
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
+        cs = cs.astype(np.float32)
+        # put to cache
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        c['vertices'] = vs
+        c['normals'] = ns
+        c['colors'] = cs
+        l = len(vs)
+        c['length'] = l
+        c['stats'] = l
+        
+        pcv.display_percent = 100.0
+        
+        c['display_percent'] = l
+        c['current_display_percent'] = l
+        
+        # force PCVManager to redraw cloud
+        ienabled = pcv.illumination
+        c['illumination'] = ienabled
+        if(ienabled):
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
+        else:
+            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
+        c['shader'] = shader
+        c['batch'] = batch
+        
+        context.area.tag_redraw()
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_remove_color(Operator):
+    bl_idname = "point_cloud_visualizer.remove_color"
+    bl_label = "Remove Color"
+    bl_description = "Remove points with exact/similar color"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        log("Remove Color:", 0)
+        _t = time.time()
+        
+        pcv = context.object.point_cloud_visualizer
+        # cache item
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        # join to indexed points
+        l = len(vs)
+        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8')]
+        points = np.empty(l, dtype=dt, )
+        points['x'] = vs[:, 0]
+        points['y'] = vs[:, 1]
+        points['z'] = vs[:, 2]
+        points['nx'] = ns[:, 0]
+        points['ny'] = ns[:, 1]
+        points['nz'] = ns[:, 2]
+        points['red'] = cs[:, 0]
+        points['green'] = cs[:, 1]
+        points['blue'] = cs[:, 2]
+        points['alpha'] = cs[:, 3]
+        points['index'] = np.indices((l, ), dtype='<i8', )
+        
+        # evaluate
+        indexes = []
+        
+        # rmcolor = Color(pcv.modify_remove_color)
+        # rmcolor = Color([c ** (1 / 2.2) for c in pcv.modify_remove_color])
+        
+        # black magic..
+        c = [c ** (1 / 2.2) for c in pcv.modify_remove_color]
+        c = [int(i * 256) for i in c]
+        c = [i / 256 for i in c]
+        rmcolor = Color(c)
+        
+        dh = pcv.modify_remove_color_delta_hue
+        ds = pcv.modify_remove_color_delta_saturation
+        dv = pcv.modify_remove_color_delta_value
+        # if(not pcv.modify_remove_color_delta_hue_use):
+        #     dhue = None
+        # if(not pcv.modify_remove_color_delta_saturation_use):
+        #     dsaturation = None
+        # if(not pcv.modify_remove_color_delta_value_use):
+        #     dvalue = None
+        uh = pcv.modify_remove_color_delta_hue_use
+        us = pcv.modify_remove_color_delta_saturation_use
+        uv = pcv.modify_remove_color_delta_value_use
+        
+        prgr = Progress(len(points), 1)
+        for p in points:
+            prgr.step()
+            # get point color
+            c = Color((p['red'], p['green'], p['blue']))
+            # check for more or less same color, a few decimals should be more than enough, ply should have 8bit colors
+            fpr = 5
+            same = (round(c.r, fpr) == round(rmcolor.r, fpr),
+                    round(c.g, fpr) == round(rmcolor.g, fpr),
+                    round(c.b, fpr) == round(rmcolor.b, fpr))
+            if(all(same)):
+                indexes.append(p['index'])
+                continue
+            
+            # check
+            h = False
+            s = False
+            v = False
+            if(uh):
+                if(rmcolor.h - dh < c.h < rmcolor.h + dh):
+                    h = True
+            if(us):
+                if(rmcolor.s - ds < c.s < rmcolor.s + ds):
+                    s = True
+            if(uv):
+                if(rmcolor.v - dv < c.v < rmcolor.v + dv):
+                    v = True
+            
+            a = False
+            if(uh and not us and not uv):
+                if(h):
+                    a = True
+            elif(not uh and us and not uv):
+                if(s):
+                    a = True
+            elif(not uh and not us and uv):
+                if(v):
+                    a = True
+            elif(uh and us and not uv):
+                if(h and s):
+                    a = True
+            elif(not uh and us and uv):
+                if(s and v):
+                    a = True
+            elif(uh and not us and uv):
+                if(h and v):
+                    a = True
+            elif(uh and us and uv):
+                if(h and s and v):
+                    a = True
+            else:
+                pass
+            if(a):
+                indexes.append(p['index'])
+        
+        log("removed: {} points".format(len(indexes)), 1)
+        
+        # delete marked points
+        points = np.delete(points, indexes)
+        
+        # split back
+        vs = np.column_stack((points['x'], points['y'], points['z'], ))
+        ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+        cs = np.column_stack((points['red'], points['green'], points['blue'], points['alpha'], ))
         vs = vs.astype(np.float32)
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
@@ -3085,10 +2983,43 @@ class PCV_PT_modify(Panel):
         l = self.layout
         c = l.column()
         
+        # b = c.box()
+        # cc = b.column(align=True)
         cc = c.column(align=True)
+        cc.label(text="Simplify Point Cloud:")
+        
         cc.prop(pcv, 'modify_simplify_num_samples')
         cc.prop(pcv, 'modify_simplify_num_candidates')
         cc.operator('point_cloud_visualizer.simplify')
+        c.separator()
+        
+        # b = c.box()
+        # cc = b.column(align=True)
+        cc = c.column(align=True)
+        cc.label(text="Remove Color:")
+        
+        r = cc.row(align=True)
+        r.prop(pcv, 'modify_remove_color', text='', )
+        
+        r = cc.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_hue_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_hue_use else 'CHECKBOX_DEHLT', )
+        ccc = r.column(align=True)
+        ccc.prop(pcv, 'modify_remove_color_delta_hue')
+        ccc.active = pcv.modify_remove_color_delta_hue_use
+        
+        r = cc.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_saturation_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_saturation_use else 'CHECKBOX_DEHLT', )
+        ccc = r.column(align=True)
+        ccc.prop(pcv, 'modify_remove_color_delta_saturation')
+        ccc.active = pcv.modify_remove_color_delta_saturation_use
+        
+        r = cc.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_value_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_value_use else 'CHECKBOX_DEHLT', )
+        ccc = r.column(align=True)
+        ccc.prop(pcv, 'modify_remove_color_delta_value')
+        ccc.active = pcv.modify_remove_color_delta_value_use
+        
+        cc.operator('point_cloud_visualizer.remove_color')
         c.separator()
         
         c.label(text="Something went wrong?")
@@ -3294,6 +3225,18 @@ class PCV_properties(PropertyGroup):
     modify_simplify_num_samples: IntProperty(name="Samples", default=10000, min=1, subtype='NONE', description="Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result", )
     modify_simplify_num_candidates: IntProperty(name="Candidates", default=10, min=3, max=100, subtype='NONE', description="Number of candidates used during resampling, the higher value, the slower calculation, but more even", )
     
+    # def _rmcol_radio_update(self, context):
+    #     if(not self.modify_remove_color_delta_hue_use and not self.modify_remove_color_delta_saturation_use and not self.modify_remove_color_delta_value_use):
+    #         self.modify_remove_color_delta_hue_use = True
+    
+    modify_remove_color: FloatVectorProperty(name="Color", default=(1.0, 1.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, description="", )
+    modify_remove_color_delta_hue: FloatProperty(name="Δ Hue", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    modify_remove_color_delta_hue_use: BoolProperty(name="Use Δ Hue", description="", default=True, )
+    modify_remove_color_delta_saturation: FloatProperty(name="Δ Saturation", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    modify_remove_color_delta_saturation_use: BoolProperty(name="Use Δ Saturation", description="", default=True, )
+    modify_remove_color_delta_value: FloatProperty(name="Δ Value", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    modify_remove_color_delta_value_use: BoolProperty(name="Use Δ Value", description="", default=True, )
+    
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
         DEBUG = self.debug
@@ -3375,6 +3318,7 @@ experimental_classes = (
     PCV_OT_export,
     PCV_OT_simplify,
     PCV_OT_reload,
+    PCV_OT_remove_color,
 )
 if(EXPERIMENTAL):
     classes = classes + experimental_classes
