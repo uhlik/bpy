@@ -2251,7 +2251,7 @@ class PCV_OT_export(Operator, ExportHelper):
     bl_idname = "point_cloud_visualizer.export"
     bl_label = "Export PLY"
     bl_description = "Export point cloud to ply file"
-    bl_options = {'PRESET'}
+    # bl_options = {'PRESET'}
     
     filename_ext = ".ply"
     filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
@@ -3085,14 +3085,17 @@ class PCV_PT_modify(Panel):
         l = self.layout
         c = l.column()
         
-        c.label(text="Something went wrong?")
-        c.operator('point_cloud_visualizer.reload')
-        c.separator()
-        
         cc = c.column(align=True)
         cc.prop(pcv, 'modify_simplify_num_samples')
         cc.prop(pcv, 'modify_simplify_num_candidates')
         cc.operator('point_cloud_visualizer.simplify')
+        c.separator()
+        
+        c.label(text="Something went wrong?")
+        # c.operator('point_cloud_visualizer.reload', icon='RECOVER_LAST', )
+        c.operator('point_cloud_visualizer.reload')
+        
+        c.enabled = PCV_OT_simplify.poll(context)
 
 
 class PCV_PT_export(Panel):
@@ -3111,6 +3114,8 @@ class PCV_PT_export(Panel):
         c.prop(pcv, 'export_convert_axes')
         c.prop(pcv, 'export_visible_only')
         c.operator('point_cloud_visualizer.export')
+        
+        c.enabled = PCV_OT_export.poll(context)
 
 
 class PCV_PT_debug(Panel):
