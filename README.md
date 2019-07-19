@@ -38,8 +38,6 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.2.png)
-
 ### General info
 
 ##### Usage:
@@ -56,6 +54,8 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 * For rendering in regular render engine you can convert cloud to colored mesh
 
 ##### Display Options:
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-min.png)
 
 * `Display` - percentage of displayed points
 * `Size` - point size in pixels
@@ -83,6 +83,8 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ##### Render options:
 
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-render.png)
+
 * `Size` - point render size in pixels
 * `Count` - percentage of rendered points
 * `Output` - path where to save rendered images, `#` characters defines the position and length of frame numbers, image is always saved, filetype is always png, accepts relative paths, upon hitting `Render` path is validated, changed to absolute and written back
@@ -103,12 +105,56 @@ Conversion to instancer specifics: points are converted to triangle mesh object,
 
 Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from. Result is regular particle system which can be further edited, e.g. instance mesh changed, physics added etc.
 
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-convert.png)
+
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
 * `All`, `Subset` - Use all points or random subset of by given percentage
 * `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
 * `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
 * `Sphere Subdivisions` - Conversion to instancer / particles only, number of subdivisions of particle system instanced ico sphere
+
+### Experimental Features
+
+Enabled by hitting the big red button.. Enables experimental features and debug mode. If you run Blender from terminal, you can check progress of some operations there while debug mode is enabled.
+
+#### Modify Panel
+
+Modify current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-modify.png)
+
+##### Simplify
+
+Simplify point cloud to exact number of evenly distributed samples. All loaded points are processed. Higher samples counts may take a long time to finish. Surely there are better (and faster) tools for the job, but.. Basically it takes some random point and set as accepted sample, then another set of random candidates, measure distance from already accepted samples and stores the one that is most distant as another accepted, repeat until number of samples is reached.
+
+* `Samples` - Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result
+* `Candidates` - Number of candidates used during resampling, the higher value, the slower calculation, but more even
+* `Simplify` - run operator
+
+##### Remove Color
+
+Remove points with exact/similar color as chosen in color picker (Eyedropper works too). Currently i can't get to match sampled color from viewport with color in loaded cloud. Floating point error, incorrectly handled Gamma (at my side for sure), color management in Blender's viewport or any combination of all, or something else.. Anyway, if you leave at least one delta at hue/saturation/value (whatever works best for given cloud) it should remove the color you picked.
+
+* `Color` - Color to remove from point cloud
+* `Δ Hue` - Delta hue
+* `Δ Saturation` - Delta saturation
+* `Δ Value` - Delta value
+* `Remove Color` - run operator
+
+##### Reload
+
+Reload points from ply file - remove all changes made
+
+#### Export Panel
+
+Export current point cloud as binary ply file with several options. It uses data used for viewport diplay, therefore colors may not bu 100% accurate.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-export.png)
+
+* `Apply Transformation` - Apply parent object transformation to points
+* `Convert Axes` - Convert from blender (y forward, z up) to forward -z, up y axes
+* `Visible Points Only` - Export currently visible points only (controlled by 'Display' on main panel)
 
 ### Addon Preferences:
 
@@ -119,6 +165,8 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 
 ### Changelog:
 
+* 0.9.5 simplify and remove color filters
+* 0.9.4 export ply
 * 0.9.3 conversion to instancer
 * 0.9.2 load ply with 16bit colors
 * 0.9.1 all new render settings
