@@ -148,7 +148,7 @@ Reload points from ply file - remove all changes made
 
 #### Export Panel
 
-Export current point cloud as binary ply file with several options. It uses data used for viewport diplay, therefore colors may not bu 100% accurate.
+Export current point cloud as binary ply file with several options. It uses data used for viewport display, therefore colors may not be 100% accurate.
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-export.png)
 
