@@ -2556,6 +2556,7 @@ class PCV_OT_remove_color(Operator):
         c = [i / 256 for i in c]
         rmcolor = Color(c)
         
+        # NOTE: shouldn't be deltas as -delta/2 and +delta/2? now it is -delta / +delta
         dh = pcv.modify_remove_color_delta_hue
         ds = pcv.modify_remove_color_delta_saturation
         dv = pcv.modify_remove_color_delta_value
@@ -2588,6 +2589,7 @@ class PCV_OT_remove_color(Operator):
             s = False
             v = False
             if(uh):
+                # FIXME: hue should be handled all around, not only plus/minus
                 if(rmcolor.h - dh < c.h < rmcolor.h + dh):
                     h = True
             if(us):
@@ -2979,6 +2981,11 @@ class PCV_PT_modify(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='EXPERIMENTAL', )
+    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3038,6 +3045,11 @@ class PCV_PT_export(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='EXPERIMENTAL', )
+    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3057,6 +3069,14 @@ class PCV_PT_debug(Panel):
     bl_label = "Debug"
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        # l.label(text='', icon='EXPERIMENTAL', )
+        l.label(text='', icon='SETTINGS', )
+        # l.label(text='', icon='INFO', )
+        # l.label(text='', icon='CONSOLE', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3238,7 +3258,7 @@ class PCV_properties(PropertyGroup):
     #     if(not self.modify_remove_color_delta_hue_use and not self.modify_remove_color_delta_saturation_use and not self.modify_remove_color_delta_value_use):
     #         self.modify_remove_color_delta_hue_use = True
     
-    modify_remove_color: FloatVectorProperty(name="Color", default=(1.0, 1.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, description="", )
+    modify_remove_color: FloatVectorProperty(name="Color", default=(1.0, 1.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, description="Color to remove from point cloud", )
     modify_remove_color_delta_hue: FloatProperty(name="Δ Hue", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
     modify_remove_color_delta_hue_use: BoolProperty(name="Use Δ Hue", description="", default=True, )
     modify_remove_color_delta_saturation: FloatProperty(name="Δ Saturation", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
@@ -3270,7 +3290,7 @@ class PCV_properties(PropertyGroup):
                 bpy.utils.unregister_class(cls)
             self.debug = False
     
-    experimental: BoolProperty(name="Experimental Features", description="Enable experimental, unfinished, unoptimized or otherwise useless features", default=EXPERIMENTAL, update=_experimental_update, )
+    experimental: BoolProperty(name="Experimental Features", description="Enable experimental, unfinished, unoptimized or otherwise useless features and enable debug mode for convenience", default=EXPERIMENTAL, update=_experimental_update, )
     
     @classmethod
     def register(cls):
