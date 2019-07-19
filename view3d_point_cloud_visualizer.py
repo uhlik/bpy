@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 4),
+           "version": (0, 9, 5),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -2862,7 +2862,8 @@ class PCV_PT_panel(Panel):
         sub.separator()
         b = sub.box()
         b.alert = True
-        b.prop(pcv, 'experimental')
+        # b.alert = pcv.experimental
+        b.prop(pcv, 'experimental', toggle=True, )
 
 
 class PCV_PT_render(Panel):
@@ -3115,6 +3116,14 @@ class PCV_PT_debug(Panel):
         c.label(text="mesh_base_sphere_subdivisions: {}".format(pcv.mesh_base_sphere_subdivisions))
         c.label(text="modify_simplify_num_samples: {}".format(pcv.modify_simplify_num_samples))
         c.label(text="modify_simplify_num_candidates: {}".format(pcv.modify_simplify_num_candidates))
+        c.label(text="modify_remove_color: {}".format(pcv.modify_remove_color))
+        c.label(text="modify_remove_color_delta_hue: {}".format(pcv.modify_remove_color_delta_hue))
+        c.label(text="modify_remove_color_delta_hue_use: {}".format(pcv.modify_remove_color_delta_hue_use))
+        c.label(text="modify_remove_color_delta_saturation: {}".format(pcv.modify_remove_color_delta_saturation))
+        c.label(text="modify_remove_color_delta_saturation_use: {}".format(pcv.modify_remove_color_delta_saturation_use))
+        c.label(text="modify_remove_color_delta_value: {}".format(pcv.modify_remove_color_delta_value))
+        c.label(text="modify_remove_color_delta_value_use: {}".format(pcv.modify_remove_color_delta_value_use))
+        
         
         c.label(text="debug: {}".format(pcv.debug))
         c.scale_y = 0.5
