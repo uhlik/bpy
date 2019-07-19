@@ -2426,6 +2426,8 @@ class PCV_OT_simplify(Operator):
         ns = c['normals']
         cs = c['colors']
         
+        # FIXME: when num_samples * candidates > points, it will run out of candidates and throw error, i think i should reuse candidates, or limit number of samples, if reusing (which would be correct way), i would need keep track of used/unused and maybe iterate over all points, or remove points from pool copy, but then i might lose indexes, or add indexes to all points at the beginning? that might work..
+        
         num_samples = pcv.modify_simplify_num_samples
         if(num_samples >= len(vs)):
             self.report({'ERROR'}, "Number of samples must be < number of points.")
