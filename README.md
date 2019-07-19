@@ -40,6 +40,8 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-min.png)
+
 ##### Usage:
 
 * Install and activate addon in a usual way.
@@ -54,8 +56,6 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 * For rendering in regular render engine you can convert cloud to colored mesh
 
 ##### Display Options:
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-min.png)
 
 * `Display` - percentage of displayed points
 * `Size` - point size in pixels
