@@ -37,7 +37,6 @@ import math
 import numpy as np
 import re
 import shutil
-# import textwrap
 import sys
 
 import bpy
@@ -1628,6 +1627,38 @@ class PCVManager():
             cls.gc()
     
     @classmethod
+    def update(cls, uuid, vs, ns, cs, context=None, display_all=True, ):
+        # get cache item
+        c = PCVManager.cache[uuid]
+        # store data
+        c['vertices'] = vs
+        c['normals'] = ns
+        c['colors'] = cs
+        l = len(vs)
+        c['length'] = l
+        c['stats'] = l
+        if(display_all):
+            o = c['object']
+            pcv = o.point_cloud_visualizer
+            # set also property on object
+            pcv.display_percent = 100.0
+            c['display_percent'] = l
+            c['current_display_percent'] = l
+        # setup new shaders
+        ienabled = c['illumination']
+        if(ienabled):
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
+        else:
+            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
+        c['shader'] = shader
+        c['batch'] = batch
+        if(context is not None):
+            # redraw viewport
+            context.area.tag_redraw()
+    
+    @classmethod
     def gc(cls):
         l = []
         for k, v in cls.cache.items():
@@ -2543,34 +2574,38 @@ class PCV_OT_simplify(Operator):
         vs = vs.astype(np.float32)
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
-        # put to cache
+        
+        # # put to cache
+        # pcv = context.object.point_cloud_visualizer
+        # c = PCVManager.cache[pcv.uuid]
+        # c['vertices'] = vs
+        # c['normals'] = ns
+        # c['colors'] = cs
+        # l = len(vs)
+        # c['length'] = l
+        # c['stats'] = l
+        #
+        # pcv.display_percent = 100.0
+        #
+        # c['display_percent'] = l
+        # c['current_display_percent'] = l
+        #
+        # # force PCVManager to redraw cloud
+        # ienabled = pcv.illumination
+        # c['illumination'] = ienabled
+        # if(ienabled):
+        #     shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
+        # c['shader'] = shader
+        # c['batch'] = batch
+        #
+        # context.area.tag_redraw()
+        
         pcv = context.object.point_cloud_visualizer
-        c = PCVManager.cache[pcv.uuid]
-        c['vertices'] = vs
-        c['normals'] = ns
-        c['colors'] = cs
-        l = len(vs)
-        c['length'] = l
-        c['stats'] = l
-        
-        pcv.display_percent = 100.0
-        
-        c['display_percent'] = l
-        c['current_display_percent'] = l
-        
-        # force PCVManager to redraw cloud
-        ienabled = pcv.illumination
-        c['illumination'] = ienabled
-        if(ienabled):
-            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
-        else:
-            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
-        c['shader'] = shader
-        c['batch'] = batch
-        
-        context.area.tag_redraw()
+        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -2714,34 +2749,38 @@ class PCV_OT_remove_color(Operator):
         vs = vs.astype(np.float32)
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
-        # put to cache
+        
+        # # put to cache
+        # pcv = context.object.point_cloud_visualizer
+        # c = PCVManager.cache[pcv.uuid]
+        # c['vertices'] = vs
+        # c['normals'] = ns
+        # c['colors'] = cs
+        # l = len(vs)
+        # c['length'] = l
+        # c['stats'] = l
+        #
+        # pcv.display_percent = 100.0
+        #
+        # c['display_percent'] = l
+        # c['current_display_percent'] = l
+        #
+        # # force PCVManager to redraw cloud
+        # ienabled = pcv.illumination
+        # c['illumination'] = ienabled
+        # if(ienabled):
+        #     shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
+        # c['shader'] = shader
+        # c['batch'] = batch
+        #
+        # context.area.tag_redraw()
+        
         pcv = context.object.point_cloud_visualizer
-        c = PCVManager.cache[pcv.uuid]
-        c['vertices'] = vs
-        c['normals'] = ns
-        c['colors'] = cs
-        l = len(vs)
-        c['length'] = l
-        c['stats'] = l
-        
-        pcv.display_percent = 100.0
-        
-        c['display_percent'] = l
-        c['current_display_percent'] = l
-        
-        # force PCVManager to redraw cloud
-        ienabled = pcv.illumination
-        c['illumination'] = ienabled
-        if(ienabled):
-            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
-        else:
-            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
-        c['shader'] = shader
-        c['batch'] = batch
-        
-        context.area.tag_redraw()
+        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
