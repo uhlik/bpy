@@ -148,10 +148,11 @@ Reload points from ply file - remove all changes made
 
 #### Export Panel
 
-Export current point cloud as binary ply file with several options. It uses data used for viewport display, therefore colors may not be 100% accurate.
+Export current point cloud as binary ply file with several options. If exporting modified (filtered) points, check `Use Viewport Points`, otherwise you will not get modified points. If exporting viewport points colors may slightly differ. Transformation and axis conversion can be aplied on both loaded and viewport points.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-export.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.6-export.png)
 
+* `Use Viewport Points` - When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file
 * `Apply Transformation` - Apply parent object transformation to points
 * `Convert Axes` - Convert from blender (y forward, z up) to forward -z, up y axes
 * `Visible Points Only` - Export currently visible points only (controlled by 'Display' on main panel)
@@ -160,11 +161,13 @@ Export current point cloud as binary ply file with several options. It uses data
 
 * `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing
 * `Normal Color` - Display color for vertex normals
+* `Shuffle Points` - Shuffle points upon loading, display percentage is more useable if points are shuffled, disabled if you plan to export ply and you need to keep point order
 * `Convert 16bit Colors` - Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype
 * `Gamma Correct 16bit Colors` - When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'
 
 ### Changelog:
 
+* 0.9.6 ply exporting now uses original or viewport data
 * 0.9.5 simplify and remove color filters
 * 0.9.4 export ply
 * 0.9.3 conversion to instancer

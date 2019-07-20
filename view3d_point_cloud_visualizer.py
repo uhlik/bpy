@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 5),
+           "version": (0, 9, 6),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -37,7 +37,7 @@ import math
 import numpy as np
 import re
 import shutil
-import textwrap
+# import textwrap
 import sys
 
 import bpy
@@ -1082,40 +1082,20 @@ class BinPlyPointCloudWriter():
     
     Args:
         path: path to ply file
-        vs: vertex array, (x, y, z), (number_of_points, 3) shape, float64 dtype, PCVManager.cache[uuid].vertices
-        ns: normal array, (nx, ny, nz), (number_of_points, 3) shape, float64 dtype, PCVManager.cache[uuid].normals
-        cs: color array, (r, g, b), (number_of_points, 3) shape, float64 dtype, PCVManager.cache[uuid].colors
+        points: strucured array of points as (x, y, z, nx, ny, nz, red, green, blue)
     
     Attributes:
         path (str): real path to ply file
     
     """
     
-    def __init__(self, path, vs, ns, cs, ):
+    _types = {'c': 'char', 'B': 'uchar', 'h': 'short', 'H': 'ushort', 'i': 'int', 'I': 'uint', 'f': 'float', 'd': 'double', }
+    _byte_order = {'little': 'binary_little_endian', 'big': 'binary_big_endian', }
+    _comment = "created with Point Cloud Visualizer"
+    
+    def __init__(self, path, points, ):
         log("{}:".format(self.__class__.__name__), 0)
         self.path = os.path.realpath(path)
-        
-        # join back to structured array and ensure data type
-        vs = vs.astype(np.float32)
-        ns = ns.astype(np.float32)
-        cs = cs.astype(np.float32)
-        # back to uint8 colors
-        # TODO: maybe store original color values (or all original loaded data) for saving, just for accuracy, it won't use as much extra memory..
-        cs = cs * 255
-        cs = cs.astype(np.uint8)
-        
-        l = len(vs)
-        dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
-        a = np.empty(l, dtype=dt, )
-        a['x'] = vs[:, 0]
-        a['y'] = vs[:, 1]
-        a['z'] = vs[:, 2]
-        a['nx'] = ns[:, 0]
-        a['ny'] = ns[:, 1]
-        a['nz'] = ns[:, 2]
-        a['red'] = cs[:, 0]
-        a['green'] = cs[:, 1]
-        a['blue'] = cs[:, 2]
         
         # write
         log("will write to: {}".format(self.path), 1)
@@ -1124,29 +1104,36 @@ class BinPlyPointCloudWriter():
         t = "{}.temp.ply".format(n)
         p = os.path.join(os.path.dirname(self.path), t)
         
+        l = len(points)
+        
         with open(p, 'wb') as f:
             # write header
             log("writing header..", 2)
-            h = textwrap.dedent("""\
-                                ply
-                                format binary_little_endian 1.0
-                                element vertex {}
-                                property float x
-                                property float y
-                                property float z
-                                property float nx
-                                property float ny
-                                property float nz
-                                property uchar red
-                                property uchar green
-                                property uchar blue
-                                comment {}
-                                end_header
-                                """.format(l, "created with Point Cloud Visualizer", ), )
+            dt = points.dtype
+            h = "ply\n"
+            # x should be a float of some kind, therefore we can get endianess
+            bo = dt['x'].byteorder
+            if(bo != '='):
+                # not native byteorder
+                if(bo == '>'):
+                    h += "format {} 1.0\n".format(self._byte_order['big'])
+                else:
+                    h += "format {} 1.0\n".format(self._byte_order['little'])
+            else:
+                # byteorder was native, use what sys.byteorder says..
+                h += "format {} 1.0\n".format(self._byte_order[sys.byteorder])
+            h += "element vertex {}\n".format(l)
+            # construct header from data names/types in points array
+            for n in dt.names:
+                t = self._types[dt[n].char]
+                h += "property {} {}\n".format(t, n)
+            h += "comment {}\n".format(self._comment)
+            h += "end_header\n"
             f.write(h.encode('ascii'))
+            
             # write data
             log("writing data.. ({} points)".format(l), 2)
-            f.write(a.tobytes())
+            f.write(points.tobytes())
         
         # remove original file (if needed) and rename temp
         if(os.path.exists(self.path)):
@@ -1327,7 +1314,10 @@ class PCVManager():
         log('shuffle data..')
         _t = time.time()
         
-        np.random.shuffle(points)
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if(addon_prefs.shuffle_points):
+            np.random.shuffle(points)
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d))
@@ -1403,6 +1393,9 @@ class PCVManager():
         
         d = PCVManager.new()
         d['filepath'] = filepath
+        
+        d['points'] = points
+        
         d['uuid'] = u
         d['stats'] = len(vs)
         d['vertices'] = vs
@@ -2283,20 +2276,48 @@ class PCV_OT_export(Operator, ExportHelper):
         c.prop(pcv, 'export_visible_only')
     
     def execute(self, context):
+        log("Export:", 0)
+        _t = time.time()
+        
         pcv = context.object.point_cloud_visualizer
         c = PCVManager.cache[pcv.uuid]
         
         o = c['object']
-        vs = c['vertices']
-        ns = c['normals']
-        cs = c['colors']
         
-        # if(self.visible_only):
-        if(pcv.export_visible_only):
-            l = c['display_percent']
-            vs = vs[:l]
-            ns = ns[:l]
-            cs = cs[:l]
+        if(pcv.export_use_viewport):
+            log("using viewport points..", 1)
+            vs = c['vertices']
+            ns = c['normals']
+            cs = c['colors']
+            
+            if(pcv.export_visible_only):
+                log("visible only..", 1)
+                # points in cache are stored already shuffled (or not), so this should work the same as in viewport..
+                l = c['display_percent']
+                vs = vs[:l]
+                ns = ns[:l]
+                cs = cs[:l]
+            
+        else:
+            log("using original loaded points..", 1)
+            # get original loaded points
+            points = c['points']
+            # check for normals
+            normals = True
+            if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
+                normals = False
+            # check for colors
+            colors = True
+            if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
+                colors = False
+            # make vertices, normals, colors arrays, use None if data is not available, colors leave as they are
+            vs = np.column_stack((points['x'], points['y'], points['z'], ))
+            ns = None
+            if(normals):
+                ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+            cs = None
+            if(colors):
+                cs = np.column_stack((points['red'], points['green'], points['blue'], ))
         
         def apply_matrix(vs, ns, m):
             # https://blender.stackexchange.com/questions/139511/replace-matrix-vector-list-comprehensions-with-something-more-efficient/
@@ -2311,27 +2332,82 @@ class PCV_OT_export(Operator, ExportHelper):
             a = np.float32(a)
             vs = a[:, :-1]
             
-            a = np.ones((l, 4), ns.dtype)
-            a[:, :-1] = ns
-            # a = np.einsum('ij,aj->ai', mwrot, a)
-            a = np.dot(a, mwrot)
-            a = np.float32(a)
-            ns = a[:, :-1]
+            if(ns is not None):
+                a = np.ones((l, 4), ns.dtype)
+                a[:, :-1] = ns
+                # a = np.einsum('ij,aj->ai', mwrot, a)
+                a = np.dot(a, mwrot)
+                a = np.float32(a)
+                ns = a[:, :-1]
             
             return vs, ns
         
-        # if(self.apply_transformation):
         if(pcv.export_apply_transformation):
-            vs, ns = apply_matrix(vs, ns, o.matrix_world.copy())
+            if(o.matrix_world != Matrix()):
+                log("apply transformation..", 1)
+                vs, ns = apply_matrix(vs, ns, o.matrix_world.copy())
         
-        # if(self.convert_axes):
         if(pcv.export_convert_axes):
+            log("convert axes..", 1)
             axis_forward = '-Z'
             axis_up = 'Y'
             cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
             vs, ns = apply_matrix(vs, ns, cm)
         
-        w = BinPlyPointCloudWriter(self.filepath, vs, ns, cs, )
+        log("write..", 1)
+        
+        if(pcv.export_use_viewport):
+            vs = vs.astype(np.float32)
+            ns = ns.astype(np.float32)
+            cs = cs.astype(np.float32)
+            # back to uint8 colors
+            cs = cs * 255
+            cs = cs.astype(np.uint8)
+            l = len(vs)
+            dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+            a = np.empty(l, dtype=dt, )
+            a['x'] = vs[:, 0]
+            a['y'] = vs[:, 1]
+            a['z'] = vs[:, 2]
+            a['nx'] = ns[:, 0]
+            a['ny'] = ns[:, 1]
+            a['nz'] = ns[:, 2]
+            a['red'] = cs[:, 0]
+            a['green'] = cs[:, 1]
+            a['blue'] = cs[:, 2]
+        else:
+            # combine back to points, using original dtype
+            dt = (('x', vs[0].dtype.str, ),
+                  ('y', vs[1].dtype.str, ),
+                  ('z', vs[2].dtype.str, ), )
+            if(normals):
+                dt += (('nx', ns[0].dtype.str, ),
+                       ('ny', ns[1].dtype.str, ),
+                       ('nz', ns[2].dtype.str, ), )
+            if(colors):
+                dt += (('red', cs[0].dtype.str, ),
+                       ('green', cs[1].dtype.str, ),
+                       ('blue', cs[2].dtype.str, ), )
+            l = len(vs)
+            dt = list(dt)
+            a = np.empty(l, dtype=dt, )
+            a['x'] = vs[:, 0]
+            a['y'] = vs[:, 1]
+            a['z'] = vs[:, 2]
+            if(normals):
+                a['nx'] = ns[:, 0]
+                a['ny'] = ns[:, 1]
+                a['nz'] = ns[:, 2]
+            if(colors):
+                a['red'] = cs[:, 0]
+                a['green'] = cs[:, 1]
+                a['blue'] = cs[:, 2]
+        
+        w = BinPlyPointCloudWriter(self.filepath, a, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
         return {'FINISHED'}
 
 
@@ -3054,9 +3130,13 @@ class PCV_PT_export(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column(align=True)
+        c.prop(pcv, 'export_use_viewport')
         c.prop(pcv, 'export_apply_transformation')
         c.prop(pcv, 'export_convert_axes')
-        c.prop(pcv, 'export_visible_only')
+        cc = c.column(align=True)
+        cc.prop(pcv, 'export_visible_only')
+        if(not pcv.export_use_viewport):
+            cc.enabled = False
         c.operator('point_cloud_visualizer.export')
         
         c.enabled = PCV_OT_export.poll(context)
@@ -3134,6 +3214,10 @@ class PCV_PT_debug(Panel):
         c.label(text="mesh_all: {}".format(pcv.mesh_all))
         c.label(text="mesh_percentage: {}".format(pcv.mesh_percentage))
         c.label(text="mesh_base_sphere_subdivisions: {}".format(pcv.mesh_base_sphere_subdivisions))
+        c.label(text="export_use_viewport: {}".format(pcv.export_use_viewport))
+        c.label(text="export_apply_transformation: {}".format(pcv.export_apply_transformation))
+        c.label(text="export_convert_axes: {}".format(pcv.export_convert_axes))
+        c.label(text="export_visible_only: {}".format(pcv.export_visible_only))
         c.label(text="modify_simplify_num_samples: {}".format(pcv.modify_simplify_num_samples))
         c.label(text="modify_simplify_num_candidates: {}".format(pcv.modify_simplify_num_candidates))
         c.label(text="modify_remove_color: {}".format(pcv.modify_remove_color))
@@ -3143,7 +3227,6 @@ class PCV_PT_debug(Panel):
         c.label(text="modify_remove_color_delta_saturation_use: {}".format(pcv.modify_remove_color_delta_saturation_use))
         c.label(text="modify_remove_color_delta_value: {}".format(pcv.modify_remove_color_delta_value))
         c.label(text="modify_remove_color_delta_value_use: {}".format(pcv.modify_remove_color_delta_value_use))
-        
         
         c.label(text="debug: {}".format(pcv.debug))
         c.scale_y = 0.5
@@ -3247,6 +3330,7 @@ class PCV_properties(PropertyGroup):
     mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
     mesh_base_sphere_subdivisions: IntProperty(name="Sphere Subdivisions", default=2, min=1, max=6, description="Particle instance (Ico Sphere) subdivisions, instance mesh can be change later", )
     
+    export_use_viewport: BoolProperty(name="Use Viewport Points", default=False, description="When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file", )
     export_apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Apply parent object transformation to points", )
     export_convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
     export_visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only (controlled by 'Display' on main panel)", )
@@ -3308,6 +3392,7 @@ class PCV_preferences(AddonPreferences):
     normal_color: FloatVectorProperty(name="Normal Color", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals", )
     convert_16bit_colors: BoolProperty(name="Convert 16bit Colors", description="Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype", default=True, )
     gamma_correct_16bit_colors: BoolProperty(name="Gamma Correct 16bit Colors", description="When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'", default=False, )
+    shuffle_points: BoolProperty(name="Shuffle Points", description="Shuffle points upon loading, display percentage is more useable if points are shuffled", default=True, )
     
     def draw(self, context):
         l = self.layout
@@ -3315,6 +3400,7 @@ class PCV_preferences(AddonPreferences):
         r.prop(self, "default_vertex_color")
         r.prop(self, "normal_color")
         r = l.row()
+        r.prop(self, "shuffle_points")
         r.prop(self, "convert_16bit_colors")
         c = r.column()
         c.prop(self, "gamma_correct_16bit_colors")
