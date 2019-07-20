@@ -2489,6 +2489,14 @@ class PCV_OT_simplify(Operator):
         pool['alpha'] = cs[:, 3]
         pool['index'] = np.indices((l, ), dtype='<i8', )
         
+        # to get random points, shuffle pool if not shuffled upon loading
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if(not addon_prefs.shuffle_points):
+            np.random.shuffle(pool)
+            # and set indexes again
+            pool['index'] = np.indices((l, ), dtype='<i8', )
+        
         tree = KDTree(len(pool))
         samples = np.array(pool[0])
         last_used = 0
