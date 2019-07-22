@@ -122,7 +122,7 @@ Enabled by hitting the big red button.. Enables experimental features and debug 
 
 Modify current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-modify.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.7-modify.png)
 
 ##### Simplify
 
@@ -131,6 +131,17 @@ Simplify point cloud to exact number of evenly distributed samples. All loaded p
 * `Samples` - Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result
 * `Candidates` - Number of candidates used during resampling, the higher value, the slower calculation, but more even
 * `Simplify` - run operator
+
+##### Project
+
+Project points on mesh (or object convertible to mesh) surface. Projects point along their normals until it hit surface or `Search Distance` is reached. You can choose between `Positive` (along normal direction), `Negative` (vice versa) or both. Optionally you can `Discard Unprojectable` points that was not possible to project and after projection `Shift` points a fixed distance along normal (positive value) or the other way around (negative value).
+
+* `Object` - Mesh or object convertible to mesh
+* `Search Distance` - Maximum search distance in which to search for surface
+* `Positive` - Search along point normal forwards
+* `Negative` - Search along point normal backwards
+* `Discard Unprojectable` - Discard points which didn't hit anything
+* `Shift` - Shift points after projection above (positive) or below (negative) surface
 
 ##### Remove Color
 
@@ -167,6 +178,7 @@ Export current point cloud as binary ply file with several options. If exporting
 
 ### Changelog:
 
+* 0.9.7 project point cloud on mesh surface
 * 0.9.6 ply exporting now uses original or viewport data
 * 0.9.5 simplify and remove color filters
 * 0.9.4 export ply

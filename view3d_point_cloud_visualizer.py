@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 6),
+           "version": (0, 9, 7),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -2350,28 +2350,42 @@ class PCV_OT_export(Operator, ExportHelper):
             if(colors):
                 cs = np.column_stack((points['red'], points['green'], points['blue'], ))
         
-        def apply_matrix(vs, ns, m):
-            # https://blender.stackexchange.com/questions/139511/replace-matrix-vector-list-comprehensions-with-something-more-efficient/
-            l = len(vs)
-            mw = np.array(m.inverted(), dtype=np.float, )
-            mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
-            
-            a = np.ones((l, 4), vs.dtype)
-            a[:, :-1] = vs
-            # a = np.einsum('ij,aj->ai', mw, a)
-            a = np.dot(a, mw)
-            a = np.float32(a)
-            vs = a[:, :-1]
-            
-            if(ns is not None):
-                a = np.ones((l, 4), ns.dtype)
-                a[:, :-1] = ns
-                # a = np.einsum('ij,aj->ai', mwrot, a)
-                a = np.dot(a, mwrot)
-                a = np.float32(a)
-                ns = a[:, :-1]
-            
-            return vs, ns
+        # FIXME: something is not right with this.. it would be nice to have it working
+        # def apply_matrix(vs, ns, m):
+        #     # https://blender.stackexchange.com/questions/139511/replace-matrix-vector-list-comprehensions-with-something-more-efficient/
+        #     l = len(vs)
+        #     mw = np.array(m.inverted(), dtype=np.float, )
+        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
+        #
+        #     a = np.ones((l, 4), vs.dtype)
+        #     a[:, :-1] = vs
+        #     # a = np.einsum('ij,aj->ai', mw, a)
+        #     a = np.dot(a, mw)
+        #     a = np.float32(a)
+        #     vs = a[:, :-1]
+        #
+        #     if(ns is not None):
+        #         a = np.ones((l, 4), ns.dtype)
+        #         a[:, :-1] = ns
+        #         # a = np.einsum('ij,aj->ai', mwrot, a)
+        #         a = np.dot(a, mwrot)
+        #         a = np.float32(a)
+        #         ns = a[:, :-1]
+        #
+        #     return vs, ns
+        
+        def apply_matrix(vs, ns, matrix, ):
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            dtv = vs.dtype
+            dtn = ns.dtype
+            rvs = np.zeros(vs.shape, dtv)
+            rns = np.zeros(ns.shape, dtn)
+            for i in range(len(vs)):
+                co = matrix @ Vector(vs[i])
+                no = matrot @ Vector(ns[i])
+                rvs[i] = np.array(co.to_tuple(), dtv)
+                rns[i] = np.array(no.to_tuple(), dtn)
+            return rvs, rns
         
         if(pcv.export_apply_transformation):
             if(o.matrix_world != Matrix()):
@@ -2583,37 +2597,261 @@ class PCV_OT_simplify(Operator):
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
         
-        # # put to cache
-        # pcv = context.object.point_cloud_visualizer
-        # c = PCVManager.cache[pcv.uuid]
-        # c['vertices'] = vs
-        # c['normals'] = ns
-        # c['colors'] = cs
-        # l = len(vs)
-        # c['length'] = l
-        # c['stats'] = l
-        #
-        # pcv.display_percent = 100.0
-        #
-        # c['display_percent'] = l
-        # c['current_display_percent'] = l
-        #
-        # # force PCVManager to redraw cloud
-        # ienabled = pcv.illumination
-        # c['illumination'] = ienabled
-        # if(ienabled):
-        #     shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
-        # else:
-        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
-        # c['shader'] = shader
-        # c['batch'] = batch
-        #
-        # context.area.tag_redraw()
-        
+        # put to cache
         pcv = context.object.point_cloud_visualizer
         PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_project(Operator):
+    bl_idname = "point_cloud_visualizer.project"
+    bl_label = "Project"
+    bl_description = "Project points on mesh surface"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        # ok = True
+                        if(pcv.modify_project_object != ''):
+                            o = bpy.data.objects.get(pcv.modify_project_object)
+                            if(o is not None):
+                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                    ok = True
+        return ok
+    
+    def execute(self, context):
+        log("Project:", 0)
+        _t = time.time()
+        
+        # if(DEBUG):
+        #     import cProfile
+        #     import pstats
+        #     import io
+        #     pr = cProfile.Profile()
+        #     pr.enable()
+        
+        log("preprocessing..", 1)
+        
+        pcv = context.object.point_cloud_visualizer
+        o = bpy.data.objects.get(pcv.modify_project_object)
+        
+        if(o is None):
+            raise Exception()
+        
+        # FIXME: something is not right with this.. it would be nice to have it working
+        # def apply_matrix(vs, ns, m, ):
+        #     l = len(vs)
+        #     mw = np.array(m.inverted(), dtype=np.float, )
+        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
+        #     a = np.ones((l, 4), vs.dtype)
+        #     a[:, :-1] = vs
+        #     a = np.dot(a, mw)
+        #     a = np.float32(a)
+        #     vs = a[:, :-1]
+        #     if(ns is not None):
+        #         a = np.ones((l, 4), ns.dtype)
+        #         a[:, :-1] = ns
+        #         a = np.dot(a, mwrot)
+        #         a = np.float32(a)
+        #         ns = a[:, :-1]
+        #     return vs, ns
+        
+        def apply_matrix(vs, ns, matrix, ):
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            dtv = vs.dtype
+            dtn = ns.dtype
+            rvs = np.zeros(vs.shape, dtv)
+            rns = np.zeros(ns.shape, dtn)
+            for i in range(len(vs)):
+                co = matrix @ Vector(vs[i])
+                no = matrot @ Vector(ns[i])
+                rvs[i] = np.array(co.to_tuple(), dtv)
+                rns[i] = np.array(no.to_tuple(), dtn)
+            return rvs, rns
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        # apply parent matrix to points
+        m = c['object'].matrix_world.copy()
+        vs, ns = apply_matrix(vs, ns, m)
+        
+        # # apply target matrix
+        # m = o.matrix_world.copy()
+        # # m = m.inverted()
+        # vs, ns = apply_matrix(vs, ns, m)
+        
+        # combine
+        l = len(vs)
+        dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8'), ('delete', '?')]
+        points = np.empty(l, dtype=dt, )
+        points['x'] = vs[:, 0]
+        points['y'] = vs[:, 1]
+        points['z'] = vs[:, 2]
+        points['nx'] = ns[:, 0]
+        points['ny'] = ns[:, 1]
+        points['nz'] = ns[:, 2]
+        points['red'] = cs[:, 0]
+        points['green'] = cs[:, 1]
+        points['blue'] = cs[:, 2]
+        points['alpha'] = cs[:, 3]
+        points['index'] = np.indices((l, ), dtype='<i8', )
+        points['delete'] = np.zeros((l, ), dtype='?', )
+        
+        search_distance = pcv.modify_project_search_distance
+        negative = pcv.modify_project_negative
+        positive = pcv.modify_project_positive
+        discard = pcv.modify_project_discard
+        shift = pcv.modify_project_shift
+        
+        sc = context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        # make target
+        tmp_mesh = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        target_mesh = tmp_mesh.copy()
+        target_mesh.name = 'target_mesh_{}'.format(pcv.uuid)
+        target_mesh.transform(o.matrix_world.copy())
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
+        collection.objects.link(target)
+        # still no idea, have to read about it..
+        depsgraph.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        def distance(a, b, ):
+            return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+        
+        def shift_vert_along_normal(co, no, v):
+            c = Vector(co)
+            n = Vector(no)
+            return c + (n.normalized() * v)
+        
+        a = np.empty(l, dtype=dt, )
+        
+        log("projecting:", 1)
+        prgr = Progress(len(points), 2)
+        for i, p in enumerate(points):
+            prgr.step()
+            
+            v = Vector((p['x'], p['y'], p['z'], ))
+            n = Vector((p['nx'], p['ny'], p['nz'], ))
+            
+            if(positive):
+                # p_result, p_location, p_normal, p_index, p_object, p_matrix = sc.ray_cast(view_layer, v, n, distance=search_distance, )
+                # p_result, p_location, p_normal, p_index = o.ray_cast(v, n, distance=search_distance, depsgraph=depsgraph, )
+                p_result, p_location, p_normal, p_index = target.ray_cast(v, n, distance=search_distance, depsgraph=depsgraph, )
+                p_distance = None
+                if(p_result):
+                    p_distance = distance(p_location, v[:])
+            else:
+                p_result = False
+            
+            nn = shift_vert_along_normal(v, n, -search_distance)
+            ndir = Vector(nn - v).normalized()
+            
+            if(negative):
+                # n_result, n_location, n_normal, n_index, n_object, n_matrix = sc.ray_cast(view_layer, v, ndir, distance=search_distance, )
+                # n_result, n_location, n_normal, n_index = o.ray_cast(v, ndir, distance=search_distance, depsgraph=depsgraph, )
+                n_result, n_location, n_normal, n_index = target.ray_cast(v, ndir, distance=search_distance, depsgraph=depsgraph, )
+                n_distance = None
+                if(n_result):
+                    n_distance = distance(n_location, v[:])
+            else:
+                n_result = False
+            
+            rp = np.copy(p)
+            
+            if(p_result and n_result):
+                if(p_distance < n_distance):
+                    rp['x'] = p_location[0]
+                    rp['y'] = p_location[1]
+                    rp['z'] = p_location[2]
+                else:
+                    rp['x'] = n_location[0]
+                    rp['y'] = n_location[1]
+                    rp['z'] = n_location[2]
+            elif(p_result):
+                rp['x'] = p_location[0]
+                rp['y'] = p_location[1]
+                rp['z'] = p_location[2]
+            elif(n_result):
+                rp['x'] = n_location[0]
+                rp['y'] = n_location[1]
+                rp['z'] = n_location[2]
+            else:
+                rp['delete'] = 1
+            
+            a[i] = rp
+        
+        if(discard):
+            log("discarding:", 1)
+            prgr = Progress(len(a), 2)
+            indexes = []
+            for i in a:
+                prgr.step()
+                if(i['delete']):
+                    indexes.append(i['index'])
+            a = np.delete(a, indexes)
+        
+        if(shift != 0.0):
+            log("shifting:", 1)
+            prgr = Progress(len(a), 2)
+            for i in a:
+                prgr.step()
+                l = shift_vert_along_normal((i['x'], i['y'], i['z'], ), (i['nx'], i['ny'], i['nz'], ), shift, )
+                i['x'] = l[0]
+                i['y'] = l[1]
+                i['z'] = l[2]
+        
+        log("postprocessing..", 1)
+        # split back
+        vs = np.column_stack((a['x'], a['y'], a['z'], ))
+        ns = np.column_stack((a['nx'], a['ny'], a['nz'], ))
+        cs = np.column_stack((a['red'], a['green'], a['blue'], a['alpha'], ))
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
+        cs = cs.astype(np.float32)
+        
+        # # unapply target matrix
+        # m = o.matrix_world.copy()
+        # m = m.inverted()
+        # vs, ns = apply_matrix(vs, ns, m)
+        
+        # unapply parent matrix to points
+        m = c['object'].matrix_world.copy()
+        m = m.inverted()
+        vs, ns = apply_matrix(vs, ns, m)
+        
+        # cleanup
+        collection.objects.unlink(target)
+        bpy.data.objects.remove(target)
+        bpy.data.meshes.remove(target_mesh)
+        o.to_mesh_clear()
+        
+        # put to cache..
+        pcv = context.object.point_cloud_visualizer
+        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        
+        # if(DEBUG):
+        #     pr.disable()
+        #     s = io.StringIO()
+        #     sortby = 'cumulative'
+        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        #     ps.print_stats()
+        #     print(s.getvalue())
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -2758,35 +2996,7 @@ class PCV_OT_remove_color(Operator):
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
         
-        # # put to cache
-        # pcv = context.object.point_cloud_visualizer
-        # c = PCVManager.cache[pcv.uuid]
-        # c['vertices'] = vs
-        # c['normals'] = ns
-        # c['colors'] = cs
-        # l = len(vs)
-        # c['length'] = l
-        # c['stats'] = l
-        #
-        # pcv.display_percent = 100.0
-        #
-        # c['display_percent'] = l
-        # c['current_display_percent'] = l
-        #
-        # # force PCVManager to redraw cloud
-        # ienabled = pcv.illumination
-        # c['illumination'] = ienabled
-        # if(ienabled):
-        #     shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
-        # else:
-        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
-        # c['shader'] = shader
-        # c['batch'] = batch
-        #
-        # context.area.tag_redraw()
-        
+        # put to cache
         pcv = context.object.point_cloud_visualizer
         PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
         
@@ -2798,6 +3008,7 @@ class PCV_OT_remove_color(Operator):
 
 class PCV_OT_reload(Operator):
     bl_idname = "point_cloud_visualizer.reload"
+    # bl_label = "Reload Point Cloud"
     bl_label = "Reload"
     bl_description = "Reload points from original file"
     
@@ -3114,6 +3325,7 @@ class PCV_PT_modify(Panel):
         l = self.layout
         c = l.column()
         
+        '''
         # b = c.box()
         # cc = b.column(align=True)
         cc = c.column(align=True)
@@ -3153,11 +3365,168 @@ class PCV_PT_modify(Panel):
         cc.operator('point_cloud_visualizer.remove_color')
         c.separator()
         
+        b = c.box()
+        r = b.row()
+        r.prop(pcv, 'modify_project_expanded', icon='TRIA_DOWN' if pcv.modify_project_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Project")
+        if(pcv.modify_project_expanded):
+            cc = b.column(align=True)
+            cc.prop_search(pcv, 'modify_project_object', context.scene, 'objects')
+            cc.prop(pcv, 'modify_project_search_distance')
+            r = cc.row(align=True)
+            r.prop(pcv, 'modify_project_negative')
+            r.prop(pcv, 'modify_project_positive')
+            cc.prop(pcv, 'modify_project_discard')
+            cc.prop(pcv, 'modify_project_shift')
+            cc.operator('point_cloud_visualizer.project')
+        
+        if(not pcv.has_normals):
+            b.label(text="Missing vertex normals.", icon='ERROR', )
+            b.enabled = False
+        
+        c.separator()
+        
         c.label(text="Something went wrong?")
         # c.operator('point_cloud_visualizer.reload', icon='RECOVER_LAST', )
         c.operator('point_cloud_visualizer.reload')
         
         c.enabled = PCV_OT_simplify.poll(context)
+        '''
+
+
+class PCV_PT_modify_simplify(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Simplify"
+    bl_parent_id = "PCV_PT_modify"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='STICKY_UVS_DISABLE', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        a = c.column(align=True)
+        a.prop(pcv, 'modify_simplify_num_samples')
+        a.prop(pcv, 'modify_simplify_num_candidates')
+        
+        c.operator('point_cloud_visualizer.simplify')
+        
+        c.enabled = PCV_OT_simplify.poll(context)
+
+
+class PCV_PT_modify_project(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Project"
+    bl_parent_id = "PCV_PT_modify"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='MOD_NORMALEDIT', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.prop_search(pcv, 'modify_project_object', context.scene, 'objects')
+        
+        a = c.column(align=True)
+        a.prop(pcv, 'modify_project_search_distance')
+        r = a.row(align=True)
+        r.prop(pcv, 'modify_project_negative', toggle=True, )
+        r.prop(pcv, 'modify_project_positive', toggle=True, )
+        
+        c.prop(pcv, 'modify_project_discard')
+        c.prop(pcv, 'modify_project_shift')
+        c.operator('point_cloud_visualizer.project')
+        
+        # c.enabled = PCV_OT_project.poll(context)
+        c.enabled = PCV_OT_simplify.poll(context)
+        
+        if(not pcv.has_normals):
+            c.label(text="Missing vertex normals.", icon='ERROR', )
+            c.enabled = False
+
+
+class PCV_PT_modify_remove_color(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Remove Color"
+    bl_parent_id = "PCV_PT_modify"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='EYEDROPPER', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        # c.label(text="Remove Color:")
+        r = c.row()
+        r.prop(pcv, 'modify_remove_color', text='', )
+        
+        a = c.column(align=True)
+        r = a.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_hue_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_hue_use else 'CHECKBOX_DEHLT', )
+        cc = r.column(align=True)
+        cc.prop(pcv, 'modify_remove_color_delta_hue')
+        cc.active = pcv.modify_remove_color_delta_hue_use
+        
+        r = a.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_saturation_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_saturation_use else 'CHECKBOX_DEHLT', )
+        cc = r.column(align=True)
+        cc.prop(pcv, 'modify_remove_color_delta_saturation')
+        cc.active = pcv.modify_remove_color_delta_saturation_use
+        
+        r = a.row(align=True)
+        r.prop(pcv, 'modify_remove_color_delta_value_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_value_use else 'CHECKBOX_DEHLT', )
+        cc = r.column(align=True)
+        cc.prop(pcv, 'modify_remove_color_delta_value')
+        cc.active = pcv.modify_remove_color_delta_value_use
+        
+        c.operator('point_cloud_visualizer.remove_color')
+        
+        c.enabled = PCV_OT_remove_color.poll(context)
+
+
+class PCV_PT_modify_reload(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    # bl_label = "Reload Point Cloud"
+    bl_label = "Reload"
+    bl_parent_id = "PCV_PT_modify"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='FILE_REFRESH', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        c.label(text="Something went wrong?")
+        # c.operator('point_cloud_visualizer.reload', icon='RECOVER_LAST', )
+        c.operator('point_cloud_visualizer.reload')
+        
+        c.enabled = PCV_OT_reload.poll(context)
 
 
 class PCV_PT_export(Panel):
@@ -3246,7 +3615,7 @@ class PCV_PT_debug(Panel):
         c.label(text="show_normals: {}".format(pcv.show_normals))
         c.label(text="vertex_normals: {}".format(pcv.vertex_normals))
         c.label(text="vertex_normals_size: {}".format(pcv.vertex_normals_size))
-        c.label(text="render_expanded: {}".format(pcv.render_expanded))
+        # c.label(text="render_expanded: {}".format(pcv.render_expanded))
         c.label(text="render_point_size: {}".format(pcv.render_point_size))
         c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
         c.label(text="render_path: {}".format(pcv.render_path))
@@ -3330,7 +3699,7 @@ class PCV_properties(PropertyGroup):
     vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
     vertex_normals_size: FloatProperty(name="Length", description="Length of point normal line", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
     
-    render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
+    # render_expanded: BoolProperty(default=False, options={'HIDDEN', }, )
     # render_point_size: FloatProperty(name="Size", default=3.0, min=0.001, max=100.0, precision=3, subtype='FACTOR', description="Render point size", )
     render_point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
     render_display_percent: FloatProperty(name="Count", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of points rendered", )
@@ -3396,6 +3765,22 @@ class PCV_properties(PropertyGroup):
     modify_remove_color_delta_saturation_use: BoolProperty(name="Use Δ Saturation", description="", default=True, )
     modify_remove_color_delta_value: FloatProperty(name="Δ Value", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
     modify_remove_color_delta_value_use: BoolProperty(name="Use Δ Value", description="", default=True, )
+    
+    def _project_positive_radio_update(self, context):
+        if(not self.modify_project_negative and not self.modify_project_positive):
+            self.modify_project_negative = True
+    
+    def _project_negative_radio_update(self, context):
+        if(not self.modify_project_negative and not self.modify_project_positive):
+            self.modify_project_positive = True
+    
+    modify_project_object: StringProperty(name="Object", default="", )
+    modify_project_search_distance: FloatProperty(name="Search Distance", default=0.1, min=0.0, max=10000.0, precision=3, subtype='DISTANCE', description="Maximum search distance in which to search for surface", )
+    modify_project_positive: BoolProperty(name="Positive", description="Search along point normal forwards", default=True, update=_project_positive_radio_update, )
+    modify_project_negative: BoolProperty(name="Negative", description="Search along point normal backwards", default=True, update=_project_negative_radio_update, )
+    modify_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
+    modify_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
+    # modify_project_expanded: BoolProperty(default=False, )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
@@ -3481,6 +3866,11 @@ experimental_classes = (
     PCV_OT_simplify,
     PCV_OT_reload,
     PCV_OT_remove_color,
+    PCV_OT_project,
+    PCV_PT_modify_simplify,
+    PCV_PT_modify_project,
+    PCV_PT_modify_remove_color,
+    PCV_PT_modify_reload,
 )
 if(EXPERIMENTAL):
     classes = classes + experimental_classes
