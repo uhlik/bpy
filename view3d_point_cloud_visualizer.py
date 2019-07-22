@@ -1074,14 +1074,11 @@ class PlyPointCloudReader():
 
 
 class BinPlyPointCloudWriter():
-    """Save binary ply file from data PCV is using for drawing on screen
-    
-    Note:
-        colors are stored as float64, writer converts them to uint8
+    """Save binary ply file from data numpy array
     
     Args:
         path: path to ply file
-        points: strucured array of points as (x, y, z, nx, ny, nz, red, green, blue)
+        points: strucured array of points as (x, y, z, nx, ny, nz, red, green, blue) (normals and colors are optional)
     
     Attributes:
         path (str): real path to ply file
