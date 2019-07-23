@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 7),
+           "version": (0, 9, 8),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -3003,6 +3003,202 @@ class PCV_OT_remove_color(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_edit_start(Operator):
+    bl_idname = "point_cloud_visualizer.edit_start"
+    bl_label = "Start"
+    bl_description = "Start edit mode, create helper object and switch to it"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        # prepare mesh
+        bm = bmesh.new()
+        for v in vs:
+            bm.verts.new(v)
+        bm.verts.ensure_lookup_table()
+        l = bm.verts.layers.int.new('pcv_indexes')
+        for i in range(len(vs)):
+            bm.verts[i][l] = i
+        # add mesh to scene, activate
+        nm = 'pcv_edit_mesh_{}'.format(pcv.uuid)
+        me = bpy.data.meshes.new(nm)
+        bm.to_mesh(me)
+        bm.free()
+        o = bpy.data.objects.new(nm, me)
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        collection.objects.link(o)
+        p = context.object
+        o.parent = p
+        o.matrix_world = p.matrix_world.copy()
+        bpy.ops.object.select_all(action='DESELECT')
+        o.select_set(True)
+        view_layer.objects.active = o
+        # and set edit mode
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        o.point_cloud_visualizer.modify_edit_is_edit_uuid = pcv.uuid
+        o.point_cloud_visualizer.modify_edit_is_edit_mesh = True
+        pcv.modify_edit_initialized = True
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_edit_update(Operator):
+    bl_idname = "point_cloud_visualizer.edit_update"
+    bl_label = "Update"
+    bl_description = "Update displayed cloud from edited mesh"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        if(pcv.modify_edit_is_edit_mesh):
+            for k, v in PCVManager.cache.items():
+                if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+                    if(v['ready']):
+                        if(v['draw']):
+                            if(context.mode == 'EDIT_MESH'):
+                                ok = True
+        return ok
+    
+    def execute(self, context):
+        # get current data
+        uuid = context.object.point_cloud_visualizer.modify_edit_is_edit_uuid
+        c = PCVManager.cache[uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        # extract edited data
+        o = context.object
+        bm = bmesh.from_edit_mesh(o.data)
+        bm.verts.ensure_lookup_table()
+        l = bm.verts.layers.int['pcv_indexes']
+        edit_vs = []
+        edit_indexes = []
+        for v in bm.verts:
+            edit_vs.append(v.co.to_tuple())
+            edit_indexes.append(v[l])
+        # combine
+        u_vs = []
+        u_ns = []
+        u_cs = []
+        for i, indx in enumerate(edit_indexes):
+            u_vs.append(edit_vs[i])
+            u_ns.append(ns[indx])
+            u_cs.append(cs[indx])
+        # display
+        vs = np.array(u_vs, dtype=np.float32, )
+        ns = np.array(u_ns, dtype=np.float32, )
+        cs = np.array(u_cs, dtype=np.float32, )
+        PCVManager.update(uuid, vs, ns, cs, context=context, display_all=True, )
+        # update indexes
+        bm.verts.ensure_lookup_table()
+        l = bm.verts.layers.int['pcv_indexes']
+        for i in range(len(vs)):
+            bm.verts[i][l] = i
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_edit_end(Operator):
+    bl_idname = "point_cloud_visualizer.edit_end"
+    bl_label = "End"
+    bl_description = "Update displayed cloud from edited mesh, stop edit mode and remove helper object"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        if(pcv.modify_edit_is_edit_mesh):
+            for k, v in PCVManager.cache.items():
+                if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+                    if(v['ready']):
+                        if(v['draw']):
+                            if(context.mode == 'EDIT_MESH'):
+                                ok = True
+        return ok
+    
+    def execute(self, context):
+        # update
+        bpy.ops.point_cloud_visualizer.edit_update()
+        # cleanup
+        bpy.ops.object.mode_set(mode='EDIT')
+        o = context.object
+        p = o.parent
+        me = o.data
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        collection.objects.unlink(o)
+        bpy.data.objects.remove(o)
+        bpy.data.meshes.remove(me)
+        # go back
+        bpy.ops.object.select_all(action='DESELECT')
+        p.select_set(True)
+        view_layer.objects.active = p
+        
+        p.point_cloud_visualizer.modify_edit_initialized = False
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_edit_cancel(Operator):
+    bl_idname = "point_cloud_visualizer.edit_cancel"
+    bl_label = "Cancel"
+    bl_description = "Stop edit mode, try to remove helper object and reload original point cloud"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        if(pcv.modify_edit_initialized):
+            return True
+        return False
+        # ok = False
+        # if(pcv.modify_edit_is_edit_mesh):
+        #     for k, v in PCVManager.cache.items():
+        #         if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+        #             if(v['ready']):
+        #                 if(v['draw']):
+        #                     if(context.mode == 'EDIT_MESH'):
+        #                         ok = True
+        # return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        po = context.object
+        nm = 'pcv_edit_mesh_{}'.format(pcv.uuid)
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        for o in po.children:
+            if(o.name == nm):
+                me = o.data
+                collection.objects.unlink(o)
+                bpy.data.objects.remove(o)
+                bpy.data.meshes.remove(me)
+                break
+        
+        pcv.modify_edit_initialized = False
+        
+        # also beware, this changes uuid
+        bpy.ops.point_cloud_visualizer.reload()
+        
+        return {'FINISHED'}
+
+
 class PCV_OT_reload(Operator):
     bl_idname = "point_cloud_visualizer.reload"
     # bl_label = "Reload Point Cloud"
@@ -3049,6 +3245,35 @@ class PCV_PT_panel(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
+        
+        # edit mode, main pcv object panel
+        if(pcv.modify_edit_initialized):
+            sub.label(text='PCV Edit in progress..', icon='ERROR', )
+            sub.separator()
+            sub.operator('point_cloud_visualizer.edit_cancel')
+            return
+        
+        # edit mode, helper object panel
+        if(pcv.modify_edit_is_edit_mesh):
+            sub.label(text='PCV Edit helper mesh', icon='INFO', )
+            sub.separator()
+            c = sub.column()
+            c.label(text='• Transform, delete and duplicate vertices.')
+            c.label(text='• Update button will refresh point cloud.')
+            c.label(text='• End button will refresh point cloud and delete helper mesh.')
+            c.label(text='• All other functions are disabled until finished.')
+            c.scale_y = 0.66
+            
+            sub.separator()
+            
+            r = sub.row(align=True)
+            r.operator('point_cloud_visualizer.edit_update')
+            r.operator('point_cloud_visualizer.edit_end')
+            
+            if(context.mode != 'EDIT_MESH'):
+                sub.label(text="Must be in Edit Mode", icon='ERROR', )
+            
+            return
         
         # ----------->>> file selector
         def prop_name(cls, prop, colon=False, ):
@@ -3207,6 +3432,17 @@ class PCV_PT_render(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3264,6 +3500,17 @@ class PCV_PT_convert(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3311,6 +3558,17 @@ class PCV_PT_modify(Panel):
     bl_label = "Modify"
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
     
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3399,6 +3657,17 @@ class PCV_PT_modify_simplify(Panel):
     bl_parent_id = "PCV_PT_modify"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
     # def draw_header(self, context):
     #     pcv = context.object.point_cloud_visualizer
     #     l = self.layout
@@ -3425,6 +3694,17 @@ class PCV_PT_modify_project(Panel):
     bl_label = "Project"
     bl_parent_id = "PCV_PT_modify"
     bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
     
     # def draw_header(self, context):
     #     pcv = context.object.point_cloud_visualizer
@@ -3455,6 +3735,44 @@ class PCV_PT_modify_project(Panel):
             c.enabled = False
 
 
+class PCV_PT_modify_edit(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Edit"
+    bl_parent_id = "PCV_PT_modify"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        # if(pcv.modify_edit_is_edit_mesh):
+        #     r = c.row(align=True)
+        #     r.operator('point_cloud_visualizer.edit_update')
+        #     r.operator('point_cloud_visualizer.edit_end')
+        #
+        #     if(context.mode != 'EDIT_MESH'):
+        #         c.label(text="Must be in Edit Mode", icon='ERROR', )
+        #
+        # else:
+        #     c.operator('point_cloud_visualizer.edit_start')
+        
+        c.operator('point_cloud_visualizer.edit_start')
+
+
 class PCV_PT_modify_remove_color(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -3462,6 +3780,17 @@ class PCV_PT_modify_remove_color(Panel):
     bl_label = "Remove Color"
     bl_parent_id = "PCV_PT_modify"
     bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
     
     # def draw_header(self, context):
     #     pcv = context.object.point_cloud_visualizer
@@ -3509,6 +3838,17 @@ class PCV_PT_modify_reload(Panel):
     bl_parent_id = "PCV_PT_modify"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
     # def draw_header(self, context):
     #     pcv = context.object.point_cloud_visualizer
     #     l = self.layout
@@ -3534,6 +3874,17 @@ class PCV_PT_export(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.modify_edit_is_edit_mesh):
+                return False
+            if(pcv.modify_edit_initialized):
+                return False
+        return True
+    
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3542,14 +3893,14 @@ class PCV_PT_export(Panel):
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        c = l.column(align=True)
+        c = l.column()
         c.prop(pcv, 'export_use_viewport')
-        c.prop(pcv, 'export_apply_transformation')
-        c.prop(pcv, 'export_convert_axes')
-        cc = c.column(align=True)
+        cc = c.column()
         cc.prop(pcv, 'export_visible_only')
         if(not pcv.export_use_viewport):
             cc.enabled = False
+        c.prop(pcv, 'export_apply_transformation')
+        c.prop(pcv, 'export_convert_axes')
         c.operator('point_cloud_visualizer.export')
         
         c.enabled = PCV_OT_export.poll(context)
@@ -3633,6 +3984,18 @@ class PCV_PT_debug(Panel):
         c.label(text="export_visible_only: {}".format(pcv.export_visible_only))
         c.label(text="modify_simplify_num_samples: {}".format(pcv.modify_simplify_num_samples))
         c.label(text="modify_simplify_num_candidates: {}".format(pcv.modify_simplify_num_candidates))
+        
+        c.label(text="modify_project_object: {}".format(pcv.modify_project_object))
+        c.label(text="modify_project_search_distance: {}".format(pcv.modify_project_search_distance))
+        c.label(text="modify_project_positive: {}".format(pcv.modify_project_positive))
+        c.label(text="modify_project_negative: {}".format(pcv.modify_project_negative))
+        c.label(text="modify_project_discard: {}".format(pcv.modify_project_discard))
+        c.label(text="modify_project_shift: {}".format(pcv.modify_project_shift))
+        
+        c.label(text="modify_edit_initialized: {}".format(pcv.modify_edit_initialized))
+        c.label(text="modify_edit_is_edit_mesh: {}".format(pcv.modify_edit_is_edit_mesh))
+        c.label(text="modify_edit_is_edit_uuid: {}".format(pcv.modify_edit_is_edit_uuid))
+        
         c.label(text="modify_remove_color: {}".format(pcv.modify_remove_color))
         c.label(text="modify_remove_color_delta_hue: {}".format(pcv.modify_remove_color_delta_hue))
         c.label(text="modify_remove_color_delta_hue_use: {}".format(pcv.modify_remove_color_delta_hue_use))
@@ -3641,6 +4004,7 @@ class PCV_PT_debug(Panel):
         c.label(text="modify_remove_color_delta_value: {}".format(pcv.modify_remove_color_delta_value))
         c.label(text="modify_remove_color_delta_value_use: {}".format(pcv.modify_remove_color_delta_value_use))
         
+        c.label(text="experimental: {}".format(pcv.experimental))
         c.label(text="debug: {}".format(pcv.debug))
         c.scale_y = 0.5
         
@@ -3779,6 +4143,10 @@ class PCV_properties(PropertyGroup):
     modify_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     # modify_project_expanded: BoolProperty(default=False, )
     
+    modify_edit_initialized: BoolProperty(default=False, )
+    modify_edit_is_edit_mesh: BoolProperty(default=False, )
+    modify_edit_is_edit_uuid: StringProperty(default="", )
+    
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
         DEBUG = self.debug
@@ -3864,9 +4232,14 @@ experimental_classes = (
     PCV_OT_reload,
     PCV_OT_remove_color,
     PCV_OT_project,
+    PCV_OT_edit_start,
+    PCV_OT_edit_update,
+    PCV_OT_edit_end,
+    PCV_OT_edit_cancel,
     PCV_PT_modify_simplify,
     PCV_PT_modify_project,
     PCV_PT_modify_remove_color,
+    PCV_PT_modify_edit,
     PCV_PT_modify_reload,
 )
 if(EXPERIMENTAL):
