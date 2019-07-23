@@ -47,7 +47,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 * Install and activate addon in a usual way.
 * Add any object type to scene.
 * Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`.
-* Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display` and point size with `Size`.
+* Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display`, point size with `Size` and point transparency with `Alpha`.
 * Display point normals as lines - click `Normal` icon, adjust line length with `Length` next to it. *Pro tip: for large clouds, set Display to some small percentage, adjust Length to appropriate value and then set Display back.*
 * Transforming parent object transforms point cloud as well.
 * `Illumination` works only when vertex normals are present
@@ -59,6 +59,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 * `Display` - percentage of displayed points
 * `Size` - point size in pixels
+* `Alpha` - global points alpha
 * `Normals` - display point normals as lines, adjust line length with `Length` next to it
 * `Illumination` - enable extra illumination, works only when vertex normals can be loaded
 * `Light Direction` - light direction
@@ -153,6 +154,19 @@ Remove points with exact/similar color as chosen in color picker (Eyedropper wor
 * `Δ Value` - Delta value
 * `Remove Color` - run operator
 
+##### Edit
+
+Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper mesh with vertices and entered to mesh edit mode. You can transform, delete and duplicate vertices using regular Blender's tools. If you want update displayed points, hit `Update`, when you are finished editing hit `End` to update points for a last time and delete helper mesh. If something went wrong, select main object with cloud and hit `Cancel` to reload original points, return interface to regular mode and attempt to clean helper mesh if it is still available. 
+
+* To save edited point cloud, you have to use `Export` feature and check `Use Viewport Points` because edits are only in memory, if you close Blender, edits will be lost.
+* Point normals are not changed (at this time), if you rotate points, normals will be still oriented as before.
+* New points can be reliably created by duplicating existing points. If you create new points, they will all have the same random normal and random color.
+
+`Start` - Start edit mode, create helper object and switch to it
+`Update` - Update displayed cloud from edited mesh
+`End` - Update displayed cloud from edited mesh, stop edit mode and remove helper object
+`Cancel` - Stop edit mode, try to remove helper object and reload original point cloud
+
 ##### Reload
 
 Reload points from ply file - remove all changes made
@@ -178,6 +192,8 @@ Export current point cloud as binary ply file with several options. If exporting
 
 ### Changelog:
 
+* 0.9.9 point cloud global alpha
+* 0.9.8 basic editing
 * 0.9.7 project point cloud on mesh surface
 * 0.9.6 ply exporting now uses original or viewport data
 * 0.9.5 simplify and remove color filters

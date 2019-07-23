@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 8),
+           "version": (0, 9, 9),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1156,6 +1156,7 @@ class PCVShaders():
         uniform mat4 object_matrix;
         uniform float point_size;
         uniform float alpha_radius;
+        uniform float global_alpha;
         
         out vec4 f_color;
         out float f_alpha_radius;
@@ -1173,7 +1174,8 @@ class PCVShaders():
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
             gl_PointSize = point_size;
             f_normal = normal;
-            f_color = color;
+            // f_color = color;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
             f_alpha_radius = alpha_radius;
             
             // f_light_direction = normalize(vec3(inverse(object_matrix) * vec4(light_direction, 1.0)));
@@ -1231,13 +1233,15 @@ class PCVShaders():
         uniform mat4 object_matrix;
         uniform float point_size;
         uniform float alpha_radius;
+        uniform float global_alpha;
         out vec4 f_color;
         out float f_alpha_radius;
         void main()
         {
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
             gl_PointSize = point_size;
-            f_color = color;
+            // f_color = color;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
             f_alpha_radius = alpha_radius;
         }
     '''
@@ -1409,6 +1413,8 @@ class PCVManager():
         d['display_percent'] = l
         d['current_display_percent'] = l
         
+        d['global_alpha'] = pcv.global_alpha
+        
         ienabled = pcv.illumination
         d['illumination'] = ienabled
         if(ienabled):
@@ -1440,6 +1446,7 @@ class PCVManager():
     def render(cls, uuid, ):
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
+        bgl.glEnable(bgl.GL_BLEND)
         
         ci = PCVManager.cache[uuid]
         
@@ -1477,7 +1484,9 @@ class PCVManager():
         if(not o.visible_get()):
             # if parent object is not visible, skip drawing
             # this should checked earlier, but until now i can't be sure i have correct object reference
+            bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
             bgl.glDisable(bgl.GL_DEPTH_TEST)
+            bgl.glDisable(bgl.GL_BLEND)
             return
         
         if(ci['illumination'] != pcv.illumination):
@@ -1502,6 +1511,7 @@ class PCVManager():
         shader.uniform_float("object_matrix", o.matrix_world)
         shader.uniform_float("point_size", pcv.point_size)
         shader.uniform_float("alpha_radius", pcv.alpha_radius)
+        shader.uniform_float("global_alpha", pcv.global_alpha)
         
         if(pcv.illumination and pcv.has_normals and ci['illumination']):
             cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
@@ -1607,7 +1617,9 @@ class PCVManager():
             shader.uniform_float("color", col, )
             batch.draw(shader)
         
+        bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
+        bgl.glDisable(bgl.GL_BLEND)
     
     @classmethod
     def handler(cls):
@@ -1699,6 +1711,7 @@ class PCVManager():
                 'colors': None,
                 'display_percent': None,
                 'current_display_percent': None,
+                'global_alpha': None,
                 'illumination': False,
                 'shader': False,
                 'batch': False,
@@ -1861,7 +1874,11 @@ class PCV_OT_render(Operator):
         return ok
     
     def execute(self, context):
+        # bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        # bgl.glEnable(bgl.GL_DEPTH_TEST)
+        bgl.glEnable(bgl.GL_BLEND)
         
         scene = context.scene
         render = scene.render
@@ -2007,6 +2024,7 @@ class PCV_OT_render(Operator):
             shader.uniform_float("object_matrix", o.matrix_world)
             shader.uniform_float("point_size", pcv.render_point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
             
             if(pcv.illumination and pcv.has_normals and cloud['illumination']):
                 cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
@@ -2048,6 +2066,9 @@ class PCV_OT_render(Operator):
             return {'CANCELLED'}
             
         finally:
+            bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
+            # bgl.glDisable(bgl.GL_DEPTH_TEST)
+            bgl.glDisable(bgl.GL_BLEND)
             offscreen.unbind()
             offscreen.free()
         
@@ -3025,6 +3046,11 @@ class PCV_OT_edit_start(Operator):
         vs = c['vertices']
         ns = c['normals']
         cs = c['colors']
+        # # draw points with half alpha
+        # cs[:, 3] = 0.5
+        # PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        # pcv.global_alpha = 0.5
+        
         # prepare mesh
         bm = bmesh.new()
         for v in vs:
@@ -3054,6 +3080,8 @@ class PCV_OT_edit_start(Operator):
         o.point_cloud_visualizer.modify_edit_is_edit_uuid = pcv.uuid
         o.point_cloud_visualizer.modify_edit_is_edit_mesh = True
         pcv.modify_edit_initialized = True
+        pcv.modify_edit_pre_edit_alpha = pcv.global_alpha
+        pcv.global_alpha = 0.5
         
         return {'FINISHED'}
 
@@ -3136,6 +3164,17 @@ class PCV_OT_edit_end(Operator):
     def execute(self, context):
         # update
         bpy.ops.point_cloud_visualizer.edit_update()
+        
+        # # NOTTODO: because of alpha i am updating cloud twice, some global alpha directly in shader would be nice, event for regular display
+        # uuid = context.object.point_cloud_visualizer.modify_edit_is_edit_uuid
+        # c = PCVManager.cache[uuid]
+        # vs = c['vertices']
+        # ns = c['normals']
+        # cs = c['colors']
+        # # draw points with full alpha
+        # cs[:, 3] = 1.0
+        # PCVManager.update(uuid, vs, ns, cs, context=context, display_all=True, )
+        
         # cleanup
         bpy.ops.object.mode_set(mode='EDIT')
         o = context.object
@@ -3152,6 +3191,7 @@ class PCV_OT_edit_end(Operator):
         view_layer.objects.active = p
         
         p.point_cloud_visualizer.modify_edit_initialized = False
+        p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.modify_edit_pre_edit_alpha
         
         return {'FINISHED'}
 
@@ -3192,6 +3232,8 @@ class PCV_OT_edit_cancel(Operator):
                 break
         
         pcv.modify_edit_initialized = False
+        pcv.global_alpha = pcv.modify_edit_pre_edit_alpha
+        pcv.modify_edit_pre_edit_alpha = 1.0
         
         # also beware, this changes uuid
         bpy.ops.point_cloud_visualizer.reload()
@@ -3370,6 +3412,10 @@ class PCV_PT_panel(Panel):
         # r = sub.row()
         # r.prop(pcv, 'alpha_radius')
         # r.enabled = e
+        
+        r = sub.row()
+        r.prop(pcv, 'global_alpha')
+        r.enabled = e
         
         r = sub.row(align=True)
         r.prop(pcv, 'vertex_normals', toggle=True, icon_only=True, icon='SNAP_NORMAL', )
@@ -4054,6 +4100,16 @@ class PCV_properties(PropertyGroup):
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     
+    # def _global_alpha_update(self, context, ):
+    #     if(self.uuid not in PCVManager.cache):
+    #         return
+    #     d = PCVManager.cache[self.uuid]
+    #     d['global_alpha'] = self.global_alpha
+    #
+    # global_alpha: FloatProperty(name="Alpha", default=1.0, min=0.0, max=1.0, precision=2, subtype='FACTOR', update=_global_alpha_update, description="Adjust alpha of points displayed", )
+    
+    global_alpha: FloatProperty(name="Alpha", default=1.0, min=0.0, max=1.0, precision=2, subtype='FACTOR', description="Adjust alpha of points displayed", )
+    
     # ply_info: StringProperty(name="PLY Info", default="", description="", )
     # ply_display_info: StringProperty(name="PLY Display Info", default="Display:", description="", )
     
@@ -4146,6 +4202,7 @@ class PCV_properties(PropertyGroup):
     modify_edit_initialized: BoolProperty(default=False, )
     modify_edit_is_edit_mesh: BoolProperty(default=False, )
     modify_edit_is_edit_uuid: StringProperty(default="", )
+    modify_edit_pre_edit_alpha: FloatProperty(default=1.0, )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
