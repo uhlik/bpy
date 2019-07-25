@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 10),
+           "version": (0, 9, 11),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -3076,12 +3076,12 @@ class PCV_OT_edit_start(Operator):
         # and set edit mode
         bpy.ops.object.mode_set(mode='EDIT')
         
-        o.point_cloud_visualizer.filter_edit_is_edit_uuid = pcv.uuid
-        o.point_cloud_visualizer.filter_edit_is_edit_mesh = True
-        pcv.filter_edit_initialized = True
-        pcv.filter_edit_pre_edit_alpha = pcv.global_alpha
+        o.point_cloud_visualizer.edit_is_edit_uuid = pcv.uuid
+        o.point_cloud_visualizer.edit_is_edit_mesh = True
+        pcv.edit_initialized = True
+        pcv.edit_pre_edit_alpha = pcv.global_alpha
         pcv.global_alpha = 0.5
-        pcv.filter_edit_pre_edit_display = pcv.display_percent
+        pcv.edit_pre_edit_display = pcv.display_percent
         pcv.display_percent = 100.0
         
         return {'FINISHED'}
@@ -3096,9 +3096,9 @@ class PCV_OT_edit_update(Operator):
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
         ok = False
-        if(pcv.filter_edit_is_edit_mesh):
+        if(pcv.edit_is_edit_mesh):
             for k, v in PCVManager.cache.items():
-                if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
+                if(v['uuid'] == pcv.edit_is_edit_uuid):
                     if(v['ready']):
                         if(v['draw']):
                             if(context.mode == 'EDIT_MESH'):
@@ -3107,7 +3107,7 @@ class PCV_OT_edit_update(Operator):
     
     def execute(self, context):
         # get current data
-        uuid = context.object.point_cloud_visualizer.filter_edit_is_edit_uuid
+        uuid = context.object.point_cloud_visualizer.edit_is_edit_uuid
         c = PCVManager.cache[uuid]
         vs = c['vertices']
         ns = c['normals']
@@ -3153,9 +3153,9 @@ class PCV_OT_edit_end(Operator):
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
         ok = False
-        if(pcv.filter_edit_is_edit_mesh):
+        if(pcv.edit_is_edit_mesh):
             for k, v in PCVManager.cache.items():
-                if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
+                if(v['uuid'] == pcv.edit_is_edit_uuid):
                     if(v['ready']):
                         if(v['draw']):
                             if(context.mode == 'EDIT_MESH'):
@@ -3167,7 +3167,7 @@ class PCV_OT_edit_end(Operator):
         bpy.ops.point_cloud_visualizer.edit_update()
         
         # # NOTTODO: because of alpha i am updating cloud twice, some global alpha directly in shader would be nice, event for regular display
-        # uuid = context.object.point_cloud_visualizer.filter_edit_is_edit_uuid
+        # uuid = context.object.point_cloud_visualizer.edit_is_edit_uuid
         # c = PCVManager.cache[uuid]
         # vs = c['vertices']
         # ns = c['normals']
@@ -3191,9 +3191,9 @@ class PCV_OT_edit_end(Operator):
         p.select_set(True)
         view_layer.objects.active = p
         
-        p.point_cloud_visualizer.filter_edit_initialized = False
-        p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.filter_edit_pre_edit_alpha
-        p.point_cloud_visualizer.display_percent = p.point_cloud_visualizer.filter_edit_pre_edit_display
+        p.point_cloud_visualizer.edit_initialized = False
+        p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.edit_pre_edit_alpha
+        p.point_cloud_visualizer.display_percent = p.point_cloud_visualizer.edit_pre_edit_display
         
         return {'FINISHED'}
 
@@ -3206,13 +3206,13 @@ class PCV_OT_edit_cancel(Operator):
     @classmethod
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
-        if(pcv.filter_edit_initialized):
+        if(pcv.edit_initialized):
             return True
         return False
         # ok = False
-        # if(pcv.filter_edit_is_edit_mesh):
+        # if(pcv.edit_is_edit_mesh):
         #     for k, v in PCVManager.cache.items():
-        #         if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
+        #         if(v['uuid'] == pcv.edit_is_edit_uuid):
         #             if(v['ready']):
         #                 if(v['draw']):
         #                     if(context.mode == 'EDIT_MESH'):
@@ -3233,11 +3233,11 @@ class PCV_OT_edit_cancel(Operator):
                 bpy.data.meshes.remove(me)
                 break
         
-        pcv.filter_edit_initialized = False
-        pcv.global_alpha = pcv.filter_edit_pre_edit_alpha
-        pcv.filter_edit_pre_edit_alpha = 1.0
-        pcv.display_percent = pcv.filter_edit_pre_edit_display
-        pcv.filter_edit_pre_edit_display = 100.0
+        pcv.edit_initialized = False
+        pcv.global_alpha = pcv.edit_pre_edit_alpha
+        pcv.edit_pre_edit_alpha = 1.0
+        pcv.display_percent = pcv.edit_pre_edit_display
+        pcv.edit_pre_edit_display = 100.0
         
         # also beware, this changes uuid
         bpy.ops.point_cloud_visualizer.reload()
@@ -3439,14 +3439,14 @@ class PCV_PT_panel(Panel):
         sub = l.column()
         
         # edit mode, main pcv object panel
-        if(pcv.filter_edit_initialized):
+        if(pcv.edit_initialized):
             sub.label(text='PCV Edit in progress..', icon='ERROR', )
             sub.separator()
             sub.operator('point_cloud_visualizer.edit_cancel')
             return
         
         # edit mode, helper object panel
-        if(pcv.filter_edit_is_edit_mesh):
+        if(pcv.edit_is_edit_mesh):
             sub.label(text='PCV Edit helper mesh', icon='INFO', )
             sub.separator()
             c = sub.column()
@@ -3636,9 +3636,9 @@ class PCV_PT_render(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3704,9 +3704,9 @@ class PCV_PT_convert(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3763,9 +3763,9 @@ class PCV_PT_filter(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3793,9 +3793,9 @@ class PCV_PT_filter_simplify(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3831,9 +3831,9 @@ class PCV_PT_filter_project(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3880,9 +3880,9 @@ class PCV_PT_filter_remove_color(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3936,9 +3936,9 @@ class PCV_PT_filter_merge(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3965,9 +3965,9 @@ class PCV_PT_edit(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -3996,9 +3996,9 @@ class PCV_PT_export(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.filter_edit_is_edit_mesh):
+            if(pcv.edit_is_edit_mesh):
                 return False
-            if(pcv.filter_edit_initialized):
+            if(pcv.edit_initialized):
                 return False
         return True
     
@@ -4186,11 +4186,11 @@ class PCV_properties(PropertyGroup):
     filter_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
     filter_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     
-    filter_edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
-    filter_edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
-    filter_edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
-    filter_edit_pre_edit_alpha: FloatProperty(default=1.0, options={'HIDDEN', }, )
-    filter_edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
+    edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
+    edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
+    edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
+    edit_pre_edit_alpha: FloatProperty(default=1.0, options={'HIDDEN', }, )
+    edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes

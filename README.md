@@ -83,7 +83,7 @@ Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper 
 
 Filter current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-filter.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.11-filter.png)
 
 ##### Simplify
 
@@ -113,6 +113,12 @@ Remove points with exact/similar color as chosen in color picker (Eyedropper wor
 * `Δ Saturation` - Delta saturation
 * `Δ Value` - Delta value
 * `Remove Color` - run operator
+
+##### Merge
+
+Load another ply and merge with currently displayed. Hit `Merge With Other PLY`, select ply file and load. New point will be appended to old, shuffled if shuffle is enabled in preferences.
+
+* `Merge With Other PLY` - run operator
 
 ### Render
 
@@ -184,6 +190,7 @@ Export current point cloud as binary ply file with several options. If exporting
 
 ### Changelog:
 
+* 0.9.11 merge filter
 * 0.9.10 ui
 * 0.9.9 point cloud global alpha
 * 0.9.8 basic editing
