@@ -30,9 +30,7 @@
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
-**Display, render and convert to mesh colored point cloud PLY files.**
-
-Display colored point cloud PLY in Blender's 3d viewport. Optionally render point cloud to png sequence or convert to various mesh types with vertex colors for regular rendering. 
+**Display, edit, filter, render, convert and export colored point cloud PLY files.**
 
 Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional.
 
@@ -40,20 +38,18 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-min.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10.png)
 
-##### Usage:
+##### Basic Usage:
 
 * Install and activate addon in a usual way.
 * Add any object type to scene.
-* Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`.
+* Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`. `Reload` button next to it reloads ply from disk.
 * Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display`, point size with `Size` and point transparency with `Alpha`.
 * Display point normals as lines - click `Normal` icon, adjust line length with `Length` next to it. *Pro tip: for large clouds, set Display to some small percentage, adjust Length to appropriate value and then set Display back.*
 * Transforming parent object transforms point cloud as well.
-* `Illumination` works only when vertex normals are present
-* When vertex colors are missing, cloud will be displayed in uniform gray, in this case you can enable `Illumination` to have better cloud view
-* Single point cloud can be rendered on transparent and composed over regular render
-* For rendering in regular render engine you can convert cloud to colored mesh
+* `Illumination` 'adds' single artificial light on points, you can edit its direction and strength. Works only when vertex normals are present.
+* When vertex colors are missing, cloud will be displayed in uniform gray, in that case you can enable `Illumination` to have better cloud view
 
 ##### Display Options:
 
@@ -66,64 +62,28 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 * `Light Intensity` - light intensity
 * `Shadow Intensity` - shadow intensity
 
-### Point cloud rendering
+### Edit
 
-Currently only sigle point cloud per render/frame is supported. If you need more clouds at once, select another cloud parent and re-render with different suffix in `Render` subpanel. Output image is RGBA 8bit PNG - transparent background with colored point cloud, which can be composed over something else later.
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-editing.gif)
 
-##### Usage:
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-edit.png)
 
-* Blend file has to be saved
-* Load and display ply first.
-* Make a camera and adjust as needed.
-* Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
-* Set render path in `Output`.
-* Set render image size with `Resolution X`, `Resolution Y` and `Resolution %`.
-* At default resolution settings are taken from scene, to make them independent, click chain icon next to properties, correct aspect ratio is not calculated, if you link properties again, values are copied from scene.
-* If `Illumination` is enabled it will be rendered as well
-* Hit `Render` or `Animation`
+Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper mesh with vertices and entered to mesh edit mode. You can transform, delete and duplicate vertices using regular Blender's tools. If you want update displayed points, hit `Update`, when you are finished editing hit `End` to update points for a last time and delete helper mesh. If something went wrong, select main object with cloud and hit `Cancel` to reload original points, return interface to regular mode and attempt to clean helper mesh if it is still available. 
 
-##### Render options:
+* To save edited point cloud, you have to use `Export` feature and check `Use Viewport Points` because edits are only in memory, if you close Blender, edits will be lost.
+* Point normals are not changed (at this time), if you rotate points, normals will be still oriented as before.
+* New points can be reliably (for now) created by duplicating existing points. If you create new points, they will all have the same random normal and random color.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-render.png)
+`Start` - Start edit mode, create helper object and switch to it
+`Update` - Update displayed cloud from edited mesh
+`End` - Update displayed cloud from edited mesh, stop edit mode and remove helper object
+`Cancel` - Stop edit mode, try to remove helper object and reload original point cloud
 
-* `Size` - point render size in pixels
-* `Count` - percentage of rendered points
-* `Output` - path where to save rendered images, `#` characters defines the position and length of frame numbers, image is always saved, filetype is always png, accepts relative paths, upon hitting `Render` path is validated, changed to absolute and written back
-* `Resolution X` - image width in pixels
-* `Resolution Y` - image height in pixels
-* `Resolution %` - percentage scale for resolution
-* `Resolution Linked` - when enabled, settings are taken from scene, if not they are independent on scene, but aspect ratio is not calculated
+### Filter
 
-### Point cloud to mesh/instances/particles conversion:
+Filter current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-convert.jpg)
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-psys.jpg)
-
-Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
-
-Conversion to instancer specifics: points are converted to triangle mesh object, vertex colors are baked to texture, extra instanced sphere object is added as child object of main mesh, material using baked colors is added to sphere and each instance inherits color of corresponding face it is instanced from.
-
-Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from. Result is regular particle system which can be further edited, e.g. instance mesh changed, physics added etc.
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.5-convert.png)
-
-* `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
-* `All`, `Subset` - Use all points or random subset of by given percentage
-* `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
-* `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
-* `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
-* `Sphere Subdivisions` - Conversion to instancer / particles only, number of subdivisions of particle system instanced ico sphere
-
-### Experimental Features
-
-Enabled by hitting the big red button.. Enables experimental features and debug mode. If you run Blender from terminal, you can check progress of some operations there while debug mode is enabled.
-
-#### Modify Panel
-
-Modify current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.7-modify.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-filter.png)
 
 ##### Simplify
 
@@ -142,7 +102,7 @@ Project points on mesh (or object convertible to mesh) surface. Projects point a
 * `Positive` - Search along point normal forwards
 * `Negative` - Search along point normal backwards
 * `Discard Unprojectable` - Discard points which didn't hit anything
-* `Shift` - Shift points after projection above (positive) or below (negative) surface
+* `Shift` - Shift points after projection above (positive value) or below (negative value) surface
 
 ##### Remove Color
 
@@ -154,33 +114,65 @@ Remove points with exact/similar color as chosen in color picker (Eyedropper wor
 * `Δ Value` - Delta value
 * `Remove Color` - run operator
 
-##### Edit
+### Render
 
-Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper mesh with vertices and entered to mesh edit mode. You can transform, delete and duplicate vertices using regular Blender's tools. If you want update displayed points, hit `Update`, when you are finished editing hit `End` to update points for a last time and delete helper mesh. If something went wrong, select main object with cloud and hit `Cancel` to reload original points, return interface to regular mode and attempt to clean helper mesh if it is still available. 
+Currently only sigle point cloud per render/frame is supported. If you need more clouds at once, select another cloud parent and re-render with different suffix in `Render` subpanel. Output image is RGBA 8bit PNG - transparent background with colored point cloud, which can be composed over something else later.
 
-* To save edited point cloud, you have to use `Export` feature and check `Use Viewport Points` because edits are only in memory, if you close Blender, edits will be lost.
-* Point normals are not changed (at this time), if you rotate points, normals will be still oriented as before.
-* New points can be reliably created by duplicating existing points. If you create new points, they will all have the same random normal and random color.
+##### Usage:
 
-`Start` - Start edit mode, create helper object and switch to it
-`Update` - Update displayed cloud from edited mesh
-`End` - Update displayed cloud from edited mesh, stop edit mode and remove helper object
-`Cancel` - Stop edit mode, try to remove helper object and reload original point cloud
+* Blend file has to be saved
+* Load and display ply first.
+* Make a camera and adjust as needed.
+* Select cloud parent object, set point size with `Size` or percentage of rendered points with `Count`
+* Set render path in `Output`.
+* Set render image size with `Resolution X`, `Resolution Y` and `Resolution %`.
+* At default resolution settings are taken from scene, to make them independent, click chain icon next to properties, correct aspect ratio is not calculated, if you link properties again, values are copied from scene.
+* If `Illumination` is enabled it will be rendered as well
+* Hit `Render` or `Animation`
 
-##### Reload
+##### Render options:
 
-Reload points from ply file - remove all changes made
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-render.png)
 
-#### Export Panel
+* `Size` - point render size in pixels
+* `Count` - percentage of rendered points
+* `Output` - path where to save rendered images, `#` characters defines the position and length of frame numbers, image is always saved, filetype is always png, accepts relative paths, upon hitting `Render` path is validated, changed to absolute and written back
+* `Resolution X` - image width in pixels
+* `Resolution Y` - image height in pixels
+* `Resolution %` - percentage scale for resolution
+* `Resolution Linked` - when enabled, settings are taken from scene, if not they are independent on scene, but aspect ratio is not calculated
 
-Export current point cloud as binary ply file with several options. If exporting modified (filtered) points, check `Use Viewport Points`, otherwise you will not get modified points. If exporting viewport points colors may slightly differ. Transformation and axis conversion can be aplied on both loaded and viewport points.
+### Convert
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.6-export.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-convert.jpg)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-psys.jpg)
+
+Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
+
+Conversion to instancer specifics: points are converted to triangle mesh object, vertex colors are baked to texture, extra instanced sphere object is added as child object of main mesh, material using baked colors is added to sphere and each instance inherits color of corresponding face it is instanced from.
+
+Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from. Result is regular particle system which can be further edited, e.g. instance mesh changed, physics added etc.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-convert.png)
+
+* `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
+* `All`, `Subset` - Use all points or random subset of by given percentage
+* `Size` - Mesh instance size, internal instanced mesh has size 1.0 so if you set size to 0.01, resulting instances will have actual size of 0.01 event when cloud is scaled
+* `Align To Normal` - Align instance to point normal, e.g. tetrahedron point will align to normal, triangle plane will align to normal etc.
+* `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
+* `Sphere Subdivisions` - Conversion to instancer / particles only, number of subdivisions of particle system instanced ico sphere
+
+### Export
+
+Export current point cloud as binary ply file with several options. If exporting modified (filtered) points, check `Use Viewport Points`, otherwise you will not get modified points. If exporting viewport points colors may slightly differ. Transformation and axis conversion can be applied on both loaded and viewport points.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-export.png)
 
 * `Use Viewport Points` - When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file
+* `Visible Points Only` - Export currently visible points only (controlled by 'Display' on main panel)
 * `Apply Transformation` - Apply parent object transformation to points
 * `Convert Axes` - Convert from blender (y forward, z up) to forward -z, up y axes
-* `Visible Points Only` - Export currently visible points only (controlled by 'Display' on main panel)
 
 ### Addon Preferences:
 
