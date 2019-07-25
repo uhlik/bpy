@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 9),
+           "version": (0, 9, 10),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -65,7 +65,6 @@ from mathutils.kdtree import KDTree
 
 
 DEBUG = False
-EXPERIMENTAL = False
 
 
 def log(msg, indent=0, ):
@@ -2499,11 +2498,11 @@ class PCV_OT_simplify(Operator):
         ns = c['normals']
         cs = c['colors']
         
-        num_samples = pcv.modify_simplify_num_samples
+        num_samples = pcv.filter_simplify_num_samples
         if(num_samples >= len(vs)):
             self.report({'ERROR'}, "Number of samples must be < number of points.")
             return False, []
-        candidates = pcv.modify_simplify_num_candidates
+        candidates = pcv.filter_simplify_num_candidates
         log("num_samples: {}, candidates: {}".format(num_samples, candidates), 1)
         
         l = len(vs)
@@ -2639,8 +2638,8 @@ class PCV_OT_project(Operator):
                 if(v['ready']):
                     if(v['draw']):
                         # ok = True
-                        if(pcv.modify_project_object != ''):
-                            o = bpy.data.objects.get(pcv.modify_project_object)
+                        if(pcv.filter_project_object != ''):
+                            o = bpy.data.objects.get(pcv.filter_project_object)
                             if(o is not None):
                                 if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
                                     ok = True
@@ -2660,7 +2659,7 @@ class PCV_OT_project(Operator):
         log("preprocessing..", 1)
         
         pcv = context.object.point_cloud_visualizer
-        o = bpy.data.objects.get(pcv.modify_project_object)
+        o = bpy.data.objects.get(pcv.filter_project_object)
         
         if(o is None):
             raise Exception()
@@ -2727,11 +2726,11 @@ class PCV_OT_project(Operator):
         points['index'] = np.indices((l, ), dtype='<i8', )
         points['delete'] = np.zeros((l, ), dtype='?', )
         
-        search_distance = pcv.modify_project_search_distance
-        negative = pcv.modify_project_negative
-        positive = pcv.modify_project_positive
-        discard = pcv.modify_project_discard
-        shift = pcv.modify_project_shift
+        search_distance = pcv.filter_project_search_distance
+        negative = pcv.filter_project_negative
+        positive = pcv.filter_project_positive
+        discard = pcv.filter_project_discard
+        shift = pcv.filter_project_shift
         
         sc = context.scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -2922,28 +2921,28 @@ class PCV_OT_remove_color(Operator):
         # evaluate
         indexes = []
         
-        # rmcolor = Color(pcv.modify_remove_color)
-        # rmcolor = Color([c ** (1 / 2.2) for c in pcv.modify_remove_color])
+        # rmcolor = Color(pcv.filter_remove_color)
+        # rmcolor = Color([c ** (1 / 2.2) for c in pcv.filter_remove_color])
         
         # black magic..
-        c = [c ** (1 / 2.2) for c in pcv.modify_remove_color]
+        c = [c ** (1 / 2.2) for c in pcv.filter_remove_color]
         c = [int(i * 256) for i in c]
         c = [i / 256 for i in c]
         rmcolor = Color(c)
         
         # NOTE: shouldn't be deltas as -delta/2 and +delta/2? now it is -delta / +delta
-        dh = pcv.modify_remove_color_delta_hue
-        ds = pcv.modify_remove_color_delta_saturation
-        dv = pcv.modify_remove_color_delta_value
-        # if(not pcv.modify_remove_color_delta_hue_use):
+        dh = pcv.filter_remove_color_delta_hue
+        ds = pcv.filter_remove_color_delta_saturation
+        dv = pcv.filter_remove_color_delta_value
+        # if(not pcv.filter_remove_color_delta_hue_use):
         #     dhue = None
-        # if(not pcv.modify_remove_color_delta_saturation_use):
+        # if(not pcv.filter_remove_color_delta_saturation_use):
         #     dsaturation = None
-        # if(not pcv.modify_remove_color_delta_value_use):
+        # if(not pcv.filter_remove_color_delta_value_use):
         #     dvalue = None
-        uh = pcv.modify_remove_color_delta_hue_use
-        us = pcv.modify_remove_color_delta_saturation_use
-        uv = pcv.modify_remove_color_delta_value_use
+        uh = pcv.filter_remove_color_delta_hue_use
+        us = pcv.filter_remove_color_delta_saturation_use
+        uv = pcv.filter_remove_color_delta_value_use
         
         prgr = Progress(len(points), 1)
         for p in points:
@@ -3077,12 +3076,12 @@ class PCV_OT_edit_start(Operator):
         # and set edit mode
         bpy.ops.object.mode_set(mode='EDIT')
         
-        o.point_cloud_visualizer.modify_edit_is_edit_uuid = pcv.uuid
-        o.point_cloud_visualizer.modify_edit_is_edit_mesh = True
-        pcv.modify_edit_initialized = True
-        pcv.modify_edit_pre_edit_alpha = pcv.global_alpha
+        o.point_cloud_visualizer.filter_edit_is_edit_uuid = pcv.uuid
+        o.point_cloud_visualizer.filter_edit_is_edit_mesh = True
+        pcv.filter_edit_initialized = True
+        pcv.filter_edit_pre_edit_alpha = pcv.global_alpha
         pcv.global_alpha = 0.5
-        pcv.modify_edit_pre_edit_display = pcv.display_percent
+        pcv.filter_edit_pre_edit_display = pcv.display_percent
         pcv.display_percent = 100.0
         
         return {'FINISHED'}
@@ -3097,9 +3096,9 @@ class PCV_OT_edit_update(Operator):
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
         ok = False
-        if(pcv.modify_edit_is_edit_mesh):
+        if(pcv.filter_edit_is_edit_mesh):
             for k, v in PCVManager.cache.items():
-                if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+                if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
                     if(v['ready']):
                         if(v['draw']):
                             if(context.mode == 'EDIT_MESH'):
@@ -3108,7 +3107,7 @@ class PCV_OT_edit_update(Operator):
     
     def execute(self, context):
         # get current data
-        uuid = context.object.point_cloud_visualizer.modify_edit_is_edit_uuid
+        uuid = context.object.point_cloud_visualizer.filter_edit_is_edit_uuid
         c = PCVManager.cache[uuid]
         vs = c['vertices']
         ns = c['normals']
@@ -3154,9 +3153,9 @@ class PCV_OT_edit_end(Operator):
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
         ok = False
-        if(pcv.modify_edit_is_edit_mesh):
+        if(pcv.filter_edit_is_edit_mesh):
             for k, v in PCVManager.cache.items():
-                if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+                if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
                     if(v['ready']):
                         if(v['draw']):
                             if(context.mode == 'EDIT_MESH'):
@@ -3168,7 +3167,7 @@ class PCV_OT_edit_end(Operator):
         bpy.ops.point_cloud_visualizer.edit_update()
         
         # # NOTTODO: because of alpha i am updating cloud twice, some global alpha directly in shader would be nice, event for regular display
-        # uuid = context.object.point_cloud_visualizer.modify_edit_is_edit_uuid
+        # uuid = context.object.point_cloud_visualizer.filter_edit_is_edit_uuid
         # c = PCVManager.cache[uuid]
         # vs = c['vertices']
         # ns = c['normals']
@@ -3192,9 +3191,9 @@ class PCV_OT_edit_end(Operator):
         p.select_set(True)
         view_layer.objects.active = p
         
-        p.point_cloud_visualizer.modify_edit_initialized = False
-        p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.modify_edit_pre_edit_alpha
-        p.point_cloud_visualizer.display_percent = p.point_cloud_visualizer.modify_edit_pre_edit_display
+        p.point_cloud_visualizer.filter_edit_initialized = False
+        p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.filter_edit_pre_edit_alpha
+        p.point_cloud_visualizer.display_percent = p.point_cloud_visualizer.filter_edit_pre_edit_display
         
         return {'FINISHED'}
 
@@ -3207,13 +3206,13 @@ class PCV_OT_edit_cancel(Operator):
     @classmethod
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
-        if(pcv.modify_edit_initialized):
+        if(pcv.filter_edit_initialized):
             return True
         return False
         # ok = False
-        # if(pcv.modify_edit_is_edit_mesh):
+        # if(pcv.filter_edit_is_edit_mesh):
         #     for k, v in PCVManager.cache.items():
-        #         if(v['uuid'] == pcv.modify_edit_is_edit_uuid):
+        #         if(v['uuid'] == pcv.filter_edit_is_edit_uuid):
         #             if(v['ready']):
         #                 if(v['draw']):
         #                     if(context.mode == 'EDIT_MESH'):
@@ -3234,11 +3233,11 @@ class PCV_OT_edit_cancel(Operator):
                 bpy.data.meshes.remove(me)
                 break
         
-        pcv.modify_edit_initialized = False
-        pcv.global_alpha = pcv.modify_edit_pre_edit_alpha
-        pcv.modify_edit_pre_edit_alpha = 1.0
-        pcv.display_percent = pcv.modify_edit_pre_edit_display
-        pcv.modify_edit_pre_edit_display = 100.0
+        pcv.filter_edit_initialized = False
+        pcv.global_alpha = pcv.filter_edit_pre_edit_alpha
+        pcv.filter_edit_pre_edit_alpha = 1.0
+        pcv.display_percent = pcv.filter_edit_pre_edit_display
+        pcv.filter_edit_pre_edit_display = 100.0
         
         # also beware, this changes uuid
         bpy.ops.point_cloud_visualizer.reload()
@@ -3248,28 +3247,31 @@ class PCV_OT_edit_cancel(Operator):
 
 class PCV_OT_reload(Operator):
     bl_idname = "point_cloud_visualizer.reload"
-    # bl_label = "Reload Point Cloud"
     bl_label = "Reload"
-    bl_description = "Reload points from original file"
+    bl_description = "Reload points from file"
     
     @classmethod
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
-        ok = False
+        if(pcv.filepath != '' and pcv.uuid != ''):
+            return True
+        return False
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        draw = False
         for k, v in PCVManager.cache.items():
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
-                        ok = True
-        return ok
-    
-    def execute(self, context):
-        pcv = context.object.point_cloud_visualizer
-        c = PCVManager.cache[pcv.uuid]
+                        draw = True
+                        bpy.ops.point_cloud_visualizer.erase()
         
-        bpy.ops.point_cloud_visualizer.erase()
-        bpy.ops.point_cloud_visualizer.load_ply_to_cache(filepath=c['filepath'])
-        bpy.ops.point_cloud_visualizer.draw()
+        bpy.ops.point_cloud_visualizer.load_ply_to_cache(filepath=pcv.filepath)
+        
+        if(draw):
+            bpy.ops.point_cloud_visualizer.draw()
         
         return {'FINISHED'}
 
@@ -3294,14 +3296,14 @@ class PCV_PT_panel(Panel):
         sub = l.column()
         
         # edit mode, main pcv object panel
-        if(pcv.modify_edit_initialized):
+        if(pcv.filter_edit_initialized):
             sub.label(text='PCV Edit in progress..', icon='ERROR', )
             sub.separator()
             sub.operator('point_cloud_visualizer.edit_cancel')
             return
         
         # edit mode, helper object panel
-        if(pcv.modify_edit_is_edit_mesh):
+        if(pcv.filter_edit_is_edit_mesh):
             sub.label(text='PCV Edit helper mesh', icon='INFO', )
             sub.separator()
             c = sub.column()
@@ -3343,6 +3345,9 @@ class PCV_PT_panel(Panel):
         c.prop(pcv, 'filepath', text='', )
         c.enabled = False
         r.operator('point_cloud_visualizer.load_ply_to_cache', icon='FILEBROWSER', text='', )
+        
+        r.operator('point_cloud_visualizer.reload', icon='FILE_REFRESH', text='', )
+        
         # <<<----------- file selector
         
         # ----------->>> info block
@@ -3468,11 +3473,11 @@ class PCV_PT_panel(Panel):
         #     sub.prop(pcv, 'ply_info', text="", emboss=False, )
         #     sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
         
-        sub.separator()
-        b = sub.box()
-        b.alert = True
-        # b.alert = pcv.experimental
-        b.prop(pcv, 'experimental', toggle=True, )
+        # sub.separator()
+        # b = sub.box()
+        # b.alert = True
+        # # b.alert = pcv.experimental
+        # b.prop(pcv, 'experimental', toggle=True, )
 
 
 class PCV_PT_render(Panel):
@@ -3488,9 +3493,9 @@ class PCV_PT_render(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
@@ -3556,9 +3561,9 @@ class PCV_PT_convert(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
@@ -3602,11 +3607,11 @@ class PCV_PT_convert(Panel):
         c.enabled = PCV_OT_convert.poll(context)
 
 
-class PCV_PT_modify(Panel):
+class PCV_PT_filter(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
-    bl_label = "Modify"
+    bl_label = "Filter"
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -3615,107 +3620,39 @@ class PCV_PT_modify(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
-    def draw_header(self, context):
-        pcv = context.object.point_cloud_visualizer
-        l = self.layout
-        l.label(text='', icon='EXPERIMENTAL', )
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column()
-        
-        '''
-        # b = c.box()
-        # cc = b.column(align=True)
-        cc = c.column(align=True)
-        cc.label(text="Simplify Point Cloud:")
-        
-        cc.prop(pcv, 'modify_simplify_num_samples')
-        cc.prop(pcv, 'modify_simplify_num_candidates')
-        cc.operator('point_cloud_visualizer.simplify')
-        c.separator()
-        
-        # b = c.box()
-        # cc = b.column(align=True)
-        cc = c.column(align=True)
-        cc.label(text="Remove Color:")
-        
-        r = cc.row(align=True)
-        r.prop(pcv, 'modify_remove_color', text='', )
-        
-        r = cc.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_hue_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_hue_use else 'CHECKBOX_DEHLT', )
-        ccc = r.column(align=True)
-        ccc.prop(pcv, 'modify_remove_color_delta_hue')
-        ccc.active = pcv.modify_remove_color_delta_hue_use
-        
-        r = cc.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_saturation_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_saturation_use else 'CHECKBOX_DEHLT', )
-        ccc = r.column(align=True)
-        ccc.prop(pcv, 'modify_remove_color_delta_saturation')
-        ccc.active = pcv.modify_remove_color_delta_saturation_use
-        
-        r = cc.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_value_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_value_use else 'CHECKBOX_DEHLT', )
-        ccc = r.column(align=True)
-        ccc.prop(pcv, 'modify_remove_color_delta_value')
-        ccc.active = pcv.modify_remove_color_delta_value_use
-        
-        cc.operator('point_cloud_visualizer.remove_color')
-        c.separator()
-        
-        b = c.box()
-        r = b.row()
-        r.prop(pcv, 'modify_project_expanded', icon='TRIA_DOWN' if pcv.modify_project_expanded else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-        r.label(text="Project")
-        if(pcv.modify_project_expanded):
-            cc = b.column(align=True)
-            cc.prop_search(pcv, 'modify_project_object', context.scene, 'objects')
-            cc.prop(pcv, 'modify_project_search_distance')
-            r = cc.row(align=True)
-            r.prop(pcv, 'modify_project_negative')
-            r.prop(pcv, 'modify_project_positive')
-            cc.prop(pcv, 'modify_project_discard')
-            cc.prop(pcv, 'modify_project_shift')
-            cc.operator('point_cloud_visualizer.project')
-        
-        if(not pcv.has_normals):
-            b.label(text="Missing vertex normals.", icon='ERROR', )
-            b.enabled = False
-        
-        c.separator()
-        
-        c.label(text="Something went wrong?")
-        # c.operator('point_cloud_visualizer.reload', icon='RECOVER_LAST', )
-        c.operator('point_cloud_visualizer.reload')
-        
-        c.enabled = PCV_OT_simplify.poll(context)
-        '''
 
 
-class PCV_PT_modify_simplify(Panel):
+class PCV_PT_filter_simplify(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
     bl_label = "Simplify"
-    bl_parent_id = "PCV_PT_modify"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_parent_id = "PCV_PT_filter"
+    # bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
@@ -3730,30 +3667,30 @@ class PCV_PT_modify_simplify(Panel):
         c = l.column()
         
         a = c.column(align=True)
-        a.prop(pcv, 'modify_simplify_num_samples')
-        a.prop(pcv, 'modify_simplify_num_candidates')
+        a.prop(pcv, 'filter_simplify_num_samples')
+        a.prop(pcv, 'filter_simplify_num_candidates')
         
         c.operator('point_cloud_visualizer.simplify')
         
         c.enabled = PCV_OT_simplify.poll(context)
 
 
-class PCV_PT_modify_project(Panel):
+class PCV_PT_filter_project(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
     bl_label = "Project"
-    bl_parent_id = "PCV_PT_modify"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_parent_id = "PCV_PT_filter"
+    # bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
@@ -3766,80 +3703,43 @@ class PCV_PT_modify_project(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column()
-        c.prop_search(pcv, 'modify_project_object', context.scene, 'objects')
+        c.prop_search(pcv, 'filter_project_object', context.scene, 'objects')
         
         a = c.column(align=True)
-        a.prop(pcv, 'modify_project_search_distance')
+        a.prop(pcv, 'filter_project_search_distance')
         r = a.row(align=True)
-        r.prop(pcv, 'modify_project_negative', toggle=True, )
-        r.prop(pcv, 'modify_project_positive', toggle=True, )
+        r.prop(pcv, 'filter_project_negative', toggle=True, )
+        r.prop(pcv, 'filter_project_positive', toggle=True, )
         
-        c.prop(pcv, 'modify_project_discard')
-        c.prop(pcv, 'modify_project_shift')
+        c.prop(pcv, 'filter_project_discard')
+        c.prop(pcv, 'filter_project_shift')
         c.operator('point_cloud_visualizer.project')
         
         # c.enabled = PCV_OT_project.poll(context)
         c.enabled = PCV_OT_simplify.poll(context)
         
-        if(not pcv.has_normals):
-            c.label(text="Missing vertex normals.", icon='ERROR', )
-            c.enabled = False
+        if(pcv.filepath != '' and pcv.uuid != ''):
+            if(not pcv.has_normals):
+                c.label(text="Missing vertex normals.", icon='ERROR', )
+                c.enabled = False
 
 
-class PCV_PT_modify_edit(Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Edit"
-    bl_parent_id = "PCV_PT_modify"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        if(o):
-            pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
-                return False
-            if(pcv.modify_edit_initialized):
-                return False
-        return True
-    
-    def draw(self, context):
-        pcv = context.object.point_cloud_visualizer
-        l = self.layout
-        c = l.column()
-        
-        # if(pcv.modify_edit_is_edit_mesh):
-        #     r = c.row(align=True)
-        #     r.operator('point_cloud_visualizer.edit_update')
-        #     r.operator('point_cloud_visualizer.edit_end')
-        #
-        #     if(context.mode != 'EDIT_MESH'):
-        #         c.label(text="Must be in Edit Mode", icon='ERROR', )
-        #
-        # else:
-        #     c.operator('point_cloud_visualizer.edit_start')
-        
-        c.operator('point_cloud_visualizer.edit_start')
-
-
-class PCV_PT_modify_remove_color(Panel):
+class PCV_PT_filter_remove_color(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
     bl_label = "Remove Color"
-    bl_parent_id = "PCV_PT_modify"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_parent_id = "PCV_PT_filter"
+    # bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
@@ -3854,39 +3754,38 @@ class PCV_PT_modify_remove_color(Panel):
         c = l.column()
         # c.label(text="Remove Color:")
         r = c.row()
-        r.prop(pcv, 'modify_remove_color', text='', )
+        r.prop(pcv, 'filter_remove_color', text='', )
         
         a = c.column(align=True)
         r = a.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_hue_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_hue_use else 'CHECKBOX_DEHLT', )
+        r.prop(pcv, 'filter_remove_color_delta_hue_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.filter_remove_color_delta_hue_use else 'CHECKBOX_DEHLT', )
         cc = r.column(align=True)
-        cc.prop(pcv, 'modify_remove_color_delta_hue')
-        cc.active = pcv.modify_remove_color_delta_hue_use
+        cc.prop(pcv, 'filter_remove_color_delta_hue')
+        cc.active = pcv.filter_remove_color_delta_hue_use
         
         r = a.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_saturation_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_saturation_use else 'CHECKBOX_DEHLT', )
+        r.prop(pcv, 'filter_remove_color_delta_saturation_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.filter_remove_color_delta_saturation_use else 'CHECKBOX_DEHLT', )
         cc = r.column(align=True)
-        cc.prop(pcv, 'modify_remove_color_delta_saturation')
-        cc.active = pcv.modify_remove_color_delta_saturation_use
+        cc.prop(pcv, 'filter_remove_color_delta_saturation')
+        cc.active = pcv.filter_remove_color_delta_saturation_use
         
         r = a.row(align=True)
-        r.prop(pcv, 'modify_remove_color_delta_value_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.modify_remove_color_delta_value_use else 'CHECKBOX_DEHLT', )
+        r.prop(pcv, 'filter_remove_color_delta_value_use', text='', toggle=True, icon_only=True, icon='CHECKBOX_HLT' if pcv.filter_remove_color_delta_value_use else 'CHECKBOX_DEHLT', )
         cc = r.column(align=True)
-        cc.prop(pcv, 'modify_remove_color_delta_value')
-        cc.active = pcv.modify_remove_color_delta_value_use
+        cc.prop(pcv, 'filter_remove_color_delta_value')
+        cc.active = pcv.filter_remove_color_delta_value_use
         
         c.operator('point_cloud_visualizer.remove_color')
         
         c.enabled = PCV_OT_remove_color.poll(context)
 
 
-class PCV_PT_modify_reload(Panel):
+class PCV_PT_edit(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
-    # bl_label = "Reload Point Cloud"
-    bl_label = "Reload"
-    bl_parent_id = "PCV_PT_modify"
+    bl_label = "Edit"
+    bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -3894,27 +3793,22 @@ class PCV_PT_modify_reload(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
     # def draw_header(self, context):
     #     pcv = context.object.point_cloud_visualizer
     #     l = self.layout
-    #     l.label(text='', icon='FILE_REFRESH', )
+    #     l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column()
-        
-        c.label(text="Something went wrong?")
-        # c.operator('point_cloud_visualizer.reload', icon='RECOVER_LAST', )
-        c.operator('point_cloud_visualizer.reload')
-        
-        c.enabled = PCV_OT_reload.poll(context)
+        c.operator('point_cloud_visualizer.edit_start', text='Enable Edit Mode', )
 
 
 class PCV_PT_export(Panel):
@@ -3930,16 +3824,16 @@ class PCV_PT_export(Panel):
         o = context.active_object
         if(o):
             pcv = o.point_cloud_visualizer
-            if(pcv.modify_edit_is_edit_mesh):
+            if(pcv.filter_edit_is_edit_mesh):
                 return False
-            if(pcv.modify_edit_initialized):
+            if(pcv.filter_edit_initialized):
                 return False
         return True
     
-    def draw_header(self, context):
-        pcv = context.object.point_cloud_visualizer
-        l = self.layout
-        l.label(text='', icon='EXPERIMENTAL', )
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3965,13 +3859,19 @@ class PCV_PT_debug(Panel):
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.debug):
+                return True
+        return False
+    
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        # l.label(text='', icon='EXPERIMENTAL', )
         l.label(text='', icon='SETTINGS', )
-        # l.label(text='', icon='INFO', )
-        # l.label(text='', icon='CONSOLE', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3981,78 +3881,17 @@ class PCV_PT_debug(Panel):
         sub.label(text="properties:")
         b = sub.box()
         c = b.column()
-        
-        # c.label(text="uuid: {}".format(pcv.uuid))
-        # c.label(text="filepath: {}".format(pcv.filepath))
-        # c.label(text="has_normals: {}".format(pcv.has_normals))
-        # c.label(text="has_vcols: {}".format(pcv.has_vcols))
-        # c.label(text="point_size: {}".format(pcv.point_size))
-        # c.label(text="alpha_radius: {}".format(pcv.alpha_radius))
-        # c.label(text="display_percent: {}".format(pcv.display_percent))
-        # c.label(text="illumination: {}".format(pcv.illumination))
-        # c.label(text="illumination_edit: {}".format(pcv.illumination_edit))
-        # c.label(text="light_direction: {}".format(pcv.light_direction))
-        # c.label(text="light_intensity: {}".format(pcv.light_intensity))
-        # c.label(text="shadow_intensity: {}".format(pcv.shadow_intensity))
-        # c.label(text="show_normals: {}".format(pcv.show_normals))
-        # c.label(text="vertex_normals: {}".format(pcv.vertex_normals))
-        # c.label(text="vertex_normals_size: {}".format(pcv.vertex_normals_size))
-        # c.label(text="render_point_size: {}".format(pcv.render_point_size))
-        # c.label(text="render_display_percent: {}".format(pcv.render_display_percent))
-        # c.label(text="render_path: {}".format(pcv.render_path))
-        # c.label(text="render_resolution_x: {}".format(pcv.render_resolution_x))
-        # c.label(text="render_resolution_y: {}".format(pcv.render_resolution_y))
-        # c.label(text="render_resolution_percentage: {}".format(pcv.render_resolution_percentage))
-        # c.label(text="render_resolution_linked: {}".format(pcv.render_resolution_linked))
-        # c.label(text="mesh_type: {}".format(pcv.mesh_type))
-        # c.label(text="mesh_size: {}".format(pcv.mesh_size))
-        # c.label(text="mesh_normal_align: {}".format(pcv.mesh_normal_align))
-        # c.label(text="mesh_vcols: {}".format(pcv.mesh_vcols))
-        # c.label(text="mesh_all: {}".format(pcv.mesh_all))
-        # c.label(text="mesh_percentage: {}".format(pcv.mesh_percentage))
-        # c.label(text="mesh_base_sphere_subdivisions: {}".format(pcv.mesh_base_sphere_subdivisions))
-        # c.label(text="export_use_viewport: {}".format(pcv.export_use_viewport))
-        # c.label(text="export_apply_transformation: {}".format(pcv.export_apply_transformation))
-        # c.label(text="export_convert_axes: {}".format(pcv.export_convert_axes))
-        # c.label(text="export_visible_only: {}".format(pcv.export_visible_only))
-        # c.label(text="modify_simplify_num_samples: {}".format(pcv.modify_simplify_num_samples))
-        # c.label(text="modify_simplify_num_candidates: {}".format(pcv.modify_simplify_num_candidates))
-        # c.label(text="modify_project_object: {}".format(pcv.modify_project_object))
-        # c.label(text="modify_project_search_distance: {}".format(pcv.modify_project_search_distance))
-        # c.label(text="modify_project_positive: {}".format(pcv.modify_project_positive))
-        # c.label(text="modify_project_negative: {}".format(pcv.modify_project_negative))
-        # c.label(text="modify_project_discard: {}".format(pcv.modify_project_discard))
-        # c.label(text="modify_project_shift: {}".format(pcv.modify_project_shift))
-        # c.label(text="modify_edit_initialized: {}".format(pcv.modify_edit_initialized))
-        # c.label(text="modify_edit_is_edit_mesh: {}".format(pcv.modify_edit_is_edit_mesh))
-        # c.label(text="modify_edit_is_edit_uuid: {}".format(pcv.modify_edit_is_edit_uuid))
-        # c.label(text="modify_remove_color: {}".format(pcv.modify_remove_color))
-        # c.label(text="modify_remove_color_delta_hue: {}".format(pcv.modify_remove_color_delta_hue))
-        # c.label(text="modify_remove_color_delta_hue_use: {}".format(pcv.modify_remove_color_delta_hue_use))
-        # c.label(text="modify_remove_color_delta_saturation: {}".format(pcv.modify_remove_color_delta_saturation))
-        # c.label(text="modify_remove_color_delta_saturation_use: {}".format(pcv.modify_remove_color_delta_saturation_use))
-        # c.label(text="modify_remove_color_delta_value: {}".format(pcv.modify_remove_color_delta_value))
-        # c.label(text="modify_remove_color_delta_value_use: {}".format(pcv.modify_remove_color_delta_value_use))
-        
-        
         for k, p in pcv.bl_rna.properties.items():
             v = 'n/a'
             if(p.type == 'POINTER'):
                 v = 'POINTER'
             else:
-                # try:
-                #     v = pcv[k]
-                # except KeyError:
-                #     v = p.default
                 v = p.default
                 if(k in pcv.keys()):
                     v = pcv[k]
             if(p.type == 'BOOLEAN'):
                 v = bool(v)
             c.label(text="{}: {}".format(k, v))
-        
-        # c.label(text="experimental: {}".format(pcv.experimental))
-        # c.label(text="debug: {}".format(pcv.debug))
         c.scale_y = 0.5
         
         sub.label(text="manager:")
@@ -4149,37 +3988,37 @@ class PCV_properties(PropertyGroup):
     export_convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
     export_visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only (controlled by 'Display' on main panel)", )
     
-    modify_simplify_num_samples: IntProperty(name="Samples", default=10000, min=1, subtype='NONE', description="Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result", )
-    modify_simplify_num_candidates: IntProperty(name="Candidates", default=10, min=3, max=100, subtype='NONE', description="Number of candidates used during resampling, the higher value, the slower calculation, but more even", )
+    filter_simplify_num_samples: IntProperty(name="Samples", default=10000, min=1, subtype='NONE', description="Number of points in simplified point cloud, best result when set to less than 20% of points, when samples has value close to total expect less points in result", )
+    filter_simplify_num_candidates: IntProperty(name="Candidates", default=10, min=3, max=100, subtype='NONE', description="Number of candidates used during resampling, the higher value, the slower calculation, but more even", )
     
-    modify_remove_color: FloatVectorProperty(name="Color", default=(1.0, 1.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, description="Color to remove from point cloud", )
-    modify_remove_color_delta_hue: FloatProperty(name="Δ Hue", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
-    modify_remove_color_delta_hue_use: BoolProperty(name="Use Δ Hue", description="", default=True, )
-    modify_remove_color_delta_saturation: FloatProperty(name="Δ Saturation", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
-    modify_remove_color_delta_saturation_use: BoolProperty(name="Use Δ Saturation", description="", default=True, )
-    modify_remove_color_delta_value: FloatProperty(name="Δ Value", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
-    modify_remove_color_delta_value_use: BoolProperty(name="Use Δ Value", description="", default=True, )
+    filter_remove_color: FloatVectorProperty(name="Color", default=(1.0, 1.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, description="Color to remove from point cloud", )
+    filter_remove_color_delta_hue: FloatProperty(name="Δ Hue", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    filter_remove_color_delta_hue_use: BoolProperty(name="Use Δ Hue", description="", default=True, )
+    filter_remove_color_delta_saturation: FloatProperty(name="Δ Saturation", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    filter_remove_color_delta_saturation_use: BoolProperty(name="Use Δ Saturation", description="", default=True, )
+    filter_remove_color_delta_value: FloatProperty(name="Δ Value", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
+    filter_remove_color_delta_value_use: BoolProperty(name="Use Δ Value", description="", default=True, )
     
     def _project_positive_radio_update(self, context):
-        if(not self.modify_project_negative and not self.modify_project_positive):
-            self.modify_project_negative = True
+        if(not self.filter_project_negative and not self.filter_project_positive):
+            self.filter_project_negative = True
     
     def _project_negative_radio_update(self, context):
-        if(not self.modify_project_negative and not self.modify_project_positive):
-            self.modify_project_positive = True
+        if(not self.filter_project_negative and not self.filter_project_positive):
+            self.filter_project_positive = True
     
-    modify_project_object: StringProperty(name="Object", default="", )
-    modify_project_search_distance: FloatProperty(name="Search Distance", default=0.1, min=0.0, max=10000.0, precision=3, subtype='DISTANCE', description="Maximum search distance in which to search for surface", )
-    modify_project_positive: BoolProperty(name="Positive", description="Search along point normal forwards", default=True, update=_project_positive_radio_update, )
-    modify_project_negative: BoolProperty(name="Negative", description="Search along point normal backwards", default=True, update=_project_negative_radio_update, )
-    modify_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
-    modify_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
+    filter_project_object: StringProperty(name="Object", default="", )
+    filter_project_search_distance: FloatProperty(name="Search Distance", default=0.1, min=0.0, max=10000.0, precision=3, subtype='DISTANCE', description="Maximum search distance in which to search for surface", )
+    filter_project_positive: BoolProperty(name="Positive", description="Search along point normal forwards", default=True, update=_project_positive_radio_update, )
+    filter_project_negative: BoolProperty(name="Negative", description="Search along point normal backwards", default=True, update=_project_negative_radio_update, )
+    filter_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
+    filter_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     
-    modify_edit_initialized: BoolProperty(default=False, )
-    modify_edit_is_edit_mesh: BoolProperty(default=False, )
-    modify_edit_is_edit_uuid: StringProperty(default="", )
-    modify_edit_pre_edit_alpha: FloatProperty(default=1.0, )
-    modify_edit_pre_edit_display: FloatProperty(default=100.0, )
+    filter_edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
+    filter_edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
+    filter_edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
+    filter_edit_pre_edit_alpha: FloatProperty(default=1.0, options={'HIDDEN', }, )
+    filter_edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
     
     def _debug_update(self, context, ):
         global DEBUG, debug_classes
@@ -4192,20 +4031,6 @@ class PCV_properties(PropertyGroup):
                 bpy.utils.unregister_class(cls)
     
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
-    
-    def _experimental_update(self, context, ):
-        global EXPERIMENTAL, experimental_classes
-        EXPERIMENTAL = self.experimental
-        if(EXPERIMENTAL):
-            for cls in experimental_classes:
-                bpy.utils.register_class(cls)
-            self.debug = True
-        else:
-            for cls in reversed(experimental_classes):
-                bpy.utils.unregister_class(cls)
-            self.debug = False
-    
-    experimental: BoolProperty(name="Experimental Features", description="Enable experimental, unfinished, unoptimized or otherwise useless features and enable debug mode for convenience", default=EXPERIMENTAL, update=_experimental_update, )
     
     @classmethod
     def register(cls):
@@ -4248,45 +4073,36 @@ classes = (
     PCV_properties,
     PCV_preferences,
     PCV_PT_panel,
+    PCV_PT_edit,
+    PCV_PT_filter,
+    PCV_PT_filter_simplify,
+    PCV_PT_filter_project,
+    PCV_PT_filter_remove_color,
     PCV_PT_render,
     PCV_PT_convert,
+    PCV_PT_export,
+    
     PCV_OT_load,
     PCV_OT_draw,
     PCV_OT_erase,
     PCV_OT_render,
     PCV_OT_animation,
     PCV_OT_convert,
-)
-
-experimental_classes = (
-    PCV_PT_modify,
-    PCV_PT_export,
+    PCV_OT_reload,
     PCV_OT_export,
     PCV_OT_simplify,
-    PCV_OT_reload,
     PCV_OT_remove_color,
     PCV_OT_project,
     PCV_OT_edit_start,
     PCV_OT_edit_update,
     PCV_OT_edit_end,
     PCV_OT_edit_cancel,
-    PCV_PT_modify_simplify,
-    PCV_PT_modify_project,
-    PCV_PT_modify_remove_color,
-    PCV_PT_modify_edit,
-    PCV_PT_modify_reload,
-)
-if(EXPERIMENTAL):
-    classes = classes + experimental_classes
-
-debug_classes = (
+    
     PCV_PT_debug,
     PCV_OT_init,
     PCV_OT_deinit,
     PCV_OT_gc,
 )
-if(DEBUG):
-    classes = classes + debug_classes
 
 
 def register():

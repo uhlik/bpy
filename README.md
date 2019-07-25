@@ -192,6 +192,7 @@ Export current point cloud as binary ply file with several options. If exporting
 
 ### Changelog:
 
+* 0.9.10 ui
 * 0.9.9 point cloud global alpha
 * 0.9.8 basic editing
 * 0.9.7 project point cloud on mesh surface
