@@ -3434,7 +3434,7 @@ class PCV_PT_panel(Panel):
         if(not pcv.has_normals):
             r.enabled = False
         
-        sub.separator()
+        # sub.separator()
         
         pcv = context.object.point_cloud_visualizer
         ok = False
@@ -3508,7 +3508,7 @@ class PCV_PT_render(Panel):
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
         
-        sub.separator()
+        # sub.separator()
         
         c = sub.column()
         # c.prop(pcv, 'render_path', text='Output', )
@@ -3539,7 +3539,7 @@ class PCV_PT_render(Panel):
             c1.prop(pcv, 'render_resolution_y')
             c1.prop(pcv, 'render_resolution_percentage')
         
-        sub.separator()
+        # sub.separator()
         
         r = sub.row(align=True)
         r.operator('point_cloud_visualizer.render')
@@ -3602,7 +3602,7 @@ class PCV_PT_convert(Panel):
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
         
-        c.separator()
+        # c.separator()
         c.operator('point_cloud_visualizer.convert')
         c.enabled = PCV_OT_convert.poll(context)
 
