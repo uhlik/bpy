@@ -3245,6 +3245,149 @@ class PCV_OT_edit_cancel(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_merge(Operator):
+    bl_idname = "point_cloud_visualizer.merge"
+    bl_label = "Merge With Other PLY"
+    bl_description = "Merge with other ply file"
+    
+    filename_ext = ".ply"
+    filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
+    filepath: StringProperty(name="File Path", default="", description="", maxlen=1024, subtype='FILE_PATH', )
+    order = ["filepath", ]
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        filepath = self.filepath
+        h, t = os.path.split(filepath)
+        n, e = os.path.splitext(t)
+        if(e != '.ply'):
+            self.report({'ERROR'}, "File at '{}' seems not to be a PLY file.".format(filepath))
+            return {'CANCELLED'}
+        
+        points = []
+        try:
+            points = PlyPointCloudReader(filepath).points
+        except Exception as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        if(len(points) == 0):
+            self.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
+            return {'CANCELLED'}
+        
+        # preferences = bpy.context.preferences
+        # addon_prefs = preferences.addons[__name__].preferences
+        # if(addon_prefs.shuffle_points):
+        #     np.random.shuffle(points)
+        
+        if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
+            # this is very unlikely..
+            self.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
+            return False
+        normals = True
+        if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
+            normals = False
+        pcv.has_normals = normals
+        if(not pcv.has_normals):
+            pcv.illumination = False
+        vcols = True
+        if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
+            vcols = False
+        pcv.has_vcols = vcols
+        
+        vs = np.column_stack((points['x'], points['y'], points['z'], ))
+        
+        if(normals):
+            ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+        else:
+            n = len(points)
+            ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 1.0, dtype=np.float32, ), ))
+        
+        if(vcols):
+            preferences = bpy.context.preferences
+            addon_prefs = preferences.addons[__name__].preferences
+            if(addon_prefs.convert_16bit_colors and points['red'].dtype == 'uint16'):
+                r8 = (points['red'] / 256).astype('uint8')
+                g8 = (points['green'] / 256).astype('uint8')
+                b8 = (points['blue'] / 256).astype('uint8')
+                if(addon_prefs.gamma_correct_16bit_colors):
+                    cs = np.column_stack(((r8 / 255) ** (1 / 2.2),
+                                          (g8 / 255) ** (1 / 2.2),
+                                          (b8 / 255) ** (1 / 2.2),
+                                          np.ones(len(points), dtype=float, ), ))
+                else:
+                    cs = np.column_stack((r8 / 255, g8 / 255, b8 / 255, np.ones(len(points), dtype=float, ), ))
+                cs = cs.astype(np.float32)
+            else:
+                # 'uint8'
+                cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+                cs = cs.astype(np.float32)
+        else:
+            n = len(points)
+            preferences = bpy.context.preferences
+            addon_prefs = preferences.addons[__name__].preferences
+            col = addon_prefs.default_vertex_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
+                                  np.full(n, col[1], dtype=np.float32, ),
+                                  np.full(n, col[2], dtype=np.float32, ),
+                                  np.ones(n, dtype=np.float32, ), ))
+        
+        # append
+        c = PCVManager.cache[pcv.uuid]
+        ovs = c['vertices']
+        ons = c['normals']
+        ocs = c['colors']
+        vs = np.concatenate((ovs, vs, ))
+        ns = np.concatenate((ons, ns, ))
+        cs = np.concatenate((ocs, cs, ))
+        
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if(addon_prefs.shuffle_points):
+            l = len(vs)
+            dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ]
+            a = np.empty(l, dtype=dt, )
+            a['x'] = vs[:, 0]
+            a['y'] = vs[:, 1]
+            a['z'] = vs[:, 2]
+            a['nx'] = ns[:, 0]
+            a['ny'] = ns[:, 1]
+            a['nz'] = ns[:, 2]
+            a['red'] = cs[:, 0]
+            a['green'] = cs[:, 1]
+            a['blue'] = cs[:, 2]
+            a['alpha'] = cs[:, 3]
+            np.random.shuffle(a)
+            vs = np.column_stack((a['x'], a['y'], a['z'], ))
+            ns = np.column_stack((a['nx'], a['ny'], a['nz'], ))
+            cs = np.column_stack((a['red'], a['green'], a['blue'], a['alpha'], ))
+            vs = vs.astype(np.float32)
+            ns = ns.astype(np.float32)
+            cs = cs.astype(np.float32)
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        
+        return {'FINISHED'}
+
+
 class PCV_OT_reload(Operator):
     bl_idname = "point_cloud_visualizer.reload"
     bl_label = "Reload"
@@ -3780,6 +3923,35 @@ class PCV_PT_filter_remove_color(Panel):
         c.enabled = PCV_OT_remove_color.poll(context)
 
 
+class PCV_PT_filter_merge(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Merge"
+    bl_parent_id = "PCV_PT_filter"
+    # bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.filter_edit_is_edit_mesh):
+                return False
+            if(pcv.filter_edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        c.operator('point_cloud_visualizer.merge')
+        
+        c.enabled = PCV_OT_merge.poll(context)
+
+
 class PCV_PT_edit(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -4078,6 +4250,7 @@ classes = (
     PCV_PT_filter_simplify,
     PCV_PT_filter_project,
     PCV_PT_filter_remove_color,
+    PCV_PT_filter_merge,
     PCV_PT_render,
     PCV_PT_convert,
     PCV_PT_export,
@@ -4097,6 +4270,7 @@ classes = (
     PCV_OT_edit_update,
     PCV_OT_edit_end,
     PCV_OT_edit_cancel,
+    PCV_OT_merge,
     
     PCV_PT_debug,
     PCV_OT_init,
