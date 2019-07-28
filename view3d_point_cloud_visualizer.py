@@ -1412,7 +1412,7 @@ class PCVManager():
         d['display_percent'] = l
         d['current_display_percent'] = l
         
-        d['global_alpha'] = pcv.global_alpha
+        # d['global_alpha'] = pcv.global_alpha
         
         ienabled = pcv.illumination
         d['illumination'] = ienabled
@@ -1746,7 +1746,7 @@ class PCVManager():
                 'colors': None,
                 'display_percent': None,
                 'current_display_percent': None,
-                'global_alpha': None,
+                # 'global_alpha': None,
                 'illumination': False,
                 'shader': False,
                 'batch': False,
