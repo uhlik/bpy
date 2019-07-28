@@ -1694,6 +1694,246 @@ class PCVManager():
                 'object': None, }
 
 
+class PCVControl():
+    def init(self):
+        log("{}:init".format(self.__class__.__name__), 0, )
+        # initialize, subsequential calls are ignored
+        PCVManager.init()
+    
+    def draw(self, o, vs, ns=None, cs=None, ):
+        log("{}:draw".format(self.__class__.__name__), 0, )
+        pcv = o.point_cloud_visualizer
+        
+        # check if object has been used before, i.e. has uuid and uuid item is in cache
+        if(pcv.uuid != "" and pcv.runtime):
+            # was used or blend was saved after it was used and uuid is saved from last time, check cache
+            if(pcv.uuid in PCVManager.cache):
+                # cache item is found, object has been used before
+                self.update(o, vs, ns, cs)
+                return
+        # otherwise setup as new
+        
+        u = str(uuid.uuid1())
+        # use that as path, some checks wants this not empty
+        filepath = u
+        
+        # make numpy array if not already
+        if(type(vs) != np.ndarray):
+            vs = np.array(vs)
+        # and ensure data type
+        vs = vs.astype(np.float32)
+        
+        n = len(vs)
+        
+        # process normals if present, otherwise set to default (0.0, 0.0, 1.0)
+        if(ns is None):
+            has_normals = False
+            ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 1.0, dtype=np.float32, ), ))
+        else:
+            has_normals = True
+            if(type(cs) != np.ndarray):
+                ns = np.array(ns)
+            ns = ns.astype(np.float32)
+        
+        # process colors if present, otherwise set to default from preferences, append alpha 1.0
+        if(cs is None):
+            has_colors = False
+            col = bpy.context.preferences.addons[__name__].preferences.default_vertex_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
+                                  np.full(n, col[1], dtype=np.float32, ),
+                                  np.full(n, col[2], dtype=np.float32, ),
+                                  np.ones(n, dtype=np.float32, ), ))
+        else:
+            has_colors = True
+            if(type(cs) != np.ndarray):
+                cs = np.array(cs)
+            cs = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+            cs = cs.astype(np.float32)
+        
+        # store points to enable some other functions
+        cs8 = cs * 255
+        cs8 = cs8.astype(np.uint8)
+        dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+        points = np.empty(n, dtype=dt, )
+        points['x'] = vs[:, 0]
+        points['y'] = vs[:, 1]
+        points['z'] = vs[:, 2]
+        points['nx'] = ns[:, 0]
+        points['ny'] = ns[:, 1]
+        points['nz'] = ns[:, 2]
+        points['red'] = cs8[:, 0]
+        points['green'] = cs8[:, 1]
+        points['blue'] = cs8[:, 2]
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        
+        # build cache dict
+        d = {}
+        d['uuid'] = u
+        d['filepath'] = filepath
+        d['points'] = points
+        d['colors_original'] = cs_orig
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_percent'] = l
+        d['current_display_percent'] = l
+        d['illumination'] = pcv.illumination
+        if(pcv.illumination):
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        else:
+            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        d['ready'] = True
+        d['draw'] = False
+        d['kill'] = False
+        d['object'] = o
+        d['name'] = o.name
+        
+        # set properties
+        pcv.uuid = u
+        pcv.filepath = filepath
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        pcv.runtime = True
+        
+        PCVManager.add(d)
+        
+        # mark to draw
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        # force redraw
+        for area in bpy.context.screen.areas:
+            if(area.type == 'VIEW_3D'):
+                area.tag_redraw()
+    
+    def update(self, o, vs, ns=None, cs=None, ):
+        log("{}:update".format(self.__class__.__name__), 0, )
+        pcv = o.point_cloud_visualizer
+        
+        if(type(vs) != np.ndarray):
+            vs = np.array(vs)
+        vs = vs.astype(np.float32)
+        
+        n = len(vs)
+        
+        if(ns is None):
+            has_normals = False
+            ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 0.0, dtype=np.float32, ),
+                                  np.full(n, 1.0, dtype=np.float32, ), ))
+        else:
+            has_normals = True
+            if(type(cs) != np.ndarray):
+                ns = np.array(ns)
+            ns = ns.astype(np.float32)
+        
+        if(cs is None):
+            has_colors = False
+            col = bpy.context.preferences.addons[__name__].preferences.default_vertex_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
+                                  np.full(n, col[1], dtype=np.float32, ),
+                                  np.full(n, col[2], dtype=np.float32, ),
+                                  np.ones(n, dtype=np.float32, ), ))
+        else:
+            has_colors = True
+            if(type(cs) != np.ndarray):
+                cs = np.array(cs)
+            cs = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+            cs = cs.astype(np.float32)
+        
+        cs8 = cs * 255
+        cs8 = cs8.astype(np.uint8)
+        dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+        points = np.empty(n, dtype=dt, )
+        points['x'] = vs[:, 0]
+        points['y'] = vs[:, 1]
+        points['z'] = vs[:, 2]
+        points['nx'] = ns[:, 0]
+        points['ny'] = ns[:, 1]
+        points['nz'] = ns[:, 2]
+        points['red'] = cs8[:, 0]
+        points['green'] = cs8[:, 1]
+        points['blue'] = cs8[:, 2]
+        
+        d = PCVManager.cache[pcv.uuid]
+        d['points'] = points
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_percent'] = l
+        d['current_display_percent'] = l
+        d['illumination'] = pcv.illumination
+        if(pcv.illumination):
+            shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        else:
+            shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        for area in bpy.context.screen.areas:
+            if(area.type == 'VIEW_3D'):
+                area.tag_redraw()
+    
+    def erase(self, o, ):
+        log("{}:erase".format(self.__class__.__name__), 0, )
+        pcv = o.point_cloud_visualizer
+        
+        # get cache item and set draw to False
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = False
+        
+        # force redraw
+        for area in bpy.context.screen.areas:
+            if(area.type == 'VIEW_3D'):
+                area.tag_redraw()
+    
+    def reset(self, o, ):
+        pcv = o.point_cloud_visualizer
+        
+        # mark for deletion cache
+        c = PCVManager.cache[pcv.uuid]
+        c['kill'] = True
+        PCVManager.gc()
+        
+        # reset properties
+        pcv.uuid = ""
+        pcv.filepath = ""
+        pcv.has_normals = False
+        pcv.has_vcols = False
+        pcv.runtime = False
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -1791,12 +2031,19 @@ class PCV_OT_erase(Operator):
 class PCV_OT_load(Operator):
     bl_idname = "point_cloud_visualizer.load_ply_to_cache"
     bl_label = "Load PLY"
-    bl_description = "Load PLY"
+    bl_description = "Load PLY file"
     
     filename_ext = ".ply"
     filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
     filepath: StringProperty(name="File Path", default="", description="", maxlen=1024, subtype='FILE_PATH', )
     order = ["filepath", ]
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        if(not pcv.runtime):
+            return True
+        return False
     
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
@@ -3293,6 +3540,7 @@ class PCV_OT_reload(Operator):
     @classmethod
     def poll(cls, context):
         pcv = context.object.point_cloud_visualizer
+        # if(pcv.filepath != '' and pcv.uuid != '' and not pcv.runtime):
         if(pcv.filepath != '' and pcv.uuid != ''):
             return True
         return False
@@ -3308,7 +3556,15 @@ class PCV_OT_reload(Operator):
                         draw = True
                         bpy.ops.point_cloud_visualizer.erase()
         
-        bpy.ops.point_cloud_visualizer.load_ply_to_cache(filepath=pcv.filepath)
+        if(pcv.runtime):
+            c = PCVManager.cache[pcv.uuid]
+            points = c['points']
+            vs = np.column_stack((points['x'], points['y'], points['z'], ))
+            ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+            cs = c['colors_original']
+            PCVManager.update(pcv.uuid, vs, ns, cs, )
+        else:
+            bpy.ops.point_cloud_visualizer.load_ply_to_cache(filepath=pcv.filepath)
         
         if(draw):
             bpy.ops.point_cloud_visualizer.draw()
@@ -3931,6 +4187,9 @@ class PCV_PT_debug(Panel):
 class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY File", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
+    
+    runtime: BoolProperty(default=False, options={'HIDDEN', }, )
+    
     point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
     alpha_radius: FloatProperty(name="Radius", default=1.0, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
     
