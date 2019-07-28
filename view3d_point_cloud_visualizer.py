@@ -109,13 +109,11 @@ class InstanceMeshGenerator():
 
 class VertexMeshGenerator(InstanceMeshGenerator):
     def __init__(self):
-        log("{}:".format(self.__class__.__name__), 0, )
         super(VertexMeshGenerator, self).__init__()
 
 
 class TetrahedronMeshGenerator(InstanceMeshGenerator):
     def __init__(self, length=1.0, ):
-        log("{}:".format(self.__class__.__name__), 0, )
         if(length <= 0):
             log("length is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
             length = 0.001
@@ -149,7 +147,6 @@ class TetrahedronMeshGenerator(InstanceMeshGenerator):
 
 class EquilateralTriangleMeshGenerator(InstanceMeshGenerator):
     def __init__(self, length=1.0, offset=0.0, ):
-        log("{}:".format(self.__class__.__name__), 0, )
         if(length <= 0):
             log("got ridiculous length value (smaller or equal to 0).. setting to 0.001", 1)
             length = 0.001
@@ -178,7 +175,6 @@ class EquilateralTriangleMeshGenerator(InstanceMeshGenerator):
 
 class IcoSphereMeshGenerator(InstanceMeshGenerator):
     def __init__(self, radius=1, subdivision=2, ):
-        log("{}:".format(self.__class__.__name__), 0, )
         if(radius <= 0):
             log("radius is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
             radius = 0.001
@@ -204,7 +200,6 @@ class IcoSphereMeshGenerator(InstanceMeshGenerator):
 
 class CubeMeshGenerator(InstanceMeshGenerator):
     def __init__(self, length=1.0, ):
-        log("{}:".format(self.__class__.__name__), 0, )
         if(length <= 0):
             log("less is (or less than) 0, which is ridiculous. setting to 0.001..", 1)
             radius = 0.001
@@ -2137,6 +2132,8 @@ class PCV_OT_convert(Operator):
         return ok
     
     def execute(self, context):
+        _t = time.time()
+        
         scene = context.scene
         pcv = context.object.point_cloud_visualizer
         o = context.object
@@ -2177,7 +2174,6 @@ class PCV_OT_convert(Operator):
         
         g = None
         if(pcv.mesh_type == 'VERTEX'):
-            # TODO: convert to vertices without instancer, this is slow
             g = VertexMeshGenerator()
             n = "{}-vertices".format(n)
         elif(pcv.mesh_type == 'TRIANGLE'):
@@ -2213,18 +2209,36 @@ class PCV_OT_convert(Operator):
             c = False
         d = {'name': n, 'points': points, 'generator': g, 'matrix': Matrix(),
              'size': s, 'normal_align': a, 'vcols': c, }
-        instancer = PCMeshInstancer(**d)
+        if(pcv.mesh_type == 'VERTEX'):
+            # faster than instancer.. single vertices can't have normals and colors, so no need for instancer
+            bm = bmesh.new()
+            for p in points:
+                bm.verts.new(p[:3])
+            me = bpy.data.meshes.new(n)
+            bm.to_mesh(me)
+            bm.free()
+            o = bpy.data.objects.new(n, me)
+            view_layer = context.view_layer
+            collection = view_layer.active_layer_collection.collection
+            collection.objects.link(o)
+            bpy.ops.object.select_all(action='DESELECT')
+            o.select_set(True)
+            view_layer.objects.active = o
+        else:
+            instancer = PCMeshInstancer(**d)
+            o = instancer.object
         
-        o = instancer.object
         me = o.data
         me.transform(m.inverted())
         o.matrix_world = m
         
         if(pcv.mesh_type == 'INSTANCER'):
             pci = PCInstancer(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
-        
         if(pcv.mesh_type == 'PARTICLES'):
             pcp = PCParticles(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d))
         
         return {'FINISHED'}
 
