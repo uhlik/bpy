@@ -1872,8 +1872,12 @@ class PCVControl():
         points['green'] = cs8[:, 1]
         points['blue'] = cs8[:, 2]
         
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        
         d = PCVManager.cache[pcv.uuid]
         d['points'] = points
+        d['colors_original'] = cs_orig
         d['stats'] = n
         d['vertices'] = vs
         d['colors'] = cs
