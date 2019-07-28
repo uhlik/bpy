@@ -4030,14 +4030,15 @@ class PCV_properties(PropertyGroup):
     edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
     
     def _debug_update(self, context, ):
-        global DEBUG, debug_classes
-        DEBUG = self.debug
-        if(DEBUG):
-            for cls in debug_classes:
-                bpy.utils.register_class(cls)
-        else:
-            for cls in reversed(debug_classes):
-                bpy.utils.unregister_class(cls)
+        # global DEBUG, debug_classes
+        # DEBUG = self.debug
+        # if(DEBUG):
+        #     for cls in debug_classes:
+        #         bpy.utils.register_class(cls)
+        # else:
+        #     for cls in reversed(debug_classes):
+        #         bpy.utils.unregister_class(cls)
+        pass
     
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
     
