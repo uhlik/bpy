@@ -2184,8 +2184,8 @@ class PCV_OT_render(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_animation(Operator):
-    bl_idname = "point_cloud_visualizer.animation"
+class PCV_OT_render_animation(Operator):
+    bl_idname = "point_cloud_visualizer.render_animation"
     bl_label = "Animation"
     bl_description = "Render displayed point cloud from active camera view to animation frames"
     
@@ -2509,8 +2509,8 @@ class PCV_OT_export(Operator, ExportHelper):
         return {'FINISHED'}
 
 
-class PCV_OT_simplify(Operator):
-    bl_idname = "point_cloud_visualizer.simplify"
+class PCV_OT_filter_simplify(Operator):
+    bl_idname = "point_cloud_visualizer.filter_simplify"
     bl_label = "Simplify"
     bl_description = "Simplify point cloud to exact number of evenly distributed samples, all loaded points are processed"
     
@@ -2660,8 +2660,8 @@ class PCV_OT_simplify(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_project(Operator):
-    bl_idname = "point_cloud_visualizer.project"
+class PCV_OT_filter_project(Operator):
+    bl_idname = "point_cloud_visualizer.filter_project"
     bl_label = "Project"
     bl_description = "Project points on mesh surface"
     
@@ -2912,8 +2912,8 @@ class PCV_OT_project(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_remove_color(Operator):
-    bl_idname = "point_cloud_visualizer.remove_color"
+class PCV_OT_filter_remove_color(Operator):
+    bl_idname = "point_cloud_visualizer.filter_remove_color"
     bl_label = "Remove Color"
     bl_description = "Remove points with exact/similar color"
     
@@ -3281,8 +3281,8 @@ class PCV_OT_edit_cancel(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_merge(Operator):
-    bl_idname = "point_cloud_visualizer.merge"
+class PCV_OT_filter_merge(Operator):
+    bl_idname = "point_cloud_visualizer.filter_merge"
     bl_label = "Merge With Other PLY"
     bl_description = "Merge with other ply file"
     
@@ -3722,7 +3722,7 @@ class PCV_PT_render(Panel):
         
         r = sub.row(align=True)
         r.operator('point_cloud_visualizer.render')
-        r.operator('point_cloud_visualizer.animation')
+        r.operator('point_cloud_visualizer.render_animation')
         
         sub.enabled = PCV_OT_render.poll(context)
 
@@ -3849,9 +3849,9 @@ class PCV_PT_filter_simplify(Panel):
         a.prop(pcv, 'filter_simplify_num_samples')
         a.prop(pcv, 'filter_simplify_num_candidates')
         
-        c.operator('point_cloud_visualizer.simplify')
+        c.operator('point_cloud_visualizer.filter_simplify')
         
-        c.enabled = PCV_OT_simplify.poll(context)
+        c.enabled = PCV_OT_filter_simplify.poll(context)
 
 
 class PCV_PT_filter_project(Panel):
@@ -3892,10 +3892,10 @@ class PCV_PT_filter_project(Panel):
         
         c.prop(pcv, 'filter_project_discard')
         c.prop(pcv, 'filter_project_shift')
-        c.operator('point_cloud_visualizer.project')
+        c.operator('point_cloud_visualizer.filter_project')
         
-        # c.enabled = PCV_OT_project.poll(context)
-        c.enabled = PCV_OT_simplify.poll(context)
+        # c.enabled = PCV_OT_filter_project.poll(context)
+        c.enabled = PCV_OT_filter_simplify.poll(context)
         
         if(pcv.filepath != '' and pcv.uuid != ''):
             if(not pcv.has_normals):
@@ -3954,9 +3954,9 @@ class PCV_PT_filter_remove_color(Panel):
         cc.prop(pcv, 'filter_remove_color_delta_value')
         cc.active = pcv.filter_remove_color_delta_value_use
         
-        c.operator('point_cloud_visualizer.remove_color')
+        c.operator('point_cloud_visualizer.filter_remove_color')
         
-        c.enabled = PCV_OT_remove_color.poll(context)
+        c.enabled = PCV_OT_filter_remove_color.poll(context)
 
 
 class PCV_PT_filter_merge(Panel):
@@ -3983,9 +3983,9 @@ class PCV_PT_filter_merge(Panel):
         l = self.layout
         c = l.column()
         
-        c.operator('point_cloud_visualizer.merge')
+        c.operator('point_cloud_visualizer.filter_merge')
         
-        c.enabled = PCV_OT_merge.poll(context)
+        c.enabled = PCV_OT_filter_merge.poll(context)
 
 
 class PCV_PT_edit(Panel):
@@ -4295,18 +4295,18 @@ classes = (
     PCV_OT_draw,
     PCV_OT_erase,
     PCV_OT_render,
-    PCV_OT_animation,
+    PCV_OT_render_animation,
     PCV_OT_convert,
     PCV_OT_reload,
     PCV_OT_export,
-    PCV_OT_simplify,
-    PCV_OT_remove_color,
-    PCV_OT_project,
+    PCV_OT_filter_simplify,
+    PCV_OT_filter_remove_color,
+    PCV_OT_filter_project,
     PCV_OT_edit_start,
     PCV_OT_edit_update,
     PCV_OT_edit_end,
     PCV_OT_edit_cancel,
-    PCV_OT_merge,
+    PCV_OT_filter_merge,
     
     PCV_PT_debug,
     PCV_OT_init,
