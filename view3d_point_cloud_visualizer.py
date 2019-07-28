@@ -60,7 +60,7 @@ from mathutils.kdtree import KDTree
 # TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
 # TODO try to remove manual depth test during offscreen rendering
 # NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
-# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing.. update: >3k now and having a sigle file is still better..
+# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing.. update: >3k now and having a sigle file is still better.. 4k+ now :)
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
 
@@ -427,7 +427,6 @@ class PCMeshInstancer():
             for i, v in enumerate(self.points):
                 rgb = (v[6], v[7], v[8])
                 col = (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
-                # colors.append(Color(col))
                 colors.append(col)
             
             num = len(self.def_verts)
@@ -436,7 +435,6 @@ class PCMeshInstancer():
                 vi = l.vertex_index
                 li = l.index
                 c = colors[int(vi / num)]
-                # vc.data[li].color = (c.r, c.g, c.b, 1.0, )
                 vc.data[li].color = c + (1.0, )
         else:
             log("no mesh loops in mesh", 2, )
@@ -774,10 +772,6 @@ class PCParticles():
         node_tex = nodes.new(type='ShaderNodeTexImage')
         node_tex.image = img
         link = links.new(node_tcoord.outputs[2], node_tex.inputs[0])
-        # node_emit = nodes.new(type='ShaderNodeEmission')
-        # link = links.new(node_tex.outputs[0], node_emit.inputs[0])
-        # node_output = nodes.new(type='ShaderNodeOutputMaterial')
-        # link = links.new(node_emit.outputs[0], node_output.inputs[0])
         node_diff = nodes.new(type='ShaderNodeBsdfDiffuse')
         link = links.new(node_tex.outputs[0], node_diff.inputs[0])
         node_output = nodes.new(type='ShaderNodeOutputMaterial')
@@ -913,10 +907,6 @@ class PlyPointCloudReader():
         log("reading header..", 1)
         self._header()
         log("reading data..", 1)
-        # log("data format: {}".format(self._ply_format), 1)
-        # log("vertex element properties:", 1)
-        # for n, p in self._props:
-        #     log("{}: {}".format(n, p), 2)
         if(self._ply_format == 'ascii'):
             self._data_ascii()
         else:
@@ -942,17 +932,6 @@ class PlyPointCloudReader():
         log("done.", 1)
     
     def _header(self):
-        # stream = open(self.path, mode='rb')
-        # raw = []
-        # h = []
-        # for l in stream:
-        #     raw.append(l)
-        #     a = l.decode('ascii').rstrip()
-        #     h.append(a)
-        #     if(a == "end_header"):
-        #         break
-        # # stream.close()
-        
         raw = []
         h = []
         with open(self.path, mode='rb') as f:
@@ -976,11 +955,6 @@ class PlyPointCloudReader():
                 self._ply_version = v
                 if(self._ply_format != 'ascii'):
                     self._endianness = self._byte_order[self._ply_format]
-        
-        # if(self._ply_format == 'ascii'):
-        #     stream.close()
-        # else:
-        #     self._stream = stream
         
         self._elements = []
         current_element = None
@@ -1048,13 +1022,8 @@ class PlyPointCloudReader():
                 f.seek(read_from)
                 a = np.fromfile(f, dtype=dt, count=element['count'], )
             
-            # self._stream.seek(read_from)
-            # a = np.fromfile(self._stream, dtype=dt, count=element['count'], )
-            
             self.points = a
             read_from += element['count']
-        
-        # self._stream.close()
     
     def _data_ascii(self):
         self.points = []
@@ -1370,12 +1339,6 @@ class PCVManager():
                 cs = cs.astype(np.float32)
         else:
             n = len(points)
-            # default_color = 0.65
-            # cs = np.column_stack((np.full(n, default_color, dtype=np.float32, ),
-            #                       np.full(n, default_color, dtype=np.float32, ),
-            #                       np.full(n, default_color, dtype=np.float32, ),
-            #                       np.ones(n, dtype=np.float32, ), ))
-            
             preferences = bpy.context.preferences
             addon_prefs = preferences.addons[__name__].preferences
             col = addon_prefs.default_vertex_color[:]
@@ -1411,8 +1374,6 @@ class PCVManager():
         
         d['display_percent'] = l
         d['current_display_percent'] = l
-        
-        # d['global_alpha'] = pcv.global_alpha
         
         ienabled = pcv.illumination
         d['illumination'] = ienabled
@@ -1545,13 +1506,6 @@ class PCVManager():
             shader.uniform_float("show_normals", float(pcv.show_normals))
             shader.uniform_float("show_illumination", float(pcv.illumination))
         else:
-            # z = (0, 0, 0)
-            # shader.uniform_float("light_direction", z)
-            # shader.uniform_float("light_intensity", z)
-            # shader.uniform_float("shadow_direction", z)
-            # shader.uniform_float("shadow_intensity", z)
-            # shader.uniform_float("show_normals", float(False))
-            # shader.uniform_float("show_illumination", float(False))
             pass
         
         batch.draw(shader)
@@ -1612,7 +1566,6 @@ class PCVManager():
             addon_prefs = preferences.addons[__name__].preferences
             col = addon_prefs.normal_color[:]
             col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
-            # shader.uniform_float("color", (35 / 255, 97 / 255, 221 / 255, 1, ), )
             shader.uniform_float("color", col, )
             batch.draw(shader)
         
@@ -1665,14 +1618,6 @@ class PCVManager():
         c['length'] = l
         c['stats'] = l
         
-        # if(display_all):
-        #     o = c['object']
-        #     pcv = o.point_cloud_visualizer
-        #     # set also property on object
-        #     pcv.display_percent = 100.0
-        #     c['display_percent'] = l
-        #     c['current_display_percent'] = l
-        
         o = c['object']
         pcv = o.point_cloud_visualizer
         dp = pcv.display_percent
@@ -1692,10 +1637,6 @@ class PCVManager():
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:nl], "color": cs[:nl], })
         c['shader'] = shader
         c['batch'] = batch
-        
-        # if(context is not None):
-        #     # redraw viewport
-        #     context.area.tag_redraw()
         
         # redraw all viewports
         for area in bpy.context.screen.areas:
@@ -1738,7 +1679,7 @@ class PCVManager():
     
     @classmethod
     def new(cls):
-        # NOTE: this is redundant
+        # NOTE: this is redundant.. is it?
         return {'uuid': None,
                 'filepath': None,
                 'vertices': None,
@@ -1746,7 +1687,6 @@ class PCVManager():
                 'colors': None,
                 'display_percent': None,
                 'current_display_percent': None,
-                # 'global_alpha': None,
                 'illumination': False,
                 'shader': False,
                 'batch': False,
@@ -1909,10 +1849,7 @@ class PCV_OT_render(Operator):
         return ok
     
     def execute(self, context):
-        # bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
-        
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
-        # bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
         scene = context.scene
@@ -2005,9 +1942,6 @@ class PCV_OT_render(Operator):
         # swap frame number
         output_path = swap_frame_number(output_path)
         
-        # render_suffix = pcv.render_suffix
-        # render_zeros = pcv.render_zeros
-        
         offscreen = GPUOffScreen(width, height)
         offscreen.bind()
         try:
@@ -2081,13 +2015,6 @@ class PCV_OT_render(Operator):
                 shader.uniform_float("show_normals", float(pcv.show_normals))
                 shader.uniform_float("show_illumination", float(pcv.illumination))
             else:
-                # z = (0, 0, 0)
-                # shader.uniform_float("light_direction", z)
-                # shader.uniform_float("light_intensity", z)
-                # shader.uniform_float("shadow_direction", z)
-                # shader.uniform_float("shadow_intensity", z)
-                # shader.uniform_float("show_normals", float(False))
-                # shader.uniform_float("show_illumination", float(False))
                 pass
             
             batch.draw(shader)
@@ -2102,7 +2029,6 @@ class PCV_OT_render(Operator):
             
         finally:
             bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
-            # bgl.glDisable(bgl.GL_DEPTH_TEST)
             bgl.glDisable(bgl.GL_BLEND)
             offscreen.unbind()
             offscreen.free()
@@ -2117,25 +2043,6 @@ class PCV_OT_render(Operator):
         
         # save as image file
         def save_render(operator, scene, image, output_path, ):
-            # f = False
-            # n = render_suffix
-            # rs = bpy.context.scene.render
-            # op = rs.filepath
-            # if(len(op) > 0):
-            #     if(not op.endswith(os.path.sep)):
-            #         f = True
-            #         op, n = os.path.split(op)
-            # else:
-            #     log("error: output path is not set".format(e))
-            #     operator.report({'ERROR'}, "Output path is not set.")
-            #     return
-            #
-            # if(f):
-            #     n = "{}_{}".format(n, render_suffix)
-            #
-            # fnm = "{}_{:0{z}d}.png".format(n, scene.frame_current, z=render_zeros)
-            # p = os.path.join(os.path.realpath(bpy.path.abspath(op)), fnm)
-            
             rs = scene.render
             s = rs.image_settings
             ff = s.file_format
@@ -2172,12 +2079,10 @@ class PCV_OT_render(Operator):
             vs.view_transform = vsvt
             vs.look = vsl
         
-        # save_render(self, scene, image, render_suffix, render_zeros, )
         save_render(self, scene, image, output_path, )
         
         # restore
         image_settings.color_depth = original_depth
-        
         # cleanup
         bpy.data.images.remove(image)
         
@@ -2272,6 +2177,7 @@ class PCV_OT_convert(Operator):
         
         g = None
         if(pcv.mesh_type == 'VERTEX'):
+            # TODO: convert to vertices without instancer, this is slow
             g = VertexMeshGenerator()
             n = "{}-vertices".format(n)
         elif(pcv.mesh_type == 'TRIANGLE'):
@@ -2327,15 +2233,10 @@ class PCV_OT_export(Operator, ExportHelper):
     bl_idname = "point_cloud_visualizer.export"
     bl_label = "Export PLY"
     bl_description = "Export point cloud to ply file"
-    # bl_options = {'PRESET'}
     
     filename_ext = ".ply"
     filter_glob: StringProperty(default="*.ply", options={'HIDDEN'}, )
     check_extension = True
-    
-    # apply_transformation: BoolProperty(name="Apply Transformation", default=True, description="Apply parent object transformation to points", )
-    # convert_axes: BoolProperty(name="Convert Axes", default=False, description="Convert from blender (y forward, z up) to forward -z, up y axes", )
-    # visible_only: BoolProperty(name="Visible Points Only", default=False, description="Export currently visible points only", )
     
     @classmethod
     def poll(cls, context):
@@ -2351,9 +2252,6 @@ class PCV_OT_export(Operator, ExportHelper):
     def draw(self, context):
         l = self.layout
         c = l.column()
-        # c.prop(self, 'apply_transformation')
-        # c.prop(self, 'convert_axes')
-        # c.prop(self, 'visible_only')
         pcv = context.object.point_cloud_visualizer
         c.prop(pcv, 'export_apply_transformation')
         c.prop(pcv, 'export_convert_axes')
@@ -2740,11 +2638,6 @@ class PCV_OT_filter_project(Operator):
         m = c['object'].matrix_world.copy()
         vs, ns = apply_matrix(vs, ns, m)
         
-        # # apply target matrix
-        # m = o.matrix_world.copy()
-        # # m = m.inverted()
-        # vs, ns = apply_matrix(vs, ns, m)
-        
         # combine
         l = len(vs)
         dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ('index', '<i8'), ('delete', '?')]
@@ -2803,8 +2696,6 @@ class PCV_OT_filter_project(Operator):
             n = Vector((p['nx'], p['ny'], p['nz'], ))
             
             if(positive):
-                # p_result, p_location, p_normal, p_index, p_object, p_matrix = sc.ray_cast(view_layer, v, n, distance=search_distance, )
-                # p_result, p_location, p_normal, p_index = o.ray_cast(v, n, distance=search_distance, depsgraph=depsgraph, )
                 p_result, p_location, p_normal, p_index = target.ray_cast(v, n, distance=search_distance, depsgraph=depsgraph, )
                 p_distance = None
                 if(p_result):
@@ -2816,8 +2707,6 @@ class PCV_OT_filter_project(Operator):
             ndir = Vector(nn - v).normalized()
             
             if(negative):
-                # n_result, n_location, n_normal, n_index, n_object, n_matrix = sc.ray_cast(view_layer, v, ndir, distance=search_distance, )
-                # n_result, n_location, n_normal, n_index = o.ray_cast(v, ndir, distance=search_distance, depsgraph=depsgraph, )
                 n_result, n_location, n_normal, n_index = target.ray_cast(v, ndir, distance=search_distance, depsgraph=depsgraph, )
                 n_distance = None
                 if(n_result):
@@ -2877,11 +2766,6 @@ class PCV_OT_filter_project(Operator):
         vs = vs.astype(np.float32)
         ns = ns.astype(np.float32)
         cs = cs.astype(np.float32)
-        
-        # # unapply target matrix
-        # m = o.matrix_world.copy()
-        # m = m.inverted()
-        # vs, ns = apply_matrix(vs, ns, m)
         
         # unapply parent matrix to points
         m = c['object'].matrix_world.copy()
@@ -2957,9 +2841,6 @@ class PCV_OT_filter_remove_color(Operator):
         # evaluate
         indexes = []
         
-        # rmcolor = Color(pcv.filter_remove_color)
-        # rmcolor = Color([c ** (1 / 2.2) for c in pcv.filter_remove_color])
-        
         # black magic..
         c = [c ** (1 / 2.2) for c in pcv.filter_remove_color]
         c = [int(i * 256) for i in c]
@@ -2970,12 +2851,6 @@ class PCV_OT_filter_remove_color(Operator):
         dh = pcv.filter_remove_color_delta_hue
         ds = pcv.filter_remove_color_delta_saturation
         dv = pcv.filter_remove_color_delta_value
-        # if(not pcv.filter_remove_color_delta_hue_use):
-        #     dhue = None
-        # if(not pcv.filter_remove_color_delta_saturation_use):
-        #     dsaturation = None
-        # if(not pcv.filter_remove_color_delta_value_use):
-        #     dvalue = None
         uh = pcv.filter_remove_color_delta_hue_use
         us = pcv.filter_remove_color_delta_saturation_use
         uv = pcv.filter_remove_color_delta_value_use
@@ -3081,10 +2956,6 @@ class PCV_OT_edit_start(Operator):
         vs = c['vertices']
         ns = c['normals']
         cs = c['colors']
-        # # draw points with half alpha
-        # cs[:, 3] = 0.5
-        # PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
-        # pcv.global_alpha = 0.5
         
         # prepare mesh
         bm = bmesh.new()
@@ -3202,16 +3073,6 @@ class PCV_OT_edit_end(Operator):
         # update
         bpy.ops.point_cloud_visualizer.edit_update()
         
-        # # NOTTODO: because of alpha i am updating cloud twice, some global alpha directly in shader would be nice, event for regular display
-        # uuid = context.object.point_cloud_visualizer.edit_is_edit_uuid
-        # c = PCVManager.cache[uuid]
-        # vs = c['vertices']
-        # ns = c['normals']
-        # cs = c['colors']
-        # # draw points with full alpha
-        # cs[:, 3] = 1.0
-        # PCVManager.update(uuid, vs, ns, cs, context=context, display_all=True, )
-        
         # cleanup
         bpy.ops.object.mode_set(mode='EDIT')
         o = context.object
@@ -3245,15 +3106,6 @@ class PCV_OT_edit_cancel(Operator):
         if(pcv.edit_initialized):
             return True
         return False
-        # ok = False
-        # if(pcv.edit_is_edit_mesh):
-        #     for k, v in PCVManager.cache.items():
-        #         if(v['uuid'] == pcv.edit_is_edit_uuid):
-        #             if(v['ready']):
-        #                 if(v['draw']):
-        #                     if(context.mode == 'EDIT_MESH'):
-        #                         ok = True
-        # return ok
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3325,11 +3177,6 @@ class PCV_OT_filter_merge(Operator):
         if(len(points) == 0):
             self.report({'ERROR'}, "No vertices loaded from file at {}".format(filepath))
             return {'CANCELLED'}
-        
-        # preferences = bpy.context.preferences
-        # addon_prefs = preferences.addons[__name__].preferences
-        # if(addon_prefs.shuffle_points):
-        #     np.random.shuffle(points)
         
         if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
             # this is very unlikely..
@@ -3583,9 +3430,6 @@ class PCV_PT_panel(Panel):
         sub.separator()
         # <<<----------- info block
         
-        # sub.prop(pcv, 'ply_info', text="", emboss=False, )
-        # sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
-        
         e = not (pcv.filepath == "")
         r = sub.row(align=True)
         r.operator('point_cloud_visualizer.draw')
@@ -3598,9 +3442,6 @@ class PCV_PT_panel(Panel):
         r = sub.row()
         r.prop(pcv, 'point_size')
         r.enabled = e
-        # r = sub.row()
-        # r.prop(pcv, 'alpha_radius')
-        # r.enabled = e
         
         r = sub.row()
         r.prop(pcv, 'global_alpha')
@@ -3612,8 +3453,6 @@ class PCV_PT_panel(Panel):
         r.enabled = e
         if(not pcv.has_normals):
             r.enabled = False
-        
-        # sub.separator()
         
         pcv = context.object.point_cloud_visualizer
         ok = False
@@ -3642,21 +3481,6 @@ class PCV_PT_panel(Panel):
             ccc.prop(pcv, 'shadow_intensity')
             if(not pcv.has_normals):
                 cc.enabled = e
-        
-        # if(pcv.uuid in PCVManager.cache):
-        #     sub.separator()
-        #     # r = sub.row()
-        #     # h, t = os.path.split(pcv.filepath)
-        #     # n = human_readable_number(PCVManager.cache[pcv.uuid]['stats'])
-        #     # r.label(text='{}: {} points'.format(t, n))
-        #     sub.prop(pcv, 'ply_info', text="", emboss=False, )
-        #     sub.prop(pcv, 'ply_display_info', text="", emboss=False, )
-        
-        # sub.separator()
-        # b = sub.box()
-        # b.alert = True
-        # # b.alert = pcv.experimental
-        # b.prop(pcv, 'experimental', toggle=True, )
 
 
 class PCV_PT_render(Panel):
@@ -3687,10 +3511,7 @@ class PCV_PT_render(Panel):
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
         
-        # sub.separator()
-        
         c = sub.column()
-        # c.prop(pcv, 'render_path', text='Output', )
         
         f = 0.33
         r = sub.row(align=True, )
@@ -3717,8 +3538,6 @@ class PCV_PT_render(Panel):
             c1.prop(pcv, 'render_resolution_x')
             c1.prop(pcv, 'render_resolution_y')
             c1.prop(pcv, 'render_resolution_percentage')
-        
-        # sub.separator()
         
         r = sub.row(align=True)
         r.operator('point_cloud_visualizer.render')
@@ -3781,7 +3600,6 @@ class PCV_PT_convert(Panel):
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
         
-        # c.separator()
         c.operator('point_cloud_visualizer.convert')
         c.enabled = PCV_OT_convert.poll(context)
 
@@ -3804,11 +3622,6 @@ class PCV_PT_filter(Panel):
             if(pcv.edit_initialized):
                 return False
         return True
-    
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3834,11 +3647,6 @@ class PCV_PT_filter_simplify(Panel):
             if(pcv.edit_initialized):
                 return False
         return True
-    
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='STICKY_UVS_DISABLE', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -3873,11 +3681,6 @@ class PCV_PT_filter_project(Panel):
                 return False
         return True
     
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='MOD_NORMALEDIT', )
-    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -3894,7 +3697,7 @@ class PCV_PT_filter_project(Panel):
         c.prop(pcv, 'filter_project_shift')
         c.operator('point_cloud_visualizer.filter_project')
         
-        # c.enabled = PCV_OT_filter_project.poll(context)
+        # conditions are the same, also `filter_project_object` has to be set
         c.enabled = PCV_OT_filter_simplify.poll(context)
         
         if(pcv.filepath != '' and pcv.uuid != ''):
@@ -3922,16 +3725,10 @@ class PCV_PT_filter_remove_color(Panel):
                 return False
         return True
     
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='EYEDROPPER', )
-    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column()
-        # c.label(text="Remove Color:")
         r = c.row()
         r.prop(pcv, 'filter_remove_color', text='', )
         
@@ -4007,11 +3804,6 @@ class PCV_PT_edit(Panel):
                 return False
         return True
     
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='EXPERIMENTAL', )
-    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
@@ -4037,11 +3829,6 @@ class PCV_PT_export(Panel):
             if(pcv.edit_initialized):
                 return False
         return True
-    
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
