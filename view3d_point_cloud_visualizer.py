@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 11),
+           "version": (0, 9, 12),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1635,36 +1635,72 @@ class PCVManager():
             cls.gc()
     
     @classmethod
-    def update(cls, uuid, vs, ns, cs, context=None, display_all=True, ):
+    def update(cls, uuid, vs, ns=None, cs=None, ):
+        if(uuid not in PCVManager.cache):
+            raise KeyError("uuid '{}' not in cache".format(uuid))
+        if(len(vs) == 0):
+            raise ValueError("zero length")
+        
         # get cache item
         c = PCVManager.cache[uuid]
+        l = len(vs)
+        
+        if(ns is None):
+            ns = np.column_stack((np.full(l, 0.0, dtype=np.float32, ),
+                                  np.full(l, 0.0, dtype=np.float32, ),
+                                  np.full(l, 1.0, dtype=np.float32, ), ))
+        
+        if(cs is None):
+            col = bpy.context.preferences.addons[__name__].preferences.default_vertex_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            cs = np.column_stack((np.full(l, col[0], dtype=np.float32, ),
+                                  np.full(l, col[1], dtype=np.float32, ),
+                                  np.full(l, col[2], dtype=np.float32, ),
+                                  np.ones(l, dtype=np.float32, ), ))
+        
         # store data
         c['vertices'] = vs
         c['normals'] = ns
         c['colors'] = cs
-        l = len(vs)
         c['length'] = l
         c['stats'] = l
-        if(display_all):
-            o = c['object']
-            pcv = o.point_cloud_visualizer
-            # set also property on object
-            pcv.display_percent = 100.0
-            c['display_percent'] = l
-            c['current_display_percent'] = l
+        
+        # if(display_all):
+        #     o = c['object']
+        #     pcv = o.point_cloud_visualizer
+        #     # set also property on object
+        #     pcv.display_percent = 100.0
+        #     c['display_percent'] = l
+        #     c['current_display_percent'] = l
+        
+        o = c['object']
+        pcv = o.point_cloud_visualizer
+        dp = pcv.display_percent
+        nl = int((l / 100) * dp)
+        if(dp >= 99):
+            nl = l
+        c['display_percent'] = nl
+        c['current_display_percent'] = nl
+        
         # setup new shaders
         ienabled = c['illumination']
         if(ienabled):
             shader = GPUShader(PCVShaders.vertex_shader, PCVShaders.fragment_shader)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "normal": ns[:], })
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:nl], "color": cs[:nl], "normal": ns[:nl], })
         else:
             shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], })
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:nl], "color": cs[:nl], })
         c['shader'] = shader
         c['batch'] = batch
-        if(context is not None):
-            # redraw viewport
-            context.area.tag_redraw()
+        
+        # if(context is not None):
+        #     # redraw viewport
+        #     context.area.tag_redraw()
+        
+        # redraw all viewports
+        for area in bpy.context.screen.areas:
+            if(area.type == 'VIEW_3D'):
+                area.tag_redraw()
     
     @classmethod
     def gc(cls):
@@ -2616,7 +2652,7 @@ class PCV_OT_simplify(Operator):
         
         # put to cache
         pcv = context.object.point_cloud_visualizer
-        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -2860,7 +2896,7 @@ class PCV_OT_project(Operator):
         
         # put to cache..
         pcv = context.object.point_cloud_visualizer
-        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         # if(DEBUG):
         #     pr.disable()
@@ -3015,7 +3051,7 @@ class PCV_OT_remove_color(Operator):
         
         # put to cache
         pcv = context.object.point_cloud_visualizer
-        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -3134,7 +3170,7 @@ class PCV_OT_edit_update(Operator):
         vs = np.array(u_vs, dtype=np.float32, )
         ns = np.array(u_ns, dtype=np.float32, )
         cs = np.array(u_cs, dtype=np.float32, )
-        PCVManager.update(uuid, vs, ns, cs, context=context, display_all=True, )
+        PCVManager.update(uuid, vs, ns, cs, )
         # update indexes
         bm.verts.ensure_lookup_table()
         l = bm.verts.layers.int['pcv_indexes']
@@ -3383,7 +3419,7 @@ class PCV_OT_merge(Operator):
             ns = ns.astype(np.float32)
             cs = cs.astype(np.float32)
         
-        PCVManager.update(pcv.uuid, vs, ns, cs, context=context, display_all=True, )
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         return {'FINISHED'}
 
