@@ -1224,6 +1224,7 @@ class PCVShaders():
             fragColor = f_color * a;
         }
     '''
+    # TODO: normal shader should draw lines by itself, should be much faster
     vertex_shader_normals = '''
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
@@ -1586,8 +1587,8 @@ class PCVManager():
     def update(cls, uuid, vs, ns=None, cs=None, ):
         if(uuid not in PCVManager.cache):
             raise KeyError("uuid '{}' not in cache".format(uuid))
-        if(len(vs) == 0):
-            raise ValueError("zero length")
+        # if(len(vs) == 0):
+        #     raise ValueError("zero length")
         
         # get cache item
         c = PCVManager.cache[uuid]
@@ -1701,6 +1702,8 @@ class PCVControl():
         PCVManager.init()
     
     def draw(self, o, vs, ns=None, cs=None, ):
+        # FIXME: hadle vs, ns, cs zero length, PCVManager can handle it, but some extra stuff in this function throw errors
+        
         log("{}:draw".format(self.__class__.__name__), 0, )
         pcv = o.point_cloud_visualizer
         
@@ -1936,6 +1939,56 @@ class PCVControl():
         pcv.has_normals = False
         pcv.has_vcols = False
         pcv.runtime = False
+
+
+class PCVSequence():
+    cache = {}
+    initialized = False
+    
+    @classmethod
+    def handler(cls, scene, ):
+        cf = scene.frame_current
+        for k, v in cls.cache.items():
+            pcv = v['pcv']
+            if(pcv.uuid != k):
+                del cls.cache[k]
+                if(len(cls.cache.items()) == 0):
+                    cls.deinit()
+                return
+            # if(pcv.sequence_enabled):
+            #     PCVManager.init()
+            #     ld = len(v['data'])
+            #     if(pcv.sequence_use_cyclic):
+            #         cf = cf % ld
+            #     if(cf > ld):
+            #         PCVManager.update(k, [], None, None, )
+            #     else:
+            #         data = v['data'][cf - 1]
+            #         PCVManager.update(k, data['vs'], data['ns'], data['cs'], )
+            PCVManager.init()
+            ld = len(v['data'])
+            if(pcv.sequence_use_cyclic):
+                cf = cf % ld
+            if(cf > ld):
+                PCVManager.update(k, [], None, None, )
+            else:
+                data = v['data'][cf - 1]
+                PCVManager.update(k, data['vs'], data['ns'], data['cs'], )
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        bpy.app.handlers.frame_change_post.append(PCVSequence.handler)
+        cls.initialized = True
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        bpy.app.handlers.frame_change_post.remove(PCVSequence.handler)
+        cls.initialized = False
+        cls.cache = {}
 
 
 class PCV_OT_init(Operator):
@@ -3576,6 +3629,201 @@ class PCV_OT_reload(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_sequence_preload(Operator):
+    bl_idname = "point_cloud_visualizer.sequence_preload"
+    bl_label = "Preload Sequence"
+    bl_description = "Preload sequence of PLY files. Files should be numbered starting at 1. Missing files in sequence will be skipped."
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        if(pcv.uuid in PCVSequence.cache.keys()):
+            return False
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        log('Preload Sequence..')
+        pcv = context.object.point_cloud_visualizer
+        
+        # pcv.sequence_enabled = True
+        
+        dirpath = os.path.dirname(pcv.filepath)
+        files = []
+        for (p, ds, fs) in os.walk(dirpath):
+            files.extend(fs)
+            break
+        
+        fs = [f for f in files if f.lower().endswith('.ply')]
+        f = os.path.split(pcv.filepath)[1]
+        
+        pattern = re.compile(r'(\d+)(?!.*(\d+))')
+        
+        m = re.search(pattern, f, )
+        if(m is not None):
+            prefix = f[:m.start()]
+            suffix = f[m.end():]
+        else:
+            operator.report({'ERROR'}, 'Filename does not contain any sequence number')
+            return {'CANCELLED'}
+        
+        sel = []
+        
+        for n in fs:
+            m = re.search(pattern, n, )
+            if(m is not None):
+                # some numbers present, lets compare with selected file prefix/suffix
+                pre = n[:m.start()]
+                if(pre == prefix):
+                    # prefixes match
+                    suf = n[m.end():]
+                    if(suf == suffix):
+                        # suffixes match, extract number
+                        si = n[m.start():m.end()]
+                        try:
+                            # try convert it to integer
+                            i = int(si)
+                            # and store as selected file
+                            sel.append((i, n))
+                        except ValueError:
+                            pass
+        
+        # sort by sequence number
+        sel.sort()
+        # fabricate list with missing sequence numbers as None
+        sequence = [[None] for i in range(sel[-1][0])]
+        for i, n in sel:
+            sequence[i - 1] = (i, n)
+        for i in range(len(sequence)):
+            if(sequence[i][0] is None):
+                sequence[i] = [i, None]
+        
+        log('found files:', 1)
+        for i, n in sequence:
+            log('{}: {}'.format(i, n), 2)
+        
+        log('preloading..', 1)
+        # this is our sequence with matching filenames, sorted by numbers with missing as None, now load it all..
+        cache = []
+        for i, n in sequence:
+            if(n is not None):
+                p = os.path.join(dirpath, n)
+                points = []
+                try:
+                    points = PlyPointCloudReader(p).points
+                except Exception as e:
+                    operator.report({'ERROR'}, str(e))
+                if(len(points) == 0):
+                    operator.report({'ERROR'}, "No vertices loaded from file at {}".format(p))
+                else:
+                    if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
+                        operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
+                        return {'CANCELLED'}
+                    
+                    vs = np.column_stack((points['x'], points['y'], points['z'], ))
+                    vs = vs.astype(np.float32)
+                    
+                    if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
+                        ns = None
+                    else:
+                        ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+                        ns = ns.astype(np.float32)
+                    if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
+                        cs = None
+                    else:
+                        cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+                        cs = cs.astype(np.float32)
+                    
+                    cache.append({'index': i,
+                                  'name': n,
+                                  'path': p,
+                                  'vs': vs,
+                                  'ns': ns,
+                                  'cs': cs,
+                                  'points': points, })
+        
+        log('...', 1)
+        log('loaded {} item(s)'.format(len(cache)), 1)
+        log('initializing..', 1)
+        
+        PCVSequence.init()
+        
+        ci = {'data': cache,
+              'uuid': pcv.uuid,
+              'pcv': pcv, }
+        PCVSequence.cache[pcv.uuid] = ci
+        
+        log('force frame update..', 1)
+        sc = bpy.context.scene
+        cf = sc.frame_current
+        sc.frame_current = cf
+        log('done.', 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_sequence_clear(Operator):
+    bl_idname = "point_cloud_visualizer.sequence_clear"
+    bl_label = "Clear Sequence"
+    bl_description = "Clear preloaded sequence cache and reset all"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        if(pcv.uuid in PCVSequence.cache.keys()):
+            return True
+        return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        del PCVSequence.cache[pcv.uuid]
+        if(len(PCVSequence.cache.items()) == 0):
+            PCVSequence.deinit()
+        
+        # c = PCVManager.cache[pcv.uuid]
+        # vs = c['vertices']
+        # ns = c['normals']
+        # cs = c['colors']
+        # PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        bpy.ops.point_cloud_visualizer.reload()
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_seq_init(Operator):
+    bl_idname = "point_cloud_visualizer.seq_init"
+    bl_label = "seq_init"
+    
+    def execute(self, context):
+        PCVSequence.init()
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class PCV_OT_seq_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.seq_deinit"
+    bl_label = "seq_deinit"
+    
+    def execute(self, context):
+        PCVSequence.deinit()
+        context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -4120,6 +4368,64 @@ class PCV_PT_export(Panel):
         c.enabled = PCV_OT_export.poll(context)
 
 
+class PCV_PT_sequence(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Sequence"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    # def draw_header(self, context):
+    #     pcv = context.object.point_cloud_visualizer
+    #     l = self.layout
+    #     l.label(text='', icon='EXPERIMENTAL', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        # c = l.column()
+        # c.prop(pcv, 'sequence_enabled')
+        # c.enabled = PCV_OT_sequence_preload.poll(context)
+        
+        c = l.column()
+        
+        c.label(text='Experimental', icon='ERROR', )
+        
+        c.operator('point_cloud_visualizer.sequence_preload')
+        if(pcv.uuid in PCVSequence.cache.keys()):
+            c.label(text="Loaded {} item(s)".format(len(PCVSequence.cache[pcv.uuid]['data'])))
+            # c.enabled = pcv.sequence_enabled
+        else:
+            c.label(text="Loaded {} item(s)".format(0))
+            c.enabled = PCV_OT_sequence_preload.poll(context)
+        # c.enabled = pcv.sequence_enabled
+        
+        # c = l.column()
+        # c.prop(pcv, 'sequence_frame_duration')
+        # c.prop(pcv, 'sequence_frame_start')
+        # c.prop(pcv, 'sequence_frame_offset')
+        c.prop(pcv, 'sequence_use_cyclic')
+        # c.enabled = False
+        # if(pcv.sequence_enabled):
+        #     c.enabled = True
+        # c.enabled = (PCV_OT_sequence_preload.poll(context) and pcv.sequence_enabled)
+        # c.enabled = PCV_OT_sequence_preload.poll(context)
+        # c.enabled = pcv.sequence_enabled
+        c.operator('point_cloud_visualizer.sequence_clear')
+
+
 class PCV_PT_debug(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -4186,6 +4492,26 @@ class PCV_PT_debug(Panel):
                         c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
                     else:
                         c.label(text="{}: {}".format(ki, vi))
+        
+        sub.label(text="sequence:")
+        c = sub.column(align=True)
+        c.operator('point_cloud_visualizer.seq_init')
+        c.operator('point_cloud_visualizer.seq_deinit')
+        b = sub.box()
+        c = b.column()
+        c.label(text="cache: {} item(s)".format(len(PCVSequence.cache.items())))
+        c.label(text="initialized: {}".format(PCVSequence.initialized))
+        c.scale_y = 0.5
+        
+        if(len(PCVSequence.cache)):
+            sub.label(text="cache details:")
+            for k, v in PCVSequence.cache.items():
+                b = sub.box()
+                c = b.column()
+                c.scale_y = 0.5
+                c.label(text="{}: {}".format('uuid', v['uuid']))
+                c.label(text="{}: {}".format('pcv', v['pcv']))
+                c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
 class PCV_properties(PropertyGroup):
@@ -4292,16 +4618,22 @@ class PCV_properties(PropertyGroup):
     edit_pre_edit_alpha: FloatProperty(default=1.0, options={'HIDDEN', }, )
     edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
     
+    # sequence_enabled: BoolProperty(default=False, options={'HIDDEN', }, )
+    # sequence_frame_duration: IntProperty(name="Frames", default=1, min=1, description="", )
+    # sequence_frame_start: IntProperty(name="Start Frame", default=1, description="", )
+    # sequence_frame_offset: IntProperty(name="Offset", default=0, description="", )
+    sequence_use_cyclic: BoolProperty(name="Cycle Forever", default=True, description="Cycle preloaded point clouds (ply_index = (current_frame % len(ply_files)) - 1)", )
+    
     def _debug_update(self, context, ):
         # global DEBUG, debug_classes
-        # DEBUG = self.debug
+        global DEBUG
+        DEBUG = self.debug
         # if(DEBUG):
         #     for cls in debug_classes:
         #         bpy.utils.register_class(cls)
         # else:
         #     for cls in reversed(debug_classes):
         #         bpy.utils.unregister_class(cls)
-        pass
     
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
     
@@ -4339,6 +4671,7 @@ class PCV_preferences(AddonPreferences):
 
 @persistent
 def watcher(scene):
+    PCVSequence.deinit()
     PCVManager.deinit()
 
 
@@ -4355,6 +4688,7 @@ classes = (
     PCV_PT_render,
     PCV_PT_convert,
     PCV_PT_export,
+    PCV_PT_sequence,
     
     PCV_OT_load,
     PCV_OT_draw,
@@ -4372,11 +4706,15 @@ classes = (
     PCV_OT_edit_end,
     PCV_OT_edit_cancel,
     PCV_OT_filter_merge,
+    PCV_OT_sequence_preload,
+    PCV_OT_sequence_clear,
     
     PCV_PT_debug,
     PCV_OT_init,
     PCV_OT_deinit,
     PCV_OT_gc,
+    PCV_OT_seq_init,
+    PCV_OT_seq_deinit,
 )
 
 
@@ -4386,6 +4724,7 @@ def register():
 
 
 def unregister():
+    PCVSequence.deinit()
     PCVManager.deinit()
     
     for cls in reversed(classes):
