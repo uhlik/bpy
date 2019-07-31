@@ -1278,6 +1278,33 @@ class PCVShaders():
             EndPrimitive();
         }
     '''
+    
+    depth_vertex_shader = '''
+        in vec3 position;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform vec3 center;
+        uniform float exposure;
+        out float f_depth;
+        out float f_exposure;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0);
+            vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
+            vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
+            f_depth = op.z - pp.z;
+            f_exposure = exposure;
+        }
+    '''
+    depth_fragment_shader = '''
+        in float f_depth;
+        in float f_exposure;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vec4(f_depth * f_exposure, f_depth * f_exposure, f_depth * f_exposure, 1.0);
+        }
+    '''
 
 
 class PCVManager():
@@ -1580,6 +1607,24 @@ class PCVManager():
             col = tuple([c ** (1 / 2.2) for c in col]) + (pcv.vertex_normals_alpha, )
             shader.uniform_float("color", col, )
             shader.uniform_float("length", pcv.vertex_normals_size, )
+            batch.draw(shader)
+        
+        if(pcv.depth_enabled):
+            vs = ci['vertices']
+            l = ci['current_display_percent']
+            shader = GPUShader(PCVShaders.depth_vertex_shader, PCVShaders.depth_fragment_shader, )
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            
+            cx = np.sum(vs[:, 0]) / len(vs)
+            cy = np.sum(vs[:, 1]) / len(vs)
+            cz = np.sum(vs[:, 2]) / len(vs)
+            shader.uniform_float("center", (cx, cy, cz, ))
+            shader.uniform_float("exposure", pcv.depth_exposure)
+            
             batch.draw(shader)
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
@@ -4437,6 +4482,39 @@ class PCV_PT_sequence(Panel):
         c.operator('point_cloud_visualizer.sequence_clear')
 
 
+class PCV_PT_development(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Hidden"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        if(not DEBUG):
+            return False
+        
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        sub = l.column()
+        c = sub.column()
+        b = c.box()
+        b.label(text="Depth")
+        b.prop(pcv, 'depth_enabled')
+        b.prop(pcv, 'depth_exposure')
+
+
 class PCV_PT_debug(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -4579,6 +4657,9 @@ class PCV_properties(PropertyGroup):
     shadow_intensity: FloatProperty(name="Shadow Intensity", description="Shadow intensity", default=0.2, min=0, max=1, subtype='FACTOR', )
     show_normals: BoolProperty(name="Colorize By Vertex Normals", description="", default=False, )
     
+    depth_enabled: BoolProperty(name="Depth", default=False, description="", )
+    depth_exposure: FloatProperty(name="Intensity", description="", default=1.0, min=0.0, max=100.0, )
+    
     mesh_type: EnumProperty(name="Type", items=[('VERTEX', "Vertex", ""),
                                                 ('TRIANGLE', "Equilateral Triangle", ""),
                                                 ('TETRAHEDRON', "Tetrahedron", ""),
@@ -4720,6 +4801,8 @@ classes = (
     PCV_OT_filter_merge,
     PCV_OT_sequence_preload,
     PCV_OT_sequence_clear,
+    
+    PCV_PT_development,
     
     PCV_PT_debug,
     PCV_OT_init,
