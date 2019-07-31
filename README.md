@@ -190,6 +190,7 @@ Export current point cloud as binary ply file with several options. If exporting
 
 ### Changelog:
 
+* 0.9.14 external api improvements
 * 0.9.13 faster normals drawing
 * 0.9.12 ply sequence, external api
 * 0.9.11 merge filter

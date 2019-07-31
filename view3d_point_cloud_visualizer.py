@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 13),
+           "version": (0, 9, 14),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1713,35 +1713,29 @@ class PCVManager():
 
 
 class PCVControl():
-    def init(self):
-        log("{}:init".format(self.__class__.__name__), 0, )
-        # initialize, subsequential calls are ignored
+    def __init__(self, o, ):
+        self.o = o
         PCVManager.init()
     
-    def draw(self, o, vs, ns=None, cs=None, ):
-        # FIXME: hadle vs, ns, cs zero length, PCVManager can handle it, but some extra stuff in this function throw errors
+    def _prepare(self, vs, ns, cs, ):
+        if(vs is not None):
+            if(len(vs) == 0):
+                vs = None
+        if(ns is not None):
+            if(len(ns) == 0):
+                ns = None
+        if(cs is not None):
+            if(len(cs) == 0):
+                cs = None
         
-        log("{}:draw".format(self.__class__.__name__), 0, )
-        pcv = o.point_cloud_visualizer
-        
-        # check if object has been used before, i.e. has uuid and uuid item is in cache
-        if(pcv.uuid != "" and pcv.runtime):
-            # was used or blend was saved after it was used and uuid is saved from last time, check cache
-            if(pcv.uuid in PCVManager.cache):
-                # cache item is found, object has been used before
-                self.update(o, vs, ns, cs)
-                return
-        # otherwise setup as new
-        
-        u = str(uuid.uuid1())
-        # use that as path, some checks wants this not empty
-        filepath = u
-        
-        # make numpy array if not already
-        if(type(vs) != np.ndarray):
-            vs = np.array(vs)
-        # and ensure data type
-        vs = vs.astype(np.float32)
+        if(vs is None):
+            vs = np.zeros((0, 3), dtype=np.float32,)
+        else:
+            # make numpy array if not already
+            if(type(vs) != np.ndarray):
+                vs = np.array(vs)
+            # and ensure data type
+            vs = vs.astype(np.float32)
         
         n = len(vs)
         
@@ -1788,16 +1782,46 @@ class PCVControl():
         points['green'] = cs8[:, 1]
         points['blue'] = cs8[:, 2]
         
-        # but because colors i just stored in uint8, store them also as provided to enable reload operator
-        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
-        cs_orig = cs_orig.astype(np.float32)
+        return vs, ns, cs, points, has_normals, has_colors
+    
+    def _redraw(self):
+        # force redraw
+        for area in bpy.context.screen.areas:
+            if(area.type == 'VIEW_3D'):
+                area.tag_redraw()
+    
+    def draw(self, vs=None, ns=None, cs=None, ):
+        o = self.o
+        pcv = o.point_cloud_visualizer
+        
+        # check if object has been used before, i.e. has uuid and uuid item is in cache
+        if(pcv.uuid != "" and pcv.runtime):
+            # was used or blend was saved after it was used and uuid is saved from last time, check cache
+            if(pcv.uuid in PCVManager.cache):
+                # cache item is found, object has been used before
+                self._update(vs, ns, cs, )
+                return
+        # otherwise setup as new
+        
+        u = str(uuid.uuid1())
+        # use that as path, some checks wants this not empty
+        filepath = u
+        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
+        n = len(vs)
         
         # build cache dict
         d = {}
         d['uuid'] = u
         d['filepath'] = filepath
         d['points'] = points
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
         d['colors_original'] = cs_orig
+        
         d['stats'] = n
         d['vertices'] = vs
         d['colors'] = cs
@@ -1837,67 +1861,24 @@ class PCVControl():
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = True
         
-        # force redraw
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        self._redraw()
     
-    def update(self, o, vs, ns=None, cs=None, ):
-        log("{}:update".format(self.__class__.__name__), 0, )
+    def _update(self, vs, ns, cs, ):
+        o = self.o
         pcv = o.point_cloud_visualizer
         
-        if(type(vs) != np.ndarray):
-            vs = np.array(vs)
-        vs = vs.astype(np.float32)
-        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
         n = len(vs)
-        
-        if(ns is None):
-            has_normals = False
-            ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
-                                  np.full(n, 0.0, dtype=np.float32, ),
-                                  np.full(n, 1.0, dtype=np.float32, ), ))
-        else:
-            has_normals = True
-            if(type(cs) != np.ndarray):
-                ns = np.array(ns)
-            ns = ns.astype(np.float32)
-        
-        if(cs is None):
-            has_colors = False
-            col = bpy.context.preferences.addons[__name__].preferences.default_vertex_color[:]
-            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
-            cs = np.column_stack((np.full(n, col[0], dtype=np.float32, ),
-                                  np.full(n, col[1], dtype=np.float32, ),
-                                  np.full(n, col[2], dtype=np.float32, ),
-                                  np.ones(n, dtype=np.float32, ), ))
-        else:
-            has_colors = True
-            if(type(cs) != np.ndarray):
-                cs = np.array(cs)
-            cs = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
-            cs = cs.astype(np.float32)
-        
-        cs8 = cs * 255
-        cs8 = cs8.astype(np.uint8)
-        dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
-        points = np.empty(n, dtype=dt, )
-        points['x'] = vs[:, 0]
-        points['y'] = vs[:, 1]
-        points['z'] = vs[:, 2]
-        points['nx'] = ns[:, 0]
-        points['ny'] = ns[:, 1]
-        points['nz'] = ns[:, 2]
-        points['red'] = cs8[:, 0]
-        points['green'] = cs8[:, 1]
-        points['blue'] = cs8[:, 2]
-        
-        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
-        cs_orig = cs_orig.astype(np.float32)
         
         d = PCVManager.cache[pcv.uuid]
         d['points'] = points
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
         d['colors_original'] = cs_orig
+        
         d['stats'] = n
         d['vertices'] = vs
         d['colors'] = cs
@@ -1925,13 +1906,18 @@ class PCVControl():
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = True
         
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        self._redraw()
     
-    def erase(self, o, ):
-        log("{}:erase".format(self.__class__.__name__), 0, )
+    def erase(self):
+        o = self.o
         pcv = o.point_cloud_visualizer
+        
+        if(pcv.uuid == ""):
+            return
+        if(not pcv.runtime):
+            return
+        if(pcv.uuid not in PCVManager.cache.keys()):
+            return
         
         # get cache item and set draw to False
         c = PCVManager.cache[pcv.uuid]
@@ -1942,8 +1928,16 @@ class PCVControl():
             if(area.type == 'VIEW_3D'):
                 area.tag_redraw()
     
-    def reset(self, o, ):
+    def reset(self):
+        o = self.o
         pcv = o.point_cloud_visualizer
+        
+        if(pcv.uuid == ""):
+            return
+        if(not pcv.runtime):
+            return
+        if(pcv.uuid not in PCVManager.cache.keys()):
+            return
         
         # mark for deletion cache
         c = PCVManager.cache[pcv.uuid]
