@@ -1285,11 +1285,13 @@ class PCVShaders():
         uniform mat4 object_matrix;
         uniform vec3 center;
         uniform float exposure;
+        uniform float point_size;
         out float f_depth;
         out float f_exposure;
         void main()
         {
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0);
+            gl_PointSize = point_size;
             vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
             vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
             f_depth = op.z - pp.z;
@@ -1299,10 +1301,49 @@ class PCVShaders():
     depth_fragment_shader = '''
         in float f_depth;
         in float f_exposure;
+        uniform float alpha_radius;
+        uniform float global_alpha;
         out vec4 fragColor;
         void main()
         {
-            fragColor = vec4(f_depth * f_exposure, f_depth * f_exposure, f_depth * f_exposure, 1.0);
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > alpha_radius){
+                discard;
+            }
+            fragColor = vec4(f_depth * f_exposure, f_depth * f_exposure, f_depth * f_exposure, global_alpha) * a;
+        }
+    '''
+    
+    selection_vertex_shader = '''
+        in vec3 position;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        
+        out vec4 f_color;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+        }
+    '''
+    selection_fragment_shader = '''
+        uniform vec4 color;
+        uniform float alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > alpha_radius){
+                discard;
+            }
+            fragColor = color * a;
         }
     '''
 
@@ -1609,6 +1650,7 @@ class PCVManager():
             shader.uniform_float("length", pcv.vertex_normals_size, )
             batch.draw(shader)
         
+        # in-development
         if(pcv.depth_enabled):
             vs = ci['vertices']
             l = ci['current_display_percent']
@@ -1618,13 +1660,30 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            
             cx = np.sum(vs[:, 0]) / len(vs)
             cy = np.sum(vs[:, 1]) / len(vs)
             cz = np.sum(vs[:, 2]) / len(vs)
             shader.uniform_float("center", (cx, cy, cz, ))
             shader.uniform_float("exposure", pcv.depth_exposure)
-            
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # in-development
+        if(pcv.selection_display):
+            vs = ci['vertices']
+            l = ci['current_display_percent']
+            shader = GPUShader(PCVShaders.selection_vertex_shader, PCVShaders.selection_fragment_shader, )
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("color", pcv.selection_color)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
             batch.draw(shader)
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
@@ -4486,7 +4545,7 @@ class PCV_PT_development(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
-    bl_label = "Hidden"
+    bl_label = "Development"
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -4504,15 +4563,27 @@ class PCV_PT_development(Panel):
                 return False
         return True
     
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
         c = sub.column()
+        
         b = c.box()
         b.label(text="Depth")
         b.prop(pcv, 'depth_enabled')
         b.prop(pcv, 'depth_exposure')
+        
+        b = c.box()
+        b.label(text="Selection")
+        b.prop(pcv, 'selection_display')
+        r = b.row()
+        r.prop(pcv, 'selection_color', text="", )
 
 
 class PCV_PT_debug(Panel):
@@ -4657,9 +4728,6 @@ class PCV_properties(PropertyGroup):
     shadow_intensity: FloatProperty(name="Shadow Intensity", description="Shadow intensity", default=0.2, min=0, max=1, subtype='FACTOR', )
     show_normals: BoolProperty(name="Colorize By Vertex Normals", description="", default=False, )
     
-    depth_enabled: BoolProperty(name="Depth", default=False, description="", )
-    depth_exposure: FloatProperty(name="Intensity", description="", default=1.0, min=0.0, max=100.0, )
-    
     mesh_type: EnumProperty(name="Type", items=[('VERTEX', "Vertex", ""),
                                                 ('TRIANGLE', "Equilateral Triangle", ""),
                                                 ('TETRAHEDRON', "Tetrahedron", ""),
@@ -4729,6 +4797,12 @@ class PCV_properties(PropertyGroup):
         #         bpy.utils.unregister_class(cls)
     
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
+    
+    # in-development properties
+    depth_enabled: BoolProperty(name="Depth", default=False, description="", )
+    depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
+    selection_display: BoolProperty(name="Selection", default=False, description="", )
+    selection_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
     
     @classmethod
     def register(cls):
