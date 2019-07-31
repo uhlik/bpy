@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 12),
+           "version": (0, 9, 13),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1189,6 +1189,7 @@ class PCVShaders():
             fragColor = col;
         }
     '''
+    
     vertex_shader_simple = '''
         in vec3 position;
         in vec4 color;
@@ -1224,22 +1225,57 @@ class PCVShaders():
             fragColor = f_color * a;
         }
     '''
-    # TODO: normal shader should draw lines by itself, should be much faster
-    vertex_shader_normals = '''
-        uniform mat4 perspective_matrix;
-        uniform mat4 object_matrix;
-        in vec3 position;
+    
+    normals_vertex_shader = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec3 normal;
+        
+        out vec3 vertex_normal;
+        
         void main()
         {
-            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            vertex_normal = normal;
+            gl_Position = vec4(position, 1.0);
         }
     '''
-    fragment_shader_normals = '''
-        uniform vec4 color;
-        out vec4 fragColor;
+    normals_fragment_shader = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 vertex_color;
+        
         void main()
         {
-            fragColor = color;
+            frag_color = vertex_color;
+        }
+    '''
+    normals_geometry_shader = '''
+        layout(points) in;
+        layout(line_strip, max_vertices = 2) out;
+        
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float length = 1.0;
+        uniform vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
+        
+        in vec3 vertex_normal[];
+        
+        out vec4 vertex_color;
+        
+        void main()
+        {
+            vec3 normal = vertex_normal[0];
+            
+            vertex_color = color;
+            
+            vec4 v0 = gl_in[0].gl_Position;
+            gl_Position = perspective_matrix * object_matrix * v0;
+            EmitVertex();
+            
+            vec4 v1 = v0 + vec4(normal * length, 0.0);
+            gl_Position = perspective_matrix * object_matrix * v1;
+            EmitVertex();
+            
+            EndPrimitive();
         }
     '''
 
@@ -1507,36 +1543,21 @@ class PCVManager():
         batch.draw(shader)
         
         if(pcv.vertex_normals and pcv.has_normals):
-            
-            def make_arrays(vs, ns, s, ):
-                l = len(vs)
-                coords = [None] * (l * 2)
-                indices = [None] * l
-                for i, v in enumerate(vs):
-                    n = Vector(ns[i])
-                    v = Vector(v)
-                    coords[i * 2 + 0] = v
-                    coords[i * 2 + 1] = v + (n.normalized() * s)
-                    indices[i] = (i * 2 + 0, i * 2 + 1, )
-                return coords, indices
-            
             def make(ci):
-                s = pcv.vertex_normals_size
                 l = ci['current_display_percent']
                 vs = ci['vertices'][:l]
                 ns = ci['normals'][:l]
-                coords, indices = make_arrays(vs, ns, s, )
-                # shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
-                shader = GPUShader(PCVShaders.vertex_shader_normals, PCVShaders.fragment_shader_normals)
-                batch = batch_for_shader(shader, 'LINES', {'position': coords}, indices=indices, )
+                
+                shader = GPUShader(PCVShaders.normals_vertex_shader, PCVShaders.normals_fragment_shader, geocode=PCVShaders.normals_geometry_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], }, )
+                
                 d = {'shader': shader,
                      'batch': batch,
-                     'coords': coords,
-                     'indices': indices,
-                     'current_display_percent': l,
-                     'size': s,
-                     'current_size': s, }
+                     'position': vs,
+                     'normal': ns,
+                     'current_display_percent': l, }
                 ci['vertex_normals'] = d
+                
                 return shader, batch
             
             if("vertex_normals" not in ci.keys()):
@@ -1548,8 +1569,6 @@ class PCVManager():
                 ok = True
                 if(ci['current_display_percent'] != d['current_display_percent']):
                     ok = False
-                if(d['current_size'] != pcv.vertex_normals_size):
-                    ok = False
                 if(not ok):
                     shader, batch = make(ci)
             
@@ -1557,12 +1576,10 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            
-            preferences = bpy.context.preferences
-            addon_prefs = preferences.addons[__name__].preferences
-            col = addon_prefs.normal_color[:]
-            col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            col = bpy.context.preferences.addons[__name__].preferences.normal_color[:]
+            col = tuple([c ** (1 / 2.2) for c in col]) + (pcv.vertex_normals_alpha, )
             shader.uniform_float("color", col, )
+            shader.uniform_float("length", pcv.vertex_normals_size, )
             batch.draw(shader)
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
@@ -4539,6 +4556,7 @@ class PCV_properties(PropertyGroup):
     
     vertex_normals: BoolProperty(name="Normals", description="Draw normals of points", default=False, )
     vertex_normals_size: FloatProperty(name="Length", description="Length of point normal line", default=0.01, min=0.00001, max=1.0, soft_min=0.001, soft_max=0.2, step=1, precision=3, )
+    vertex_normals_alpha: FloatProperty(name="Alpha", description="Alpha of point normal line", default=0.5, min=0.0, max=1.0, soft_min=0.0, soft_max=1.0, step=1, precision=3, )
     
     render_point_size: IntProperty(name="Size", default=3, min=1, max=100, subtype='PIXEL', description="Point size", )
     render_display_percent: FloatProperty(name="Count", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of points rendered", )
