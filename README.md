@@ -180,6 +180,44 @@ Export current point cloud as binary ply file with several options. If exporting
 * `Apply Transformation` - Apply parent object transformation to points
 * `Convert Axes` - Convert from blender (y forward, z up) to forward -z, up y axes
 
+### Sequence
+
+Load sequence of ply files to play in viewport. Load first frame as regular file and when `Preload Sequence` is clicked it tries to load all ply files matching selected ply filename, e.g. you select `sequence-001.ply` and all `sequence-###.ply` will be loaded from directory. Only last number in filename is considered. Numbers should start at 1. All other features works when animation is not playing, but all changes are lost when you change frame to another.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.14-sequence.png)
+
+* `Preload Sequence` - Load all matching ply files
+* `Cycle Forever` - Cycle frames if timeline is longer than number of loaded frames
+* `Clear Sequence` - Clear all loaded and return object to regular state i.e. you can load another ply, changes are kept etc.
+
+### External API
+
+To display point cloud data from other addons/custom scripts.
+
+```python
+import bpy
+import numpy as np
+from view3d_point_cloud_visualizer import PCVControl
+o = bpy.context.active_object
+c = PCVControl(o)
+n = 100
+vs = np.random.normal(0, 2, (n, 3))
+ns = np.array([[0.0, 0.0, 1.0]] * n)
+cs = np.random.random((n, 3))
+# draw points
+c.draw(vs, ns, cs)
+# if some data like normals/colors are not available
+c.draw(vs, None, None)
+c.draw(vs, [], [])
+c.draw(vs)
+# it is also possible to pass nothing in which case nothing is drawn
+c.draw()
+# to stop any drawing
+c.erase()
+# to return object control to user
+c.reset()
+```
+
 ### Addon Preferences:
 
 * `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing

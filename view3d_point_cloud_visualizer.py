@@ -4516,7 +4516,7 @@ class PCV_PT_sequence(Panel):
         
         c = l.column()
         
-        c.label(text='Experimental', icon='ERROR', )
+        # c.label(text='Experimental', icon='ERROR', )
         
         c.operator('point_cloud_visualizer.sequence_preload')
         if(pcv.uuid in PCVSequence.cache.keys()):
