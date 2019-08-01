@@ -55,6 +55,7 @@ from mathutils.kdtree import KDTree
 
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
+
 DEBUG = False
 
 
@@ -1682,18 +1683,49 @@ class PCVManager():
         
         # in-development
         if(pcv.dev_depth_enabled):
+            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            
+            # if(DEBUG):
+            #     import cProfile
+            #     import pstats
+            #     import io
+            #     pr = cProfile.Profile()
+            #     pr.enable()
+            
             vs = ci['vertices']
             l = ci['current_display_percent']
-            shader = GPUShader(PCVShaders.depth_vertex_shader, PCVShaders.depth_fragment_shader, )
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'DEPTH'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.depth_vertex_shader, PCVShaders.depth_fragment_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['DEPTH'] = d
+            
             shader.bind()
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
+            
+            # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
             cx = np.sum(vs[:, 0]) / len(vs)
             cy = np.sum(vs[:, 1]) / len(vs)
             cz = np.sum(vs[:, 2]) / len(vs)
-            
             _, _, s = o.matrix_world.decompose()
             l = s.length
             maxd = abs(np.max(vs))
@@ -1709,14 +1741,47 @@ class PCVManager():
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
+            
+            # if(DEBUG):
+            #     pr.disable()
+            #     s = io.StringIO()
+            #     sortby = 'cumulative'
+            #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            #     ps.print_stats()
+            #     print(s.getvalue())
         
         # in-development
         if(pcv.dev_normal_colors_enabled):
+            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            
             vs = ci['vertices']
             ns = ci['normals']
             l = ci['current_display_percent']
-            shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
-            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'NORMAL'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['NORMAL'] = d
+            
+            # shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
+            # batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
             shader.bind()
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
@@ -1727,7 +1792,7 @@ class PCVManager():
             batch.draw(shader)
         
         # in-development
-        if(pcv.dev_selection_display):
+        if(pcv.dev_selection_shader_display):
             vs = ci['vertices']
             l = ci['current_display_percent']
             shader = GPUShader(PCVShaders.selection_vertex_shader, PCVShaders.selection_fragment_shader, )
@@ -1736,7 +1801,7 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("color", pcv.dev_selection_color)
+            shader.uniform_float("color", pcv.dev_selection_shader_color)
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
@@ -4408,7 +4473,7 @@ class PCV_PT_filter_simplify(Panel):
     bl_category = "View"
     bl_label = "Simplify"
     bl_parent_id = "PCV_PT_filter"
-    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -4441,7 +4506,7 @@ class PCV_PT_filter_project(Panel):
     bl_category = "View"
     bl_label = "Project"
     bl_parent_id = "PCV_PT_filter"
-    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -4485,7 +4550,7 @@ class PCV_PT_filter_remove_color(Panel):
     bl_category = "View"
     bl_label = "Remove Color"
     bl_parent_id = "PCV_PT_filter"
-    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -4537,7 +4602,7 @@ class PCV_PT_filter_merge(Panel):
     bl_category = "View"
     bl_label = "Merge"
     bl_parent_id = "PCV_PT_filter"
-    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
@@ -4718,14 +4783,14 @@ class PCV_PT_development(Panel):
         b.prop(pcv, 'dev_depth_exposure')
         
         b = c.box()
-        b.label(text="Selection")
-        b.prop(pcv, 'dev_selection_display')
-        r = b.row()
-        r.prop(pcv, 'dev_selection_color', text="", )
-        
-        b = c.box()
         b.label(text="Normals")
         b.prop(pcv, 'dev_normal_colors_enabled')
+        
+        b = c.box()
+        b.label(text="Selection")
+        b.prop(pcv, 'dev_selection_shader_display')
+        r = b.row()
+        r.prop(pcv, 'dev_selection_shader_color', text="", )
 
 
 class PCV_PT_debug(Panel):
@@ -4944,8 +5009,8 @@ class PCV_properties(PropertyGroup):
     # in-development properties
     dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
     dev_depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
-    dev_selection_display: BoolProperty(name="Selection", default=False, description="", )
-    dev_selection_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
+    dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
+    dev_selection_shader_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
     dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
     
     @classmethod
