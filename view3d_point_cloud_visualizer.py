@@ -1286,6 +1286,7 @@ class PCVShaders():
         uniform vec3 center;
         uniform float exposure;
         uniform float point_size;
+        uniform float maxdist;
         out float f_depth;
         out float f_exposure;
         void main()
@@ -1294,7 +1295,8 @@ class PCVShaders():
             gl_PointSize = point_size;
             vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
             vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
-            f_depth = op.z - pp.z;
+            float d = op.z - pp.z;
+            f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
             f_exposure = exposure;
         }
     '''
@@ -1322,8 +1324,6 @@ class PCVShaders():
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
         uniform float point_size;
-        
-        out vec4 f_color;
         void main()
         {
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
@@ -1344,6 +1344,40 @@ class PCVShaders():
                 discard;
             }
             fragColor = color * a;
+        }
+    '''
+    
+    normal_colors_vertex_shader = '''
+        in vec3 position;
+        in vec3 normal;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        out vec3 f_color;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = normal * 0.5 + 0.5;
+            // f_color = normal;
+        }
+    '''
+    normal_colors_fragment_shader = '''
+        // uniform vec4 color;
+        in vec3 f_color;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > alpha_radius){
+                discard;
+            }
+            fragColor = vec4(f_color, global_alpha) * a;
         }
     '''
 
@@ -1663,8 +1697,34 @@ class PCVManager():
             cx = np.sum(vs[:, 0]) / len(vs)
             cy = np.sum(vs[:, 1]) / len(vs)
             cz = np.sum(vs[:, 2]) / len(vs)
+            
+            _, _, s = o.matrix_world.decompose()
+            l = s.length
+            maxd = abs(np.max(vs))
+            mind = abs(np.min(vs))
+            maxdist = maxd
+            if(mind > maxd):
+                maxdist = mind
+            shader.uniform_float("maxdist", float(maxdist) * l)
+            
             shader.uniform_float("center", (cx, cy, cz, ))
             shader.uniform_float("exposure", pcv.depth_exposure)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # in-development
+        if(pcv.normal_colors_enabled):
+            vs = ci['vertices']
+            ns = ci['normals']
+            l = ci['current_display_percent']
+            shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
@@ -4584,6 +4644,10 @@ class PCV_PT_development(Panel):
         b.prop(pcv, 'selection_display')
         r = b.row()
         r.prop(pcv, 'selection_color', text="", )
+        
+        b = c.box()
+        b.label(text="Normals")
+        b.prop(pcv, 'normal_colors_enabled')
 
 
 class PCV_PT_debug(Panel):
@@ -4803,6 +4867,7 @@ class PCV_properties(PropertyGroup):
     depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
     selection_display: BoolProperty(name="Selection", default=False, description="", )
     selection_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
+    normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
     
     @classmethod
     def register(cls):
