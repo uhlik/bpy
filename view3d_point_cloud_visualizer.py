@@ -3531,6 +3531,36 @@ class PCV_OT_filter_remove_color(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_filter_remove_color_deselect(Operator):
+    bl_idname = "point_cloud_visualizer.filter_remove_color_deselect"
+    bl_label = "Deselect"
+    bl_description = "Deselect points"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        if(pcv.filter_remove_color_selection):
+                            if('selection_indexes' in v.keys()):
+                                ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        
+        pcv.filter_remove_color_selection = False
+        del c['selection_indexes']
+        
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
+
+
 class PCV_OT_filter_remove_color_delete_selected(Operator):
     bl_idname = "point_cloud_visualizer.filter_remove_color_delete_selected"
     bl_label = "Delete Selected"
@@ -4590,7 +4620,9 @@ class PCV_PT_filter_remove_color(Panel):
         cc.active = pcv.filter_remove_color_delta_value_use
         
         cc = c.column(align=True)
-        cc.operator('point_cloud_visualizer.filter_remove_color')
+        r = cc.row(align=True)
+        r.operator('point_cloud_visualizer.filter_remove_color')
+        r.operator('point_cloud_visualizer.filter_remove_color_deselect', text="", icon='X', )
         cc.operator('point_cloud_visualizer.filter_remove_color_delete_selected')
         
         c.enabled = PCV_OT_filter_remove_color.poll(context)
@@ -5079,6 +5111,7 @@ classes = (
     PCV_OT_filter_simplify,
     PCV_OT_filter_remove_color,
     PCV_OT_filter_remove_color_delete_selected,
+    PCV_OT_filter_remove_color_deselect,
     PCV_OT_filter_project,
     PCV_OT_edit_start,
     PCV_OT_edit_update,
