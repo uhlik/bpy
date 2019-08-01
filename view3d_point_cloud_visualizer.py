@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 14),
+           "version": (0, 9, 15),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1685,7 +1685,7 @@ class PCVManager():
             batch.draw(shader)
         
         # in-development
-        if(pcv.depth_enabled):
+        if(pcv.dev_depth_enabled):
             vs = ci['vertices']
             l = ci['current_display_percent']
             shader = GPUShader(PCVShaders.depth_vertex_shader, PCVShaders.depth_fragment_shader, )
@@ -1708,14 +1708,14 @@ class PCVManager():
             shader.uniform_float("maxdist", float(maxdist) * l)
             
             shader.uniform_float("center", (cx, cy, cz, ))
-            shader.uniform_float("exposure", pcv.depth_exposure)
+            shader.uniform_float("exposure", pcv.dev_depth_exposure)
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
         # in-development
-        if(pcv.normal_colors_enabled):
+        if(pcv.dev_normal_colors_enabled):
             vs = ci['vertices']
             ns = ci['normals']
             l = ci['current_display_percent']
@@ -1731,7 +1731,7 @@ class PCVManager():
             batch.draw(shader)
         
         # in-development
-        if(pcv.selection_display):
+        if(pcv.dev_selection_display):
             vs = ci['vertices']
             l = ci['current_display_percent']
             shader = GPUShader(PCVShaders.selection_vertex_shader, PCVShaders.selection_fragment_shader, )
@@ -1740,7 +1740,36 @@ class PCVManager():
             pm = bpy.context.region_data.perspective_matrix
             shader.uniform_float("perspective_matrix", pm)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("color", pcv.selection_color)
+            shader.uniform_float("color", pcv.dev_selection_color)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
+            batch.draw(shader)
+        
+        # and now back to some production stuff..
+        
+        # draw selection as a last step bucause i clear depth buffer for it
+        if(pcv.filter_remove_color_selection):
+            if('selection_indexes' not in ci):
+                return
+            vs = ci['vertices']
+            indexes = ci['selection_indexes']
+            try:
+                # if it works, leave it..
+                vs = np.take(vs, indexes, axis=0, )
+            except IndexError:
+                # something has changed.. some other edit hapended, selection is invalid, reset it all..
+                pcv.filter_remove_color_selection = False
+                del ci['selection_indexes']
+            
+            shader = GPUShader(PCVShaders.selection_vertex_shader, PCVShaders.selection_fragment_shader, )
+            batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], })
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            sc = bpy.context.preferences.addons[__name__].preferences.selection_color[:]
+            shader.uniform_float("color", sc)
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
@@ -3291,8 +3320,8 @@ class PCV_OT_filter_project(Operator):
 
 class PCV_OT_filter_remove_color(Operator):
     bl_idname = "point_cloud_visualizer.filter_remove_color"
-    bl_label = "Remove Color"
-    bl_description = "Remove points with exact/similar color"
+    bl_label = "Select Color"
+    bl_description = "Select points with exact/similar color"
     
     @classmethod
     def poll(cls, context):
@@ -3404,25 +3433,74 @@ class PCV_OT_filter_remove_color(Operator):
             if(a):
                 indexes.append(p['index'])
         
-        log("removed: {} points".format(len(indexes)), 1)
+        # log("removed: {} points".format(len(indexes)), 1)
+        #
+        # # delete marked points
+        # points = np.delete(points, indexes)
+        #
+        # # split back
+        # vs = np.column_stack((points['x'], points['y'], points['z'], ))
+        # ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+        # cs = np.column_stack((points['red'], points['green'], points['blue'], points['alpha'], ))
+        # vs = vs.astype(np.float32)
+        # ns = ns.astype(np.float32)
+        # cs = cs.astype(np.float32)
+        #
+        # # put to cache
+        # pcv = context.object.point_cloud_visualizer
+        # PCVManager.update(pcv.uuid, vs, ns, cs, )
         
-        # delete marked points
-        points = np.delete(points, indexes)
+        log("selected: {} points".format(len(indexes)), 1)
         
-        # split back
-        vs = np.column_stack((points['x'], points['y'], points['z'], ))
-        ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
-        cs = np.column_stack((points['red'], points['green'], points['blue'], points['alpha'], ))
-        vs = vs.astype(np.float32)
-        ns = ns.astype(np.float32)
-        cs = cs.astype(np.float32)
+        if(len(indexes) == 0):
+            # self.report({'ERROR'}, "Nothing selected.")
+            self.report({'INFO'}, "Nothing selected.")
+        else:
+            pcv.filter_remove_color_selection = True
+            c = PCVManager.cache[pcv.uuid]
+            c['selection_indexes'] = indexes
         
-        # put to cache
-        pcv = context.object.point_cloud_visualizer
-        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        context.area.tag_redraw()
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_filter_remove_color_delete_selected(Operator):
+    bl_idname = "point_cloud_visualizer.filter_remove_color_delete_selected"
+    bl_label = "Delete Selected"
+    bl_description = "Remove selected points"
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        if(pcv.filter_remove_color_selection):
+                            if('selection_indexes' in v.keys()):
+                                ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        indexes = c['selection_indexes']
+        vs = np.delete(vs, indexes, axis=0, )
+        ns = np.delete(ns, indexes, axis=0, )
+        cs = np.delete(cs, indexes, axis=0, )
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        pcv.filter_remove_color_selection = False
+        del c['selection_indexes']
         
         return {'FINISHED'}
 
@@ -4448,7 +4526,9 @@ class PCV_PT_filter_remove_color(Panel):
         cc.prop(pcv, 'filter_remove_color_delta_value')
         cc.active = pcv.filter_remove_color_delta_value_use
         
-        c.operator('point_cloud_visualizer.filter_remove_color')
+        cc = c.column(align=True)
+        cc.operator('point_cloud_visualizer.filter_remove_color')
+        cc.operator('point_cloud_visualizer.filter_remove_color_delete_selected')
         
         c.enabled = PCV_OT_filter_remove_color.poll(context)
 
@@ -4636,18 +4716,18 @@ class PCV_PT_development(Panel):
         
         b = c.box()
         b.label(text="Depth")
-        b.prop(pcv, 'depth_enabled')
-        b.prop(pcv, 'depth_exposure')
+        b.prop(pcv, 'dev_depth_enabled')
+        b.prop(pcv, 'dev_depth_exposure')
         
         b = c.box()
         b.label(text="Selection")
-        b.prop(pcv, 'selection_display')
+        b.prop(pcv, 'dev_selection_display')
         r = b.row()
-        r.prop(pcv, 'selection_color', text="", )
+        r.prop(pcv, 'dev_selection_color', text="", )
         
         b = c.box()
         b.label(text="Normals")
-        b.prop(pcv, 'normal_colors_enabled')
+        b.prop(pcv, 'dev_normal_colors_enabled')
 
 
 class PCV_PT_debug(Panel):
@@ -4821,6 +4901,7 @@ class PCV_properties(PropertyGroup):
     filter_remove_color_delta_saturation_use: BoolProperty(name="Use Δ Saturation", description="", default=True, )
     filter_remove_color_delta_value: FloatProperty(name="Δ Value", default=0.1, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="", )
     filter_remove_color_delta_value_use: BoolProperty(name="Use Δ Value", description="", default=True, )
+    filter_remove_color_selection: BoolProperty(default=False, options={'HIDDEN', }, )
     
     def _project_positive_radio_update(self, context):
         if(not self.filter_project_negative and not self.filter_project_positive):
@@ -4863,11 +4944,11 @@ class PCV_properties(PropertyGroup):
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
     
     # in-development properties
-    depth_enabled: BoolProperty(name="Depth", default=False, description="", )
-    depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
-    selection_display: BoolProperty(name="Selection", default=False, description="", )
-    selection_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
-    normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
+    dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
+    dev_depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
+    dev_selection_display: BoolProperty(name="Selection", default=False, description="", )
+    dev_selection_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
+    dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
     
     @classmethod
     def register(cls):
@@ -4883,6 +4964,7 @@ class PCV_preferences(AddonPreferences):
     
     default_vertex_color: FloatVectorProperty(name="Default Color", default=(0.65, 0.65, 0.65, ), min=0, max=1, subtype='COLOR', size=3, description="Default color to be used upon loading PLY to cache when vertex colors are missing", )
     normal_color: FloatVectorProperty(name="Normal Color", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals", )
+    selection_color: FloatVectorProperty(name="Selection Color", description="Display color for selection", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
     convert_16bit_colors: BoolProperty(name="Convert 16bit Colors", description="Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype", default=True, )
     gamma_correct_16bit_colors: BoolProperty(name="Gamma Correct 16bit Colors", description="When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'", default=False, )
     shuffle_points: BoolProperty(name="Shuffle Points", description="Shuffle points upon loading, display percentage is more useable if points are shuffled", default=True, )
@@ -4892,6 +4974,7 @@ class PCV_preferences(AddonPreferences):
         r = l.row()
         r.prop(self, "default_vertex_color")
         r.prop(self, "normal_color")
+        r.prop(self, "selection_color")
         r = l.row()
         r.prop(self, "shuffle_points")
         r.prop(self, "convert_16bit_colors")
@@ -4932,6 +5015,7 @@ classes = (
     PCV_OT_export,
     PCV_OT_filter_simplify,
     PCV_OT_filter_remove_color,
+    PCV_OT_filter_remove_color_delete_selected,
     PCV_OT_filter_project,
     PCV_OT_edit_start,
     PCV_OT_edit_update,

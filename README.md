@@ -228,6 +228,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.15 selection preview for remove color filter
 * 0.9.14 external api improvements
 * 0.9.13 faster normals drawing
 * 0.9.12 ply sequence, external api
