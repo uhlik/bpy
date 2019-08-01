@@ -54,16 +54,7 @@ from bpy_extras.io_utils import axis_conversion, ExportHelper
 from mathutils.kdtree import KDTree
 
 
-# FIXME undo still doesn't work in some cases, from what i've seen, only when i am undoing operations on parent object, especially when you undo/redo e.g. transforms around load/draw operators, filepath property gets reset and the whole thing is drawn, but ui looks like loding never happened, i've added a quick fix storing path in cache, but it all depends on object name and this is bad.
-# FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
-# FIXME checking for normals/colors in points is kinda scattered all over
-# TODO better docs, some gifs would be the best, i personally hate watching video tutorials when i need just sigle bit of information buried in 10+ minutes video, what a waste of time
-# TODO try to remove manual depth test during offscreen rendering
-# NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
-# NOTE ~2k lines, maybe time to break into modules, but having sigle file is not a bad thing.. update: >3k now and having a sigle file is still better.. 4k+ now :)
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
-
-
 DEBUG = False
 
 
@@ -1397,6 +1388,7 @@ class PCVManager():
         log('load data..')
         _t = time.time()
         
+        # FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
         points = []
         try:
             # points = BinPlyPointCloudReader(filepath).points
@@ -1431,6 +1423,8 @@ class PCVManager():
             # this is very unlikely..
             operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
             return False
+        
+        # FIXME checking for normals/colors in points is kinda scattered all over.. chceck should be upon loading / setting from external script
         normals = True
         if(not set(('nx', 'ny', 'nz')).issubset(points.dtype.names)):
             normals = False
@@ -1563,6 +1557,8 @@ class PCVManager():
         try:
             pcv = o.point_cloud_visualizer
         except ReferenceError:
+            # FIXME undo still doesn't work in some cases, from what i've seen, only when i am undoing operations on parent object, especially when you undo/redo e.g. transforms around load/draw operators, filepath property gets reset and the whole thing is drawn, but ui looks like loding never happened, i've added a quick fix storing path in cache, but it all depends on object name and this is bad.
+            # NOTE parent object reference check should be before drawing, not in the middle, it's not that bad, it's pretty early, but it's still messy, this will require rewrite of handler and render functions in manager.. so don't touch until broken
             log("PCVManager.render: ReferenceError (possibly after undo/redo?)")
             # blender on undo/redo swaps whole scene to different one stored in memory and therefore stored object references are no longer valid
             # so find object with the same name, not the best solution, but lets see how it goes..
@@ -2465,6 +2461,8 @@ class PCV_OT_render(Operator):
             vs = vs[:l]
             cs = cs[:l]
             ns = ns[:l]
+            
+            # TODO try to remove manual depth test during offscreen rendering
             
             # sort by depth
             mw = o.matrix_world
