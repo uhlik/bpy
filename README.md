@@ -112,7 +112,9 @@ Remove points with exact/similar color as chosen in color picker (Eyedropper wor
 * `Δ Hue` - Delta hue
 * `Δ Saturation` - Delta saturation
 * `Δ Value` - Delta value
-* `Remove Color` - run operator
+* `Select Color` - Run operator and display selected points in viewport for review
+* `X` - Deselect
+* `Delete Selected` - Delete selected points
 
 ##### Merge
 
