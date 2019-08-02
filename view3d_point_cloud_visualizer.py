@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 15),
+           "version": (0, 9, 16),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -3935,6 +3935,361 @@ class PCV_OT_filter_merge(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_filter_boolean_intersect(Operator):
+    bl_idname = "point_cloud_visualizer.filter_boolean_intersect"
+    bl_label = "Intersect"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        # ok = True
+                        if(pcv.filter_boolean_object != ''):
+                            o = bpy.data.objects.get(pcv.filter_boolean_object)
+                            if(o is not None):
+                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                    ok = True
+        return ok
+    
+    def execute(self, context):
+        log("Intersect:", 0)
+        _t = time.time()
+        
+        pcv = context.object.point_cloud_visualizer
+        o = bpy.data.objects.get(pcv.filter_boolean_object)
+        if(o is None):
+            raise Exception()
+        
+        def apply_matrix(vs, ns, matrix, ):
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            dtv = vs.dtype
+            dtn = ns.dtype
+            rvs = np.zeros(vs.shape, dtv)
+            rns = np.zeros(ns.shape, dtn)
+            for i in range(len(vs)):
+                co = matrix @ Vector(vs[i])
+                no = matrot @ Vector(ns[i])
+                rvs[i] = np.array(co.to_tuple(), dtv)
+                rns[i] = np.array(no.to_tuple(), dtn)
+            return rvs, rns
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        # apply parent matrix to points
+        m = c['object'].matrix_world.copy()
+        vs, ns = apply_matrix(vs, ns, m)
+        
+        sc = context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        # make target
+        tmp_mesh = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        target_mesh = tmp_mesh.copy()
+        target_mesh.name = 'target_mesh_{}'.format(pcv.uuid)
+        target_mesh.transform(o.matrix_world.copy())
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
+        collection.objects.link(target)
+        # still no idea, have to read about it..
+        depsgraph.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        # v1 raycasting in three axes and counting hits
+        def is_point_inside_mesh_v1(p, o, ):
+            axes = [Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0)), ]
+            r = False
+            for a in axes:
+                v = p
+                c = 0
+                while True:
+                    _, l, n, i = o.ray_cast(v, v + a * 10000.0)
+                    if(i == -1):
+                        break
+                    c += 1
+                    v = l + a * 0.00001
+                if(c % 2 == 0):
+                    r = True
+                    break
+            return not r
+        
+        # v2 raycasting and counting hits
+        def is_point_inside_mesh_v2(p, o, shift=0.000001, search_distance=10000.0, ):
+            p = Vector(p)
+            path = []
+            hits = 0
+            direction = Vector((0.0, 0.0, 1.0))
+            opposite_direction = direction.copy()
+            opposite_direction.negate()
+            path.append(p)
+            loc = p
+            ok = True
+            
+            def shift_vector(co, no, v):
+                return co + (no.normalized() * v)
+            
+            while(ok):
+                end = shift_vector(loc, direction, search_distance)
+                loc = shift_vector(loc, direction, shift)
+                _, loc, nor, ind = o.ray_cast(loc, end)
+                if(ind != -1):
+                    a = shift_vector(loc, opposite_direction, shift)
+                    path.append(a)
+                    hits += 1
+                else:
+                    ok = False
+            if(hits % 2 == 1):
+                return True
+            return False
+        
+        # v3 closest point on mesh normal checking
+        def is_point_inside_mesh_v3(p, o, ):
+            _, loc, nor, ind = o.closest_point_on_mesh(p)
+            if(ind != -1):
+                v = loc - p
+                d = v.dot(nor)
+                if(d >= 0):
+                    return True
+            return False
+        
+        # if(DEBUG):
+        #     import cProfile
+        #     import pstats
+        #     import io
+        #     pr = cProfile.Profile()
+        #     pr.enable()
+        
+        indexes = []
+        prgs = Progress(len(vs), indent=1, prefix="> ")
+        for i, v in enumerate(vs):
+            prgs.step()
+            vv = Vector(v)
+            '''
+            inside1 = is_point_inside_mesh_v1(vv, target, )
+            inside2 = is_point_inside_mesh_v2(vv, target, )
+            inside3 = is_point_inside_mesh_v3(vv, target, )
+            # intersect
+            if(not inside1 and not inside2 and not inside3):
+                indexes.append(i)
+            # # exclude
+            # if(inside1 and inside2 and inside3):
+            #     indexes.append(i)
+            '''
+            inside3 = is_point_inside_mesh_v3(vv, target, )
+            if(not inside3):
+                indexes.append(i)
+        
+        # if(DEBUG):
+        #     pr.disable()
+        #     s = io.StringIO()
+        #     sortby = 'cumulative'
+        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        #     ps.print_stats()
+        #     print(s.getvalue())
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        vs = np.delete(vs, indexes, axis=0, )
+        ns = np.delete(ns, indexes, axis=0, )
+        cs = np.delete(cs, indexes, axis=0, )
+        
+        log("removed: {} points".format(len(indexes)), 1)
+        
+        # cleanup
+        collection.objects.unlink(target)
+        bpy.data.objects.remove(target)
+        bpy.data.meshes.remove(target_mesh)
+        o.to_mesh_clear()
+        
+        # put to cache..
+        pcv = context.object.point_cloud_visualizer
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_filter_boolean_exclude(Operator):
+    bl_idname = "point_cloud_visualizer.filter_boolean_exclude"
+    bl_label = "Exclude"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        # ok = True
+                        if(pcv.filter_boolean_object != ''):
+                            o = bpy.data.objects.get(pcv.filter_boolean_object)
+                            if(o is not None):
+                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                    ok = True
+        return ok
+    
+    def execute(self, context):
+        log("Exclude:", 0)
+        _t = time.time()
+        
+        pcv = context.object.point_cloud_visualizer
+        o = bpy.data.objects.get(pcv.filter_boolean_object)
+        if(o is None):
+            raise Exception()
+        
+        def apply_matrix(vs, ns, matrix, ):
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            dtv = vs.dtype
+            dtn = ns.dtype
+            rvs = np.zeros(vs.shape, dtv)
+            rns = np.zeros(ns.shape, dtn)
+            for i in range(len(vs)):
+                co = matrix @ Vector(vs[i])
+                no = matrot @ Vector(ns[i])
+                rvs[i] = np.array(co.to_tuple(), dtv)
+                rns[i] = np.array(no.to_tuple(), dtn)
+            return rvs, rns
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        # apply parent matrix to points
+        m = c['object'].matrix_world.copy()
+        vs, ns = apply_matrix(vs, ns, m)
+        
+        sc = context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        # make target
+        tmp_mesh = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        target_mesh = tmp_mesh.copy()
+        target_mesh.name = 'target_mesh_{}'.format(pcv.uuid)
+        target_mesh.transform(o.matrix_world.copy())
+        view_layer = context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
+        collection.objects.link(target)
+        # still no idea, have to read about it..
+        depsgraph.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        # v1 raycasting in three axes and counting hits
+        def is_point_inside_mesh_v1(p, o, ):
+            axes = [Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0)), ]
+            r = False
+            for a in axes:
+                v = p
+                c = 0
+                while True:
+                    _, l, n, i = o.ray_cast(v, v + a * 10000.0)
+                    if(i == -1):
+                        break
+                    c += 1
+                    v = l + a * 0.00001
+                if(c % 2 == 0):
+                    r = True
+                    break
+            return not r
+        
+        # v2 raycasting and counting hits
+        def is_point_inside_mesh_v2(p, o, shift=0.000001, search_distance=10000.0, ):
+            p = Vector(p)
+            path = []
+            hits = 0
+            direction = Vector((0.0, 0.0, 1.0))
+            opposite_direction = direction.copy()
+            opposite_direction.negate()
+            path.append(p)
+            loc = p
+            ok = True
+            
+            def shift_vector(co, no, v):
+                return co + (no.normalized() * v)
+            
+            while(ok):
+                end = shift_vector(loc, direction, search_distance)
+                loc = shift_vector(loc, direction, shift)
+                _, loc, nor, ind = o.ray_cast(loc, end)
+                if(ind != -1):
+                    a = shift_vector(loc, opposite_direction, shift)
+                    path.append(a)
+                    hits += 1
+                else:
+                    ok = False
+            if(hits % 2 == 1):
+                return True
+            return False
+        
+        # v3 closest point on mesh normal checking
+        def is_point_inside_mesh_v3(p, o, ):
+            _, loc, nor, ind = o.closest_point_on_mesh(p)
+            if(ind != -1):
+                v = loc - p
+                d = v.dot(nor)
+                if(d >= 0):
+                    return True
+            return False
+        
+        indexes = []
+        prgs = Progress(len(vs), indent=1, prefix="> ")
+        for i, v in enumerate(vs):
+            prgs.step()
+            vv = Vector(v)
+            '''
+            inside1 = is_point_inside_mesh_v1(vv, target, )
+            inside2 = is_point_inside_mesh_v2(vv, target, )
+            inside3 = is_point_inside_mesh_v3(vv, target, )
+            # # intersect
+            # if(not inside1 and not inside2 and not inside3):
+            #     indexes.append(i)
+            # exclude
+            if(inside1 and inside2 and inside3):
+                indexes.append(i)
+            '''
+            inside3 = is_point_inside_mesh_v3(vv, target, )
+            if(inside3):
+                indexes.append(i)
+        
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        vs = np.delete(vs, indexes, axis=0, )
+        ns = np.delete(ns, indexes, axis=0, )
+        cs = np.delete(cs, indexes, axis=0, )
+        
+        log("removed: {} points".format(len(indexes)), 1)
+        
+        # cleanup
+        collection.objects.unlink(target)
+        bpy.data.objects.remove(target)
+        bpy.data.meshes.remove(target_mesh)
+        o.to_mesh_clear()
+        
+        # put to cache..
+        pcv = context.object.point_cloud_visualizer
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
 class PCV_OT_reload(Operator):
     bl_idname = "point_cloud_visualizer.reload"
     bl_label = "Reload"
@@ -4657,6 +5012,37 @@ class PCV_PT_filter_merge(Panel):
         c.enabled = PCV_OT_filter_merge.poll(context)
 
 
+class PCV_PT_filter_boolean(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Boolean"
+    bl_parent_id = "PCV_PT_filter"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        c.prop_search(pcv, 'filter_boolean_object', context.scene, 'objects')
+        c.operator('point_cloud_visualizer.filter_boolean_intersect')
+        c.operator('point_cloud_visualizer.filter_boolean_exclude')
+        
+        c.enabled = PCV_OT_filter_merge.poll(context)
+
+
 class PCV_PT_edit(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -5013,6 +5399,8 @@ class PCV_properties(PropertyGroup):
     filter_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
     filter_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     
+    filter_boolean_object: StringProperty(name="Object", default="", )
+    
     edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
@@ -5093,6 +5481,7 @@ classes = (
     PCV_PT_filter,
     PCV_PT_filter_simplify,
     PCV_PT_filter_project,
+    PCV_PT_filter_boolean,
     PCV_PT_filter_remove_color,
     PCV_PT_filter_merge,
     PCV_PT_render,
@@ -5113,11 +5502,13 @@ classes = (
     PCV_OT_filter_remove_color_delete_selected,
     PCV_OT_filter_remove_color_deselect,
     PCV_OT_filter_project,
+    PCV_OT_filter_merge,
+    PCV_OT_filter_boolean_intersect,
+    PCV_OT_filter_boolean_exclude,
     PCV_OT_edit_start,
     PCV_OT_edit_update,
     PCV_OT_edit_end,
     PCV_OT_edit_cancel,
-    PCV_OT_filter_merge,
     PCV_OT_sequence_preload,
     PCV_OT_sequence_clear,
     

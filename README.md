@@ -38,7 +38,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.16.png)
 
 ##### Basic Usage:
 
@@ -83,7 +83,7 @@ Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper 
 
 Filter current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.11-filter.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.16-filter.png)
 
 ##### Simplify
 
@@ -103,6 +103,14 @@ Project points on mesh (or object convertible to mesh) surface. Projects point a
 * `Negative` - Search along point normal backwards
 * `Discard Unprojectable` - Discard points which didn't hit anything
 * `Shift` - Shift points after projection above (positive value) or below (negative value) surface
+
+##### Boolean
+
+Intersect or Exclude points with mesh object. Mesh have to be non-manifold.
+
+* `Object` - Mesh or object convertible to mesh
+* `Intersect` - Keep points inside mesh, remove points outside
+* `Exclude` - Keep points outside mesh, remove points intside
 
 ##### Remove Color
 
@@ -230,6 +238,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.16 boolean filters
 * 0.9.15 selection preview for remove color filter
 * 0.9.14 external api improvements
 * 0.9.13 faster normals drawing
