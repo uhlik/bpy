@@ -110,7 +110,7 @@ Intersect or Exclude points with mesh object. Mesh have to be non-manifold.
 
 * `Object` - Mesh or object convertible to mesh
 * `Intersect` - Keep points inside mesh, remove points outside
-* `Exclude` - Keep points outside mesh, remove points intside
+* `Exclude` - Keep points outside mesh, remove points inside
 
 ##### Remove Color
 
