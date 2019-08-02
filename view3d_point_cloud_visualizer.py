@@ -5427,6 +5427,7 @@ class PCV_properties(PropertyGroup):
     debug: BoolProperty(default=DEBUG, options={'HIDDEN', }, update=_debug_update, )
     
     # in-development properties
+    # TODO: do some extra panel for extra shaders and rewrite PCVManager.render to draw only what is needed
     dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
     dev_depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
     dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
