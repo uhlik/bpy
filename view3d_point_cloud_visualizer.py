@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, render and convert to mesh colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 16),
+           "version": (0, 9, 17),
            "blender": (2, 80, 0),
            "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
            "warning": "",
@@ -1618,11 +1618,8 @@ class PCVManager():
         l = int((len(vs) / 100) * dp)
         if(dp >= 99):
             l = len(vs)
-        
-        # FIXME: names 'display_percent' and 'current_display_percent' are really badly chosen, value is number of points displayed, not presentage, this is not the first time it confused me, rename it not so distant future, right?
-        
-        d['display_percent'] = l
-        d['current_display_percent'] = l
+        d['display_length'] = l
+        d['current_display_length'] = l
         
         ienabled = pcv.illumination
         d['illumination'] = ienabled
@@ -1662,9 +1659,9 @@ class PCVManager():
         shader = ci['shader']
         batch = ci['batch']
         
-        if(ci['current_display_percent'] != ci['display_percent']):
-            l = ci['display_percent']
-            ci['current_display_percent'] = l
+        if(ci['current_display_length'] != ci['display_length']):
+            l = ci['display_length']
+            ci['current_display_length'] = l
             vs = ci['vertices']
             cs = ci['colors']
             ns = ci['normals']
@@ -1704,7 +1701,7 @@ class PCVManager():
             vs = ci['vertices']
             cs = ci['colors']
             ns = ci['normals']
-            l = ci['current_display_percent']
+            l = ci['current_display_length']
             if(pcv.illumination):
                 shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
@@ -1763,7 +1760,7 @@ class PCVManager():
         
         if(pcv.vertex_normals and pcv.has_normals):
             def make(ci):
-                l = ci['current_display_percent']
+                l = ci['current_display_length']
                 vs = ci['vertices'][:l]
                 ns = ci['normals'][:l]
                 
@@ -1774,7 +1771,7 @@ class PCVManager():
                      'batch': batch,
                      'position': vs,
                      'normal': ns,
-                     'current_display_percent': l, }
+                     'current_display_length': l, }
                 ci['vertex_normals'] = d
                 
                 return shader, batch
@@ -1786,7 +1783,7 @@ class PCVManager():
                 shader = d['shader']
                 batch = d['batch']
                 ok = True
-                if(ci['current_display_percent'] != d['current_display_percent']):
+                if(ci['current_display_length'] != d['current_display_length']):
                     ok = False
                 if(not ok):
                     shader, batch = make(ci)
@@ -1814,7 +1811,7 @@ class PCVManager():
             
             vs = ci['vertices']
             ns = ci['normals']
-            l = ci['current_display_percent']
+            l = ci['current_display_length']
             
             use_stored = False
             if('extra' in ci.keys()):
@@ -1914,7 +1911,7 @@ class PCVManager():
             
             vs = ci['vertices']
             ns = ci['normals']
-            l = ci['current_display_percent']
+            l = ci['current_display_length']
             
             use_stored = False
             if('extra' in ci.keys()):
@@ -1952,7 +1949,7 @@ class PCVManager():
         # in-development
         if(pcv.dev_selection_shader_display):
             vs = ci['vertices']
-            l = ci['current_display_percent']
+            l = ci['current_display_length']
             shader = GPUShader(PCVShaders.selection_vertex_shader, PCVShaders.selection_fragment_shader, )
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
             shader.bind()
@@ -2049,8 +2046,8 @@ class PCVManager():
         nl = int((l / 100) * dp)
         if(dp >= 99):
             nl = l
-        c['display_percent'] = nl
-        c['current_display_percent'] = nl
+        c['display_length'] = nl
+        c['current_display_length'] = nl
         
         # setup new shaders
         ienabled = c['illumination']
@@ -2110,8 +2107,8 @@ class PCVManager():
                 'vertices': None,
                 'normals': None,
                 'colors': None,
-                'display_percent': None,
-                'current_display_percent': None,
+                'display_length': None,
+                'current_display_length': None,
                 'illumination': False,
                 'shader': False,
                 'batch': False,
@@ -2243,8 +2240,8 @@ class PCVControl():
         l = int((n / 100) * dp)
         if(dp >= 99):
             l = n
-        d['display_percent'] = l
-        d['current_display_percent'] = l
+        d['display_length'] = l
+        d['current_display_length'] = l
         d['illumination'] = pcv.illumination
         if(pcv.illumination):
             shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
@@ -2300,8 +2297,8 @@ class PCVControl():
         l = int((n / 100) * dp)
         if(dp >= 99):
             l = n
-        d['display_percent'] = l
-        d['current_display_percent'] = l
+        d['display_length'] = l
+        d['current_display_length'] = l
         d['illumination'] = pcv.illumination
         if(pcv.illumination):
             shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
@@ -3039,7 +3036,7 @@ class PCV_OT_export(Operator, ExportHelper):
             if(pcv.export_visible_only):
                 log("visible only..", 1)
                 # points in cache are stored already shuffled (or not), so this should work the same as in viewport..
-                l = c['display_percent']
+                l = c['display_length']
                 vs = vs[:l]
                 ns = ns[:l]
                 cs = cs[:l]
@@ -3647,9 +3644,20 @@ class PCV_OT_filter_remove_color(Operator):
             s = False
             v = False
             if(uh):
-                # FIXME: hue should be handled all around, not only plus/minus
-                if(rmcolor.h - dh < c.h < rmcolor.h + dh):
-                    h = True
+                rm_hue = rmcolor.h
+                minus_hue = rm_hue - dh
+                plus_hue = rm_hue + dh
+                if(minus_hue < 0.0):
+                    minus_hue = 1.0 + minus_hue
+                    if(minus_hue > c.h < plus_hue):
+                        h = True
+                elif(plus_hue > 1.0):
+                    plus_hue = plus_hue - 1.0
+                    if(minus_hue < c.h > plus_hue):
+                        h = True
+                else:
+                    if(minus_hue < c.h < plus_hue):
+                        h = True
             if(us):
                 if(rmcolor.s - ds < c.s < rmcolor.s + ds):
                     s = True
@@ -4847,10 +4855,10 @@ class PCV_PT_panel(Panel):
                 l0c1 = "{}".format(t)
                 cache = PCVManager.cache[pcv.uuid]
                 
-                n = human_readable_number(cache['display_percent'])
+                n = human_readable_number(cache['display_length'])
                 # don't use it when less or equal to 999
-                if(cache['display_percent'] < 1000):
-                    n = str(cache['display_percent'])
+                if(cache['display_length'] < 1000):
+                    n = str(cache['display_length'])
                 
                 if(not cache['draw']):
                     # n = "0.0"
@@ -5596,7 +5604,7 @@ class PCV_properties(PropertyGroup):
         l = int((vl / 100) * dp)
         if(dp >= 99):
             l = vl
-        d['display_percent'] = l
+        d['display_length'] = l
     
     display_percent: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', update=_display_percent_update, description="Adjust percentage of points displayed", )
     global_alpha: FloatProperty(name="Alpha", default=1.0, min=0.0, max=1.0, precision=2, subtype='FACTOR', description="Adjust alpha of points displayed", )

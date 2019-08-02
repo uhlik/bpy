@@ -238,6 +238,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.17 fixes
 * 0.9.16 boolean filters
 * 0.9.15 selection preview for remove color filter
 * 0.9.14 external api improvements
