@@ -3617,8 +3617,9 @@ class PCV_OT_filter_remove_color(Operator):
         c = [i / 256 for i in c]
         rmcolor = Color(c)
         
-        # NOTE: shouldn't be deltas as -delta/2 and +delta/2? now it is -delta / +delta
-        dh = pcv.filter_remove_color_delta_hue
+        # take half of the value because 1/2 <- v -> 1/2, plus and minus => full range
+        dh = pcv.filter_remove_color_delta_hue / 2
+        # only for hue, because i take in consideration its radial nature
         ds = pcv.filter_remove_color_delta_saturation
         dv = pcv.filter_remove_color_delta_value
         uh = pcv.filter_remove_color_delta_hue_use
@@ -3645,19 +3646,9 @@ class PCV_OT_filter_remove_color(Operator):
             v = False
             if(uh):
                 rm_hue = rmcolor.h
-                minus_hue = rm_hue - dh
-                plus_hue = rm_hue + dh
-                if(minus_hue < 0.0):
-                    minus_hue = 1.0 + minus_hue
-                    if(minus_hue > c.h < plus_hue):
-                        h = True
-                elif(plus_hue > 1.0):
-                    plus_hue = plus_hue - 1.0
-                    if(minus_hue < c.h > plus_hue):
-                        h = True
-                else:
-                    if(minus_hue < c.h < plus_hue):
-                        h = True
+                hd = min(abs(rm_hue - c.h), 1.0 - abs(rm_hue - c.h))
+                if(hd <= dh):
+                    h = True
             if(us):
                 if(rmcolor.s - ds < c.s < rmcolor.s + ds):
                     s = True
@@ -3691,23 +3682,6 @@ class PCV_OT_filter_remove_color(Operator):
                 pass
             if(a):
                 indexes.append(p['index'])
-        
-        # log("removed: {} points".format(len(indexes)), 1)
-        #
-        # # delete marked points
-        # points = np.delete(points, indexes)
-        #
-        # # split back
-        # vs = np.column_stack((points['x'], points['y'], points['z'], ))
-        # ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
-        # cs = np.column_stack((points['red'], points['green'], points['blue'], points['alpha'], ))
-        # vs = vs.astype(np.float32)
-        # ns = ns.astype(np.float32)
-        # cs = cs.astype(np.float32)
-        #
-        # # put to cache
-        # pcv = context.object.point_cloud_visualizer
-        # PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         log("selected: {} points".format(len(indexes)), 1)
         
