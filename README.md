@@ -344,6 +344,7 @@ Only active mesh is exported. Only single mesh is expected on import. Supported 
 
 changelog:
 
+* 0.3.6 fixed export with applied modifiers
 * 0.3.5 api changes fixes
 * 0.3.4 ui
 * 0.3.3 fallback python export implementation in case cython module is not available
@@ -355,7 +356,7 @@ changelog:
 **requirements:**
 
 * python 3.7.0 (the same as shipped with blender 2.8)
-* Cython (easiest is to install with pip)
+* Cython (install with pip)
 
 **installation on mac (win/linux should be very similar):**
 

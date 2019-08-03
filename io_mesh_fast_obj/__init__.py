@@ -19,7 +19,7 @@
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
-           "version": (0, 3, 5),
+           "version": (0, 3, 6),
            "blender": (2, 80, 0),
            "location": "File > Import/Export > Fast Wavefront (.obj) (Cython)",
            "warning": "work in progress, currently cythonized export only, binaries are not provided, you have to compile them by yourself",
@@ -307,18 +307,26 @@ class FastOBJReader():
 
 
 class FastOBJWriter():
-    def __init__(self, o, path, apply_modifiers=False, apply_transformation=True, convert_axes=True, triangulate=False, use_uv=True, use_shading=False, use_vertex_colors=False, use_vcols_mrgb=True, use_vcols_ext=False, global_scale=1.0, precision=6, ):
+    def __init__(self, context, o, path, apply_modifiers=False, apply_transformation=True, convert_axes=True, triangulate=False, use_uv=True, use_shading=False, use_vertex_colors=False, use_vcols_mrgb=True, use_vcols_ext=False, global_scale=1.0, precision=6, ):
         log("{}: {}".format(self.__class__.__name__, o.name))
         log("will write .obj at: {}".format(path), 1)
         
         log("prepare..", 1)
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        me = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+        log_args_align = 25
+        
+        log("{} {}".format("{}: ".format("apply_modifiers").ljust(log_args_align, "."), apply_modifiers), 1)
+        owner = None
+        if(apply_modifiers and o.modifiers):
+            depsgraph = context.evaluated_depsgraph_get()
+            owner = o.evaluated_get(depsgraph)
+            me = owner.to_mesh()
+        else:
+            owner = o
+            me = owner.to_mesh()
         
         bm = bmesh.new()
         bm.from_mesh(me)
         
-        log_args_align = 25
         log("{} {}".format("{}: ".format("triangulate").ljust(log_args_align, "."), triangulate), 1)
         if(triangulate):
             bmesh.ops.triangulate(bm, faces=bm.faces)
@@ -598,8 +606,8 @@ class FastOBJWriter():
         shutil.move(tp, path)
         
         log("cleanup..", 1)
-        o.to_mesh_clear()
         bm.free()
+        owner.to_mesh_clear()
 
 
 class ExportFastOBJ(Operator, ExportHelper):
@@ -654,7 +662,8 @@ class ExportFastOBJ(Operator, ExportHelper):
         
         if(USE_PY_EXPORT):
             log("WARNING: cython module not found, using python implementation")
-            d = {'o': o,
+            d = {'context': context,
+                 'o': o,
                  'path': self.filepath,
                  'apply_modifiers': self.apply_modifiers,
                  'apply_transformation': self.apply_transformation,
@@ -672,8 +681,18 @@ class ExportFastOBJ(Operator, ExportHelper):
             log("completed in {}.".format(datetime.timedelta(seconds=time.time() - t)))
             return {'FINISHED'}
         
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        m = o.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+        log("{}:".format(self.__class__.__name__), 0, )
+        log("using Cython module: {}".format(not USE_PY_EXPORT), 1)
+        log("will write .obj at: {}".format(self.filepath), 1)
+        
+        owner = None
+        if(self.apply_modifiers and o.modifiers):
+            depsgraph = context.evaluated_depsgraph_get()
+            owner = o.evaluated_get(depsgraph)
+            m = owner.to_mesh()
+        else:
+            owner = o
+            m = owner.to_mesh()
         
         if(self.apply_transformation):
             mw = o.matrix_world.copy()
@@ -711,7 +730,7 @@ class ExportFastOBJ(Operator, ExportHelper):
                               precision=self.precision,
                               debug=DEBUG, )
         
-        o.to_mesh_clear()
+        owner.to_mesh_clear()
         
         log("completed in {}.".format(datetime.timedelta(seconds=time.time() - t)))
         return {'FINISHED'}
