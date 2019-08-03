@@ -64,6 +64,7 @@ def log(msg, indent=0, ):
 
 
 def debug_mode():
+    # return True
     return (bpy.app.debug_value != 0)
 
 
@@ -1286,11 +1287,9 @@ class PCVShaders():
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
         uniform vec3 center;
-        uniform float exposure;
         uniform float point_size;
         uniform float maxdist;
         out float f_depth;
-        out float f_exposure;
         void main()
         {
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0);
@@ -1299,12 +1298,12 @@ class PCVShaders():
             vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
             float d = op.z - pp.z;
             f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
-            f_exposure = exposure;
         }
     '''
     depth_fragment_shader_simple = '''
         in float f_depth;
-        in float f_exposure;
+        uniform float brightness;
+        uniform float contrast;
         uniform float alpha_radius;
         uniform float global_alpha;
         out vec4 fragColor;
@@ -1317,7 +1316,9 @@ class PCVShaders():
             if(r > alpha_radius){
                 discard;
             }
-            fragColor = vec4(f_depth * f_exposure, f_depth * f_exposure, f_depth * f_exposure, global_alpha) * a;
+            vec3 color = vec3(f_depth, f_depth, f_depth);
+            color = (color - 0.5) * contrast + 0.5 + brightness;
+            fragColor = vec4(color, global_alpha) * a;
         }
     '''
     
@@ -1389,7 +1390,6 @@ class PCVShaders():
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
         uniform vec3 center;
-        uniform float exposure;
         uniform float point_size;
         uniform float maxdist;
         uniform vec3 light_direction;
@@ -1397,7 +1397,6 @@ class PCVShaders():
         uniform vec3 shadow_direction;
         uniform vec3 shadow_intensity;
         out float f_depth;
-        out float f_exposure;
         out vec3 f_light_direction;
         out vec3 f_light_intensity;
         out vec3 f_shadow_direction;
@@ -1411,7 +1410,6 @@ class PCVShaders():
             vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
             float d = op.z - pp.z;
             f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
-            f_exposure = exposure;
             f_normal = normal;
             f_light_direction = light_direction;
             f_light_intensity = light_intensity;
@@ -1421,7 +1419,6 @@ class PCVShaders():
     '''
     depth_fragment_shader_illumination = '''
         in float f_depth;
-        in float f_exposure;
         in vec3 f_normal;
         in vec3 f_light_direction;
         in vec3 f_light_intensity;
@@ -1429,6 +1426,8 @@ class PCVShaders():
         in vec3 f_shadow_intensity;
         uniform float alpha_radius;
         uniform float global_alpha;
+        uniform float brightness;
+        uniform float contrast;
         uniform vec3 color_a;
         uniform vec3 color_b;
         out vec4 fragColor;
@@ -1443,9 +1442,15 @@ class PCVShaders():
             }
             vec3 l = vec3(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity);
             vec3 s = vec3(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity);
-            float ch = f_depth * f_exposure;
-            vec3 color = mix(color_b, color_a, ch);
-            vec3 c = color + l - s;
+            vec3 color = mix(color_b, color_a, f_depth);
+            // brightness/contrast after illumination
+            // vec3 c = color + l - s;
+            // vec3 cc = (c - 0.5) * contrast + 0.5 + brightness;
+            // fragColor = vec4(cc, global_alpha) * a;
+            
+            // brightness/contrast before illumination
+            vec3 cc = (color - 0.5) * contrast + 0.5 + brightness;
+            vec3 c = cc + l - s;
             fragColor = vec4(c, global_alpha) * a;
         }
     '''
@@ -1454,11 +1459,9 @@ class PCVShaders():
         uniform mat4 perspective_matrix;
         uniform mat4 object_matrix;
         uniform vec3 center;
-        uniform float exposure;
         uniform float point_size;
         uniform float maxdist;
         out float f_depth;
-        out float f_exposure;
         void main()
         {
             gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0);
@@ -1467,14 +1470,14 @@ class PCVShaders():
             vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
             float d = op.z - pp.z;
             f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
-            f_exposure = exposure;
         }
     '''
     depth_fragment_shader_false_colors = '''
         in float f_depth;
-        in float f_exposure;
         uniform float alpha_radius;
         uniform float global_alpha;
+        uniform float brightness;
+        uniform float contrast;
         uniform vec3 color_a;
         uniform vec3 color_b;
         out vec4 fragColor;
@@ -1487,9 +1490,41 @@ class PCVShaders():
             if(r > alpha_radius){
                 discard;
             }
-            float ch = f_depth * f_exposure;
-            vec3 color = mix(color_b, color_a, ch);
+            vec3 color = mix(color_b, color_a, f_depth);
+            color = (color - 0.5) * contrast + 0.5 + brightness;
             fragColor = vec4(color, global_alpha) * a;
+        }
+    '''
+    
+    position_colors_vertex_shader = '''
+        in vec3 position;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        out vec3 f_color;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            // f_color = position * 0.5 + 0.5;
+            f_color = position;
+        }
+    '''
+    position_colors_fragment_shader = '''
+        in vec3 f_color;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > alpha_radius){
+                discard;
+            }
+            fragColor = vec4(f_color, global_alpha) * a;
         }
     '''
 
@@ -1864,7 +1899,10 @@ class PCVManager():
             shader.uniform_float("maxdist", float(maxdist) * l)
             
             shader.uniform_float("center", (cx, cy, cz, ))
-            shader.uniform_float("exposure", pcv.dev_depth_exposure)
+            
+            shader.uniform_float("brightness", pcv.dev_depth_brightness)
+            shader.uniform_float("contrast", pcv.dev_depth_contrast)
+            
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
@@ -1934,6 +1972,46 @@ class PCVManager():
                      'batch': batch,
                      'length': l, }
                 ci['extra']['NORMAL'] = d
+            
+            # shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
+            # batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # in-development
+        if(pcv.dev_position_colors_enabled):
+            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            
+            vs = ci['vertices']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'POSITION'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.position_colors_vertex_shader, PCVShaders.position_colors_fragment_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['POSITION'] = d
             
             # shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
             # batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
@@ -5435,38 +5513,57 @@ class PCV_PT_development(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
+        
+        sub.label(text="Shaders:")
+        
         c = sub.column()
+        c.prop(pcv, 'dev_depth_enabled', toggle=True, )
+        if(pcv.dev_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_depth_brightness')
+            cc.prop(pcv, 'dev_depth_contrast')
+            c.prop(pcv, 'dev_depth_false_colors')
+            r = c.row(align=True)
+            r.prop(pcv, 'dev_depth_color_a', text="", )
+            r.prop(pcv, 'dev_depth_color_b', text="", )
+            r.enabled = pcv.dev_depth_false_colors
+            
+            c = c.column()
+            r = c.row(align=True)
+            r.prop(pcv, 'illumination', toggle=True, )
+            r.prop(pcv, 'illumination_edit', toggle=True, icon_only=True, icon='TOOL_SETTINGS', )
+            if(pcv.illumination_edit):
+                cc = c.column()
+                cc.prop(pcv, 'light_direction', text="", )
+                ccc = cc.column(align=True)
+                ccc.prop(pcv, 'light_intensity')
+                ccc.prop(pcv, 'shadow_intensity')
         
-        b = c.box()
-        b.label(text="Depth Shader")
-        b.prop(pcv, 'dev_depth_enabled')
-        b.prop(pcv, 'dev_depth_exposure')
-        b.prop(pcv, 'dev_depth_false_colors')
-        r = b.row()
-        r.prop(pcv, 'dev_depth_color_a')
-        r = b.row()
-        r.prop(pcv, 'dev_depth_color_b')
+        sub.separator()
         
-        c = b.column()
-        r = c.row(align=True)
-        r.prop(pcv, 'illumination', toggle=True, )
-        cc = c.column()
-        cc.prop(pcv, 'light_direction', text="", )
-        ccc = cc.column(align=True)
-        ccc.prop(pcv, 'light_intensity')
-        ccc.prop(pcv, 'shadow_intensity')
+        c = sub.column()
+        c.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
         
-        c.separator()
+        sub.separator()
         
-        b = c.box()
-        b.label(text="Normals Shader")
-        b.prop(pcv, 'dev_normal_colors_enabled')
+        c = sub.column()
+        c.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
         
-        # b = c.box()
-        # b.label(text="Selection Shader")
-        # b.prop(pcv, 'dev_selection_shader_display')
-        # r = b.row()
-        # r.prop(pcv, 'dev_selection_shader_color', text="", )
+        sub.separator()
+        
+        c = sub.column()
+        c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
+        if(pcv.dev_selection_shader_display):
+            r = c.row()
+            r.prop(pcv, 'dev_selection_shader_color', text="", )
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        sub.enabled = ok
 
 
 class PCV_PT_debug(Panel):
@@ -5690,13 +5787,19 @@ class PCV_properties(PropertyGroup):
     # in-development properties
     # TODO: do some extra panel for extra shaders and rewrite PCVManager.render to draw only what is needed
     dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
-    dev_depth_exposure: FloatProperty(name="Exposure", description="", default=1.0, min=0.0, max=100.0, )
+    dev_depth_brightness: FloatProperty(name="Brightness", description="", default=0.0, min=-10.0, max=10.0, )
+    dev_depth_contrast: FloatProperty(name="Contrast", description="", default=1.0, min=-10.0, max=10.0, )
     dev_depth_false_colors: BoolProperty(name="False Colors", default=False, description="", )
     dev_depth_color_a: FloatVectorProperty(name="Color A", description="", default=(0.0, 1.0, 0.0, ), min=0, max=1, subtype='COLOR', size=3, )
     dev_depth_color_b: FloatVectorProperty(name="Color B", description="", default=(0.0, 0.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, )
-    dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
-    dev_selection_shader_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
     dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
+    dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", )
+    
+    def _dev_sel_color_update(self, context, ):
+        bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
+    
+    dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
+    dev_selection_shader_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, update=_dev_sel_color_update, )
     
     @classmethod
     def register(cls):
