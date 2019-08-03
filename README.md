@@ -452,11 +452,11 @@ Mode is switched to Sculpt with Dyntopo, brush is set to strength 0 - affecting 
 * **UVTex > VCols** - Copy image colors from active image texture node in active material using active UV layout to new vertex colors
 * **Group > VCols** - Active vertex group to new vertex colors, vertex weight to rgba(weight, weight, weight, 1.0)
 * **VCols > Group** - Active vertex colors to new vertex group, vertex weight by color perceived luminance
-* **Difference > Group** - Calculate difference between two selected meshes and write as vertex group to active mesh. Selected is consedered to be original, active to be modified. Objects should have the same transformation.
+* **Difference > Group** - Calculate difference between two selected meshes and write as vertex group to active mesh. Selected is considered to be original, active to be modified. Objects should have the same transformation.
 
 changelog:
 
-* 2.2.2 ui changes, mesh difference to group, calculate uv coverege
+* 2.2.2 ui changes, mesh difference to group, calculate uv coverage
 * 0.2.1 uvtex / vcols / group conversions
 * 0.2.0 first release
 
@@ -561,7 +561,7 @@ Equalizes scale of UVs of selected objects to active object.
 * Available in Object menu of 3d view while in object mode.
 * To enable, more than two mesh objects must be selected, one must be active.
 * Default behavior is active object determines scale and all other objects will be adjusted. This can be overrided unchecking 'Use Active', then all objects will be averaged.
-* Island scale averaging and repacking is optional and will yeld better result.
+* Island scale averaging and repacking is optional and will yield better result.
 
 ![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/x/eq2.gif)
 
