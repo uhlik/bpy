@@ -38,6 +38,8 @@ import numpy as np
 import re
 import shutil
 import sys
+import random
+import statistics
 
 import bpy
 import bmesh
@@ -2234,7 +2236,7 @@ class PCVControl():
                                   np.full(n, 1.0, dtype=np.float32, ), ))
         else:
             has_normals = True
-            if(type(cs) != np.ndarray):
+            if(type(ns) != np.ndarray):
                 ns = np.array(ns)
             ns = ns.astype(np.float32)
         
@@ -2487,6 +2489,88 @@ class PCVSequence():
         bpy.app.handlers.frame_change_post.remove(PCVSequence.handler)
         cls.initialized = False
         cls.cache = {}
+
+
+class PCVTriangleSurfaceSampler():
+    def __init__(self, context, o, num_samples, rnd, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        def random_point_in_triangle(a, b, c):
+            r1 = rnd.random()
+            r2 = rnd.random()
+            p = (1 - math.sqrt(r1)) * a + (math.sqrt(r1) * (1 - r2)) * b + (math.sqrt(r1) * r2) * c
+            return p
+        
+        if(o.modifiers):
+            depsgraph = context.evaluated_depsgraph_get()
+            owner = o.evaluated_get(depsgraph)
+            me = owner.to_mesh()
+        else:
+            owner = o
+            me = owner.to_mesh()
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        
+        areas = tuple([p.calc_area() for p in bm.faces])
+        area_min = min(areas)
+        area_max = max(areas)
+        avg_ppf = num_samples / len(areas)
+        area_med = statistics.median(areas)
+        nums = []
+        for p in bm.faces:
+            r = p.calc_area() / area_med
+            nums.append(avg_ppf * r)
+        
+        max_ppf = max(nums)
+        min_ppf = min(nums)
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        log("generating {} samples:".format(num_samples), 1)
+        progress = Progress(len(bm.faces), indent=2, )
+        for poly in bm.faces:
+            progress.step()
+            ps = poly.verts
+            tri = (ps[0].co, ps[1].co, ps[2].co)
+            # if num is 0, it can happen when mesh has large and very small polygons, increase number of samples and eventually all polygons gets covered
+            num = int(round(remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
+            for i in range(num):
+                v = random_point_in_triangle(*tri)
+                vs.append(v.to_tuple())
+                ns.append(poly.normal.to_tuple())
+                cs.append((0.7, 0.7, 0.7))
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+        
+        bm.free()
+        owner.to_mesh_clear()
 
 
 class PCV_OT_init(Operator):
@@ -4809,6 +4893,69 @@ class PCV_OT_seq_deinit(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_generate_from_mesh(Operator):
+    bl_idname = "point_cloud_visualizer.generate_from_mesh"
+    bl_label = "Generate From Mesh"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        # pcv = context.object.point_cloud_visualizer
+        # if(pcv.uuid in PCVSequence.cache.keys()):
+        #     return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+        
+        return True
+    
+    def execute(self, context):
+        log("Generate From Mesh:", 0)
+        _t = time.time()
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        n = pcv.dev_generate_number_of_points
+        r = random.Random(pcv.dev_generate_seed)
+        
+        if(pcv.dev_generate_colors == 'CONSTANT'):
+            pass
+        else:
+            self.report({'ERROR'}, "Color generation not implemented.")
+            return {'CANCELLED'}
+        
+        if(pcv.dev_generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
+            sampler = PCVTriangleSurfaceSampler(context, o, n, r, )
+        else:
+            self.report({'ERROR'}, "Algorithm not implemented.")
+            return {'CANCELLED'}
+        
+        vs = sampler.vs
+        ns = sampler.ns
+        # cs = sampler.cs
+        if(pcv.dev_generate_colors == 'CONSTANT'):
+            cs = tuple(pcv.dev_generate_constant_color) * len(vs)
+            cs = np.array(cs)
+            cs = cs.reshape((len(vs), 3))
+        
+        log("generated {} points.".format(len(vs)), 1)
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -5516,6 +5663,13 @@ class PCV_PT_development(Panel):
         
         sub.label(text="Shaders:")
         
+        e = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        e = True
+        
         c = sub.column()
         c.prop(pcv, 'dev_depth_enabled', toggle=True, )
         if(pcv.dev_depth_enabled):
@@ -5538,16 +5692,19 @@ class PCV_PT_development(Panel):
                 ccc = cc.column(align=True)
                 ccc.prop(pcv, 'light_intensity')
                 ccc.prop(pcv, 'shadow_intensity')
+        c.enabled = e
         
         sub.separator()
         
         c = sub.column()
         c.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        c.enabled = e
         
         sub.separator()
         
         c = sub.column()
         c.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
+        c.enabled = e
         
         sub.separator()
         
@@ -5556,14 +5713,28 @@ class PCV_PT_development(Panel):
         if(pcv.dev_selection_shader_display):
             r = c.row()
             r.prop(pcv, 'dev_selection_shader_color', text="", )
+        c.enabled = e
         
-        ok = False
-        for k, v in PCVManager.cache.items():
-            if(v['uuid'] == pcv.uuid):
-                if(v['ready']):
-                    if(v['draw']):
-                        ok = True
-        sub.enabled = ok
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # sub.enabled = ok
+        
+        sub.separator()
+        
+        sub.label(text="Point Cloud Generation:")
+        
+        c = sub.column()
+        c.prop(pcv, 'dev_generate_algorithm')
+        c.prop(pcv, 'dev_generate_number_of_points')
+        c.prop(pcv, 'dev_generate_seed')
+        c.prop(pcv, 'dev_generate_colors')
+        r = c.row()
+        r.prop(pcv, 'dev_generate_constant_color')
+        c.operator('point_cloud_visualizer.generate_from_mesh')
 
 
 class PCV_PT_debug(Panel):
@@ -5795,6 +5966,17 @@ class PCV_properties(PropertyGroup):
     dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
     dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", )
     
+    dev_generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", ""),
+                                                                  ('POSSON_DISK_SAMPLING', "Posson Disk Sampling", ""), ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="", )
+    dev_generate_number_of_points: IntProperty(name="Approximate Number Of Points", default=100000, min=1, description="", )
+    dev_generate_seed: IntProperty(name="Seed", default=0, min=0, description="", )
+    dev_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant", ""),
+                                                            ('VCOLS', "Vertex Colors", ""),
+                                                            ('UVTEX', "UV Texture", ""),
+                                                            ('GROUP_MONO', "Vertex Group Monochromatic", ""),
+                                                            ('GROUP_COLOR', "Vertex Group Colorized", ""), ], default='CONSTANT', description="", )
+    dev_generate_constant_color: FloatVectorProperty(name="Constant Color", description="", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    
     def _dev_sel_color_update(self, context, ):
         bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
     
@@ -5854,7 +6036,9 @@ classes = (
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
     PCV_OT_sequence_preload, PCV_OT_sequence_clear,
     
+    PCV_OT_generate_from_mesh,
     PCV_PT_development,
+    
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
