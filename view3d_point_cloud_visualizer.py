@@ -4921,6 +4921,11 @@ class PCV_OT_generate_from_mesh(Operator):
         _t = time.time()
         
         o = context.object
+        
+        if(o.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+            self.report({'ERROR'}, "Object does not have geometry data.")
+            return {'CANCELLED'}
+        
         pcv = o.point_cloud_visualizer
         n = pcv.dev_generate_number_of_points
         r = random.Random(pcv.dev_generate_seed)
