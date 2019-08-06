@@ -13,6 +13,11 @@
 ***
 ***
 
+Addons for **blender 2.7x** are here: [2.7x branch](https://github.com/uhlik/bpy/tree/2.7x)
+
+***
+***
+
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
 **Display, edit, filter, render, convert and export colored point cloud PLY files.**
