@@ -34,11 +34,11 @@
 
 Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.8.9.gif)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.8.9.gif)
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.16.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.16.png)
 
 ##### Basic Usage:
 
@@ -64,9 +64,9 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### Edit
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-editing.gif)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-editing.gif)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-edit.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-edit.png)
 
 Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper mesh with vertices and entered to mesh edit mode. You can transform, delete and duplicate vertices using regular Blender's tools. If you want update displayed points, hit `Update`, when you are finished editing hit `End` to update points for a last time and delete helper mesh. If something went wrong, select main object with cloud and hit `Cancel` to reload original points, return interface to regular mode and attempt to clean helper mesh if it is still available. 
 
@@ -83,7 +83,7 @@ Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper 
 
 Filter current point cloud, all changes are only temporary, original data are still intact. To keep changes, you have to export cloud as ply file.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.16-filter.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.16-filter.png)
 
 ##### Simplify
 
@@ -148,7 +148,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ##### Render options:
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-render.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-render.png)
 
 * `Size` - point render size in pixels
 * `Count` - percentage of rendered points
@@ -160,9 +160,9 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 
 ### Convert
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-convert.jpg)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-convert.jpg)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-psys.jpg)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-psys.jpg)
 
 Convert point cloud to mesh. May result in very large meshes, e.g. 1m point cloud to cubes = 8m poly mesh. Depending on what point cloud data is available and desired mesh type, some options may not be enabled.
 
@@ -170,7 +170,7 @@ Conversion to instancer specifics: points are converted to triangle mesh object,
 
 Conversion to particles specifics: points are converted to triangle mesh object, vertex colors are baked to texture, particle system is added to mesh with one particle on each face, extra instanced sphere added as child object of main mesh and particle system is set to render that sphere, material using baked colors is added to sphere and each instance inherits color of corresponding face it emit from. Result is regular particle system which can be further edited, e.g. instance mesh changed, physics added etc.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-convert.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-convert.png)
 
 * `Type` - Instance mesh type, Vertex, Equilateral Triangle, Tetrahedron, Cube or Ico Sphere
 * `All`, `Subset` - Use all points or random subset of by given percentage
@@ -183,7 +183,7 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 
 Export current point cloud as binary ply file with several options. If exporting modified (filtered) points, check `Use Viewport Points`, otherwise you will not get modified points. If exporting viewport points colors may slightly differ. Transformation and axis conversion can be applied on both loaded and viewport points.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.10-export.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-export.png)
 
 * `Use Viewport Points` - When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file
 * `Visible Points Only` - Export currently visible points only (controlled by 'Display' on main panel)
@@ -194,7 +194,7 @@ Export current point cloud as binary ply file with several options. If exporting
 
 Load sequence of ply files to play in viewport. Load first frame as regular file and when `Preload Sequence` is clicked it tries to load all ply files matching selected ply filename, e.g. you select `sequence-001.ply` and all `sequence-###.ply` will be loaded from directory. Only last number in filename is considered. Numbers should start at 1. All other features works when animation is not playing, but all changes are lost when you change frame to another.
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pcv-0.9.14-sequence.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.14-sequence.png)
 
 * `Preload Sequence` - Load all matching ply files
 * `Cycle Forever` - Cycle frames if timeline is longer than number of loaded frames
@@ -303,7 +303,7 @@ c.reset()
 
 Presets support for Render > Color Management panel, nothing more, nothing less.. Comes with a few presets i use which are created upon activation.
 
-![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/x/cmp280.png)
+![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/media/cmp280.png)
 
 ***
 
@@ -311,7 +311,7 @@ Presets support for Render > Color Management panel, nothing more, nothing less.
 
 UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)
 
-![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tuv280.gif)
+![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/media/tuv280.gif)
 
 notes:
 
@@ -340,7 +340,7 @@ changelog:
 
 Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush) or 'Extended' format (import only) where vertex is defined as (x,y,z,r,g,b).
 
-![Fast Wavefront^2](https://raw.githubusercontent.com/uhlik/bpy/master/x/obj2.png)
+![Fast Wavefront^2](https://raw.githubusercontent.com/uhlik/bpy/media/obj2.png)
 
 changelog:
 
@@ -372,7 +372,7 @@ changelog:
 
 Import cameras from Agisoft PhotoScan xml. Works with xml version 1.4.0 which is exported from PhotoScan 1.4.x versions and xml versions 1.5.0 from Agisoft Metashape 1.5.x versions. If you want to have images actually aligned with model, undistort images first. This is done in PhotoScan by `Export > Undistort Photos..`. Because you can't in Blender set resolution for cameras independently, xml with different cameras or image resolutions might not work well.
 
-![Import Agisoft PhotoScan Cameras](https://raw.githubusercontent.com/uhlik/bpy/master/x/pscamerasui.png)
+![Import Agisoft PhotoScan Cameras](https://raw.githubusercontent.com/uhlik/bpy/media/pscamerasui.png)
 
 usage:
 
@@ -406,7 +406,7 @@ changelog:
 
 Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.
 
-![Carbon Tools](https://raw.githubusercontent.com/uhlik/bpy/master/x/carbon_tools.png)
+![Carbon Tools](https://raw.githubusercontent.com/uhlik/bpy/media/carbon_tools.png)
 
 #### Subtools
 
@@ -466,7 +466,7 @@ changelog:
 
 Simple time tracker inside blender. After you install and enable it, it will log loaded and saved files and time spent of file until it is saved. All ui is inside addon preferences.
 
-![Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/x/tt2.png)
+![Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/media/tt2.png)
 
 Here you can enable / disable logging, clear data collected so far, set custom data path (.csv) and see short summary of collected data and open individual project directories in file browser. The project name is determined by directory name where the blend is. For example if you have project in directory named "MyNewOutstandingProject" and all blends are inside subdirectory "models", set level number to 1 and you will see project name in results. 0 is directory directly above blend, 1 is one directory above blend, and so on. If you are like me and all your projects have the same subdirectory structure, sent directory level and you are good to go.
 
@@ -492,7 +492,7 @@ changelog:
 
 Presets support for Scene > Color Management panel, nothing more, nothing less.. Comes with a few presets i use which are created upon activation.
 
-![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/master/x/cmp.png)
+![Color Management Presets](https://raw.githubusercontent.com/uhlik/bpy/media/cmp.png)
 
 ***
 
@@ -506,7 +506,7 @@ Display colored point cloud PLY in Blender's 3d viewport. Works with binary poin
 * Transforming Empty transforms point cloud as well
 * Works reasonably fast with 4m points on my machine, 5 years old, not top of the line at its time
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/x/pc.gif)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pc.gif)
 
 changelog:
 
@@ -522,13 +522,13 @@ changelog:
 
 Simple and effective access to Solid OpenGL Lights for your viewport. Comes with clean, simple interface and endless possibilities. No more fiddling with preferences and other similar confusing, complex and view obscuring addons!
 
-![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gll2.gif)
+![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/media/gll2.gif)
 
 changelog:
 
 * 2018.04.07 new ui
 
-![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/master/x/gllui.png)
+![OpenGL Lights](https://raw.githubusercontent.com/uhlik/bpy/media/gllui.png)
 
 * 2014.08.25 more presets
 * 2014.08.24 added defaults, created when no presets are available
@@ -563,7 +563,7 @@ Equalizes scale of UVs of selected objects to active object.
 * Default behavior is active object determines scale and all other objects will be adjusted. This can be overrided unchecking 'Use Active', then all objects will be averaged.
 * Island scale averaging and repacking is optional and will yield better result.
 
-![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/master/x/eq2.gif)
+![UV Equalize](https://raw.githubusercontent.com/uhlik/bpy/media/eq2.gif)
 
 changelog:
 
@@ -596,7 +596,7 @@ usage:
 4. hit "U" and select "Tube UV Unwrap"
 5. optionally check/uncheck 'Mark Seams' or 'Flip' in operator properties
 
-![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/master/x/tube2.gif)
+![Tube UV Unwrap](https://raw.githubusercontent.com/uhlik/bpy/media/tube2.gif)
 
 changelog:
 
@@ -615,7 +615,7 @@ changelog:
 
 Simple time tracker inside blender. After you install and enable it, it will log loaded and saved files and time spent of file until it is saved. All ui is inside addon preferences.
 
-![Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/master/x/tt.jpg)
+![Time Tracker](https://raw.githubusercontent.com/uhlik/bpy/media/tt.jpg)
 
 Here you can enable / disable logging, clear data collected so far, set custom data path (.csv) and see short summary of collected data and open individual project directories in file browser. The project name is determined by directory name where the blend is. For example if you have project in directory named "MyNewOutstandingProject" and all blends are inside subdirectory "models", set level number to 1 and you will see project name in results. 0 is directory directly above blend, 1 is one directory above blend, and so on. If you are like me and all your projects have the same subdirectory structure, sent directory level and you are good to go.
 
