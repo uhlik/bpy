@@ -1,6 +1,4 @@
-### Contents:
-
-### addons for blender 2.80
+# Addons for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
 * [Color Management Presets](#color-management-presets-for-blender-280)
