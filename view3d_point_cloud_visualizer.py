@@ -5047,6 +5047,15 @@ class PCV_OT_generate_from_mesh(Operator):
         
         log("generated {} points.".format(len(vs)), 1)
         
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        
+        bpy.ops.point_cloud_visualizer.erase()
+        
         c = PCVControl(o)
         c.draw(vs, ns, cs)
         
