@@ -1,6 +1,4 @@
-### Contents:
-
-### addons for blender 2.7x
+# Addons for blender 2.7x
 
 * [Color Management Presets](#color-management-presets-for-blender-27x)
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-27x)
