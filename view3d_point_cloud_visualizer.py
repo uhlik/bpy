@@ -5758,6 +5758,8 @@ class PCV_PT_generate(Panel):
         c.prop(pcv, 'generate_exact_number_of_points')
         c.operator('point_cloud_visualizer.generate_from_mesh')
         
+        # TODO: add button to reset pcv, because after generation it is set to 'runtime' mode and regular ply loading is disabled
+        
         c.enabled = PCV_OT_generate_from_mesh.poll(context)
 
 
