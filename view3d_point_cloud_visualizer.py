@@ -17,7 +17,7 @@
 # ##### END GPL LICENSE BLOCK #####
 
 bl_info = {"name": "Point Cloud Visualizer",
-           "description": "Display, edit, filter, render, convert and export colored point cloud PLY files.",
+           "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
            "version": (0, 9, 18),
            "blender": (2, 80, 0),

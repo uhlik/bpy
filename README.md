@@ -18,7 +18,7 @@ Addons for **blender 2.7x** are here: [2.7x branch](https://github.com/uhlik/bpy
 
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
 
-**Display, edit, filter, render, convert and export colored point cloud PLY files.**
+**Display, edit, filter, render, convert, generate and export colored point cloud PLY files.**
 
 Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex values. Vertex normals and colors are optional.
 
@@ -26,7 +26,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.16.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18.png)
 
 ##### Basic Usage:
 
@@ -167,6 +167,28 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 * `Colors` - Assign point color to instance vertex colors, each instance will be colored by point color (except vertices)
 * `Sphere Subdivisions` - Conversion to instancer / particles only, number of subdivisions of particle system instanced ico sphere
 
+### Generate
+
+Generate point cloud from mesh (or object convertible to mesh). To store point cloud, use `Export` to save as ply file.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18-generate-color-types.jpg)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18-generate.png)
+
+* `Source` - Points generation source
+* `Algorithm`
+    - `Weighted Random In Triangle` - Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface.
+* `Approximate Number Of Points` - Number of points to generate, some algorithms may not generate exact number of points.
+* `Seed` - Random number generator seed
+* `Colors`
+    - `Constant Color` - Use constant color value
+    - `Vertex Colors` - Use active vertex colors
+    - `UV Texture` - Generate colors from active image texture node in active material using active UV layout
+    - `Vertex Group Monochromatic` - Use active vertex group, result will be shades of grey
+    - `Vertex Group Colorized` - Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport
+* `Color` - Constant color
+* `Exact Number of Samples` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
+
 ### Export
 
 Export current point cloud as binary ply file with several options. If exporting modified (filtered) points, check `Use Viewport Points`, otherwise you will not get modified points. If exporting viewport points colors may slightly differ. Transformation and axis conversion can be applied on both loaded and viewport points.
@@ -226,6 +248,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.18 point cloud generation
 * 0.9.17 fixes
 * 0.9.16 boolean filters
 * 0.9.15 selection preview for remove color filter
