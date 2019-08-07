@@ -55,6 +55,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from bpy_extras.io_utils import axis_conversion, ExportHelper
 from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
+from mathutils.interpolate import poly_3d_calc
 
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
@@ -67,8 +68,8 @@ def log(msg, indent=0, ):
 
 
 def debug_mode():
-    # return True
-    return (bpy.app.debug_value != 0)
+    return True
+    # return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -2561,14 +2562,38 @@ class PCVTriangleSurfaceSampler():
         
         if(colorize == 'UVTEX'):
             try:
+                if(o.active_material is None):
+                    # raise Exception("Cannot find active material and/or active image texture node with loaded image in active material and/or active UV layout")
+                    raise Exception("Cannot find active material")
                 uvtexnode = o.active_material.node_tree.nodes.active
+                if(uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
                 uvimage = uvtexnode.image
+                if(uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
                 uvimage.update()
                 uvarray = np.asarray(uvimage.pixels)
                 uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
                 uvlayer = bm.loops.layers.uv.active
+                if(uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if(col_layer is None):
+                    raise Exception()
             except:
-                raise Exception("Cannot find active material and/or active image texture node with loaded image in active material and/or active UV layout")
+                raise Exception("Cannot find active vertex colors")
+        if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if(group_layer is None):
+                    raise Exception()
+                group_layer_index = o.vertex_groups.active.index
+            except:
+                raise Exception("Cannot find active vertex group")
         
         def generate(poly, vs, ns, cs, override_num=None, ):
             ps = poly.verts
@@ -2586,54 +2611,46 @@ class PCVTriangleSurfaceSampler():
                 elif(colorize == 'CONSTANT'):
                     cs.append(constant_color)
                 elif(colorize == 'VCOLS'):
-                    pass
+                    ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                    ac = poly.loops[0][col_layer][:3]
+                    bc = poly.loops[1][col_layer][:3]
+                    cc = poly.loops[2][col_layer][:3]
+                    r = ac[0] * ws[0] + bc[0] * ws[1] + cc[0] * ws[2]
+                    g = ac[1] * ws[0] + bc[1] * ws[1] + cc[1] * ws[2]
+                    b = ac[2] * ws[0] + bc[2] * ws[1] + cc[2] * ws[2]
+                    cs.append((r, g, b, ))
                 elif(colorize == 'UVTEX'):
                     uvtriangle = []
                     for l in poly.loops:
                         uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0, )))
                     uvpoint = barycentric_transform(v, poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, *uvtriangle, )
                     w, h = uvimage.size
-                    x = int(round(remap(uvpoint.x, 0.0, 1.0, 0, w - 1)))
-                    y = int(round(remap(uvpoint.y, 0.0, 1.0, 0, h - 1)))
+                    # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                    x = int(round(remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                    y = int(round(remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
                     cs.append(tuple(uvarray[y][x][:3].tolist()))
                 elif(colorize == 'GROUP_MONO'):
-                    pass
+                    ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                    aw = poly.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = poly.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = poly.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    cs.append((m, m, m, ))
                 elif(colorize == 'GROUP_COLOR'):
-                    pass
+                    ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                    aw = poly.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = poly.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = poly.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    hue = remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
+                    c = Color()
+                    c.hsv = (hue, 1.0, 1.0, )
+                    cs.append((c.r, c.g, c.b, ))
         
         log("generating {} samples:".format(num_samples), 1)
         progress = Progress(len(bm.faces), indent=2, )
         for poly in bm.faces:
             progress.step()
-            '''
-            ps = poly.verts
-            tri = (ps[0].co, ps[1].co, ps[2].co)
-            # if num is 0, it can happen when mesh has large and very small polygons, increase number of samples and eventually all polygons gets covered
-            num = int(round(remap(poly.calc_area(), area_min, area_max, min_ppf, max_ppf)))
-            for i in range(num):
-                v = random_point_in_triangle(*tri)
-                vs.append(v.to_tuple())
-                ns.append(poly.normal.to_tuple())
-                if(colorize is None):
-                    cs.append((1.0, 0.0, 0.0, ))
-                elif(colorize == 'CONSTANT'):
-                    cs.append(constant_color)
-                elif(colorize == 'VCOLS'):
-                    pass
-                elif(colorize == 'UVTEX'):
-                    uvtriangle = []
-                    for l in poly.loops:
-                        uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0, )))
-                    uvpoint = barycentric_transform(v, poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, *uvtriangle, )
-                    w, h = uvimage.size
-                    x = int(round(remap(uvpoint.x, 0.0, 1.0, 0, w - 1)))
-                    y = int(round(remap(uvpoint.y, 0.0, 1.0, 0, h - 1)))
-                    cs.append(tuple(uvarray[y][x][:3].tolist()))
-                elif(colorize == 'GROUP_MONO'):
-                    pass
-                elif(colorize == 'GROUP_COLOR'):
-                    pass
-            '''
             generate(poly, vs, ns, cs, )
         
         if(exact_number_of_points):
@@ -4983,7 +5000,7 @@ class PCV_OT_seq_deinit(Operator):
 class PCV_OT_generate_from_mesh(Operator):
     bl_idname = "point_cloud_visualizer.generate_from_mesh"
     bl_label = "Generate From Mesh"
-    bl_description = ""
+    bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
     
     @classmethod
     def poll(cls, context):
@@ -5014,29 +5031,42 @@ class PCV_OT_generate_from_mesh(Operator):
             return {'CANCELLED'}
         
         pcv = o.point_cloud_visualizer
-        n = pcv.dev_generate_number_of_points
-        r = random.Random(pcv.dev_generate_seed)
         
-        if(pcv.dev_generate_colors in ('CONSTANT', 'UVTEX', )):
-            pass
+        if(pcv.generate_source not in ('SURFACE', )):
+            self.report({'ERROR'}, "Source not implemented.")
+            return {'CANCELLED'}
+        
+        n = pcv.generate_number_of_points
+        r = random.Random(pcv.generate_seed)
+        
+        if(pcv.generate_colors in ('CONSTANT', 'UVTEX', 'VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+            if(o.type in ('CURVE', 'SURFACE', 'FONT', ) and pcv.generate_colors != 'CONSTANT'):
+                self.report({'ERROR'}, "Object type does not support UV textures, vertex colors or vertex groups.")
+                return {'CANCELLED'}
         else:
             self.report({'ERROR'}, "Color generation not implemented.")
             return {'CANCELLED'}
         
-        if(pcv.dev_generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
-            # all of following should return None is not available
-            vcols = o.data.vertex_colors.active
-            uvtex = o.data.uv_layers.active
-            vgroup = o.vertex_groups.active
+        if(pcv.generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
+            if(o.type != 'MESH'):
+                vcols = None
+                uvtex = None
+                vgroup = None
+            else:
+                # all of following should return None is not available, at least for mesh object
+                vcols = o.data.vertex_colors.active
+                uvtex = o.data.uv_layers.active
+                vgroup = o.vertex_groups.active
             try:
                 sampler = PCVTriangleSurfaceSampler(context, o, n, r,
-                                                    colorize=pcv.dev_generate_colors,
-                                                    constant_color=pcv.dev_generate_constant_color,
+                                                    colorize=pcv.generate_colors,
+                                                    constant_color=pcv.generate_constant_color,
                                                     vcols=vcols, uvtex=uvtex, vgroup=vgroup,
-                                                    exact_number_of_points=pcv.dev_generate_exact_number_of_points, )
+                                                    exact_number_of_points=pcv.generate_exact_number_of_points, )
             except Exception as e:
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
+            
         else:
             self.report({'ERROR'}, "Algorithm not implemented.")
             return {'CANCELLED'}
@@ -5053,8 +5083,8 @@ class PCV_OT_generate_from_mesh(Operator):
                 if(v['ready']):
                     if(v['draw']):
                         ok = True
-        
-        bpy.ops.point_cloud_visualizer.erase()
+        if(ok):
+            bpy.ops.point_cloud_visualizer.erase()
         
         c = PCVControl(o)
         c.draw(vs, ns, cs)
@@ -5735,6 +5765,65 @@ class PCV_PT_sequence(Panel):
         c.operator('point_cloud_visualizer.sequence_clear')
 
 
+class PCV_PT_generate(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Generate"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        def third_label_two_thirds_prop(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, text='', )
+        
+        third_label_two_thirds_prop(pcv, 'generate_source', c, )
+        third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
+        
+        c.prop(pcv, 'generate_number_of_points')
+        c.prop(pcv, 'generate_seed')
+        third_label_two_thirds_prop(pcv, 'generate_colors', c, )
+        if(pcv.generate_colors == 'CONSTANT'):
+            r = c.row()
+            third_label_two_thirds_prop(pcv, 'generate_constant_color', c, )
+        c.prop(pcv, 'generate_exact_number_of_points')
+        c.operator('point_cloud_visualizer.generate_from_mesh')
+        
+        c.enabled = PCV_OT_generate_from_mesh.poll(context)
+
+
 class PCV_PT_development(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -5832,12 +5921,13 @@ class PCV_PT_development(Panel):
         #                 ok = True
         # sub.enabled = ok
         
+        '''
         sub.separator()
         
         sub.label(text="Point Cloud Generation:")
         
         c = sub.column()
-        # c.prop(pcv, 'dev_generate_algorithm')
+        # c.prop(pcv, 'generate_algorithm')
         
         def prop_name(cls, prop, colon=False, ):
             for p in cls.bl_rna.properties:
@@ -5856,17 +5946,18 @@ class PCV_PT_development(Panel):
             r = s.row()
             r.prop(cls, prop, text='', )
         
-        third_label_two_thirds_prop(pcv, 'dev_generate_algorithm', c, )
+        third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
         
-        c.prop(pcv, 'dev_generate_number_of_points')
-        c.prop(pcv, 'dev_generate_seed')
-        # c.prop(pcv, 'dev_generate_colors')
-        third_label_two_thirds_prop(pcv, 'dev_generate_colors', c, )
-        if(pcv.dev_generate_colors == 'CONSTANT'):
+        c.prop(pcv, 'generate_number_of_points')
+        c.prop(pcv, 'generate_seed')
+        # c.prop(pcv, 'generate_colors')
+        third_label_two_thirds_prop(pcv, 'generate_colors', c, )
+        if(pcv.generate_colors == 'CONSTANT'):
             r = c.row()
-            r.prop(pcv, 'dev_generate_constant_color')
-        c.prop(pcv, 'dev_generate_exact_number_of_points')
+            r.prop(pcv, 'generate_constant_color')
+        c.prop(pcv, 'generate_exact_number_of_points')
         c.operator('point_cloud_visualizer.generate_from_mesh')
+        '''
 
 
 class PCV_PT_debug(Panel):
@@ -6074,6 +6165,25 @@ class PCV_properties(PropertyGroup):
     # sequence_frame_offset: IntProperty(name="Offset", default=0, description="", )
     sequence_use_cyclic: BoolProperty(name="Cycle Forever", default=True, description="Cycle preloaded point clouds (ply_index = (current_frame % len(ply_files)) - 1)", )
     
+    generate_source: EnumProperty(name="Source", items=[
+                                                        # ('VERTICES', "Vertices", "Use vertices"),
+                                                        ('SURFACE', "Surface", "Use triangulated mesh surface"),
+                                                        # ('PARTICLES', "Particle System", "Use active particle system"),
+                                                        ], default='SURFACE', description="Points generation source", )
+    generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", "Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface."),
+                                                              # ('POSSON_DISK_SAMPLING', "Posson Disk Sampling", ""),
+                                                              ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="Point generating algorithm", )
+    generate_number_of_points: IntProperty(name="Approximate Number Of Points", default=100000, min=1, description="Number of points to generate, some algorithms may not generate exact number of points.", )
+    generate_seed: IntProperty(name="Seed", default=0, min=0, description="Random number generator seed", )
+    generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                        ('VCOLS', "Vertex Colors", "Use active vertex colors"),
+                                                        ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
+                                                        ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group, result will be shades of grey"),
+                                                        ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
+                                                        ], default='CONSTANT', description="Color source for generated point cloud", )
+    generate_constant_color: FloatVectorProperty(name="Constant Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    generate_exact_number_of_points: BoolProperty(name="Exact Number of Samples", default=False, description="Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value", )
+    
     # in-development properties
     # TODO: do some extra panel for extra shaders and rewrite PCVManager.render to draw only what is needed
     dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
@@ -6084,20 +6194,6 @@ class PCV_properties(PropertyGroup):
     dev_depth_color_b: FloatVectorProperty(name="Color B", description="", default=(0.0, 0.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, )
     dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
     dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", )
-    
-    dev_generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", ""),
-                                                                  # ('POSSON_DISK_SAMPLING', "Posson Disk Sampling", ""),
-                                                                  ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="", )
-    dev_generate_number_of_points: IntProperty(name="Approximate Number Of Points", default=100000, min=1, description="", )
-    dev_generate_seed: IntProperty(name="Seed", default=0, min=0, description="", )
-    dev_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant", "Use constant color value"),
-                                                            # ('VCOLS', "Vertex Colors", ""),
-                                                            ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
-                                                            # ('GROUP_MONO', "Vertex Group Monochromatic", ""),
-                                                            # ('GROUP_COLOR', "Vertex Group Colorized", ""),
-                                                            ], default='CONSTANT', description="", )
-    dev_generate_constant_color: FloatVectorProperty(name="Constant Color", description="", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
-    dev_generate_exact_number_of_points: BoolProperty(name="Exact Number of Samples", default=False, description="Generate exact number of points", )
     
     def _dev_sel_color_update(self, context, ):
         bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
@@ -6150,15 +6246,14 @@ classes = (
     
     PCV_PT_panel, PCV_PT_edit,
     PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color, PCV_PT_filter_merge,
-    PCV_PT_render, PCV_PT_convert, PCV_PT_export, PCV_PT_sequence,
+    PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
     
     PCV_OT_load, PCV_OT_draw, PCV_OT_erase, PCV_OT_render, PCV_OT_render_animation, PCV_OT_convert, PCV_OT_reload, PCV_OT_export,
     PCV_OT_filter_simplify, PCV_OT_filter_remove_color, PCV_OT_filter_remove_color_delete_selected, PCV_OT_filter_remove_color_deselect,
     PCV_OT_filter_project, PCV_OT_filter_merge, PCV_OT_filter_boolean_intersect, PCV_OT_filter_boolean_exclude,
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
-    PCV_OT_sequence_preload, PCV_OT_sequence_clear,
+    PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_from_mesh,
     
-    PCV_OT_generate_from_mesh,
     PCV_PT_development,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
