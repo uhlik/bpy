@@ -2514,7 +2514,6 @@ class PCVTriangleSurfaceSampler():
         if(colorize == 'UVTEX'):
             try:
                 if(o.active_material is None):
-                    # raise Exception("Cannot find active material and/or active image texture node with loaded image in active material and/or active UV layout")
                     raise Exception("Cannot find active material")
                 uvtexnode = o.active_material.node_tree.nodes.active
                 if(uvtexnode is None):
@@ -2641,6 +2640,147 @@ class PCVTriangleSurfaceSampler():
                 vs = np.column_stack((a[:, 0], a[:, 1], a[:, 2], ))
                 ns = np.column_stack((a[:, 3], a[:, 4], a[:, 5], ))
                 cs = np.column_stack((a[:, 6], a[:, 7], a[:, 8], ))
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+        
+        bm.free()
+        owner.to_mesh_clear()
+
+
+class PCVVertexSampler():
+    def __init__(self, context, o, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        depsgraph = context.evaluated_depsgraph_get()
+        if(o.modifiers):
+            owner = o.evaluated_get(depsgraph)
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        else:
+            owner = o
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        if(colorize == 'UVTEX'):
+            try:
+                if(o.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = o.active_material.node_tree.nodes.active
+                if(uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if(uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if(uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if(col_layer is None):
+                    raise Exception()
+            except:
+                raise Exception("Cannot find active vertex colors")
+        if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if(group_layer is None):
+                    raise Exception()
+                group_layer_index = o.vertex_groups.active.index
+            except:
+                raise Exception("Cannot find active vertex group")
+        
+        vs = []
+        ns = []
+        cs = []
+        for v in bm.verts:
+            vs.append(v.co.to_tuple())
+            ns.append(v.normal.to_tuple())
+            
+            if(colorize is None):
+                cs.append((1.0, 0.0, 0.0, ))
+            elif(colorize == 'CONSTANT'):
+                cs.append(constant_color)
+            elif(colorize == 'VCOLS'):
+                ls = v.link_loops
+                r = 0.0
+                g = 0.0
+                b = 0.0
+                for l in ls:
+                    c = l[col_layer][:3]
+                    r += c[0]
+                    g += c[1]
+                    b += c[2]
+                r /= len(ls)
+                g /= len(ls)
+                b /= len(ls)
+                cs.append((r, g, b, ))
+            elif(colorize == 'UVTEX'):
+                ls = v.link_loops
+                w, h = uvimage.size
+                r = 0.0
+                g = 0.0
+                b = 0.0
+                for l in ls:
+                    uvloc = l[uvlayer].uv.to_tuple()
+                    # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                    x = int(round(remap(uvloc[0] % 1.0, 0.0, 1.0, 0, w - 1)))
+                    y = int(round(remap(uvloc[1] % 1.0, 0.0, 1.0, 0, h - 1)))
+                    c = tuple(uvarray[y][x][:3].tolist())
+                    r += c[0]
+                    g += c[1]
+                    b += c[2]
+                r /= len(ls)
+                g /= len(ls)
+                b /= len(ls)
+                cs.append((r, g, b, ))
+            elif(colorize == 'GROUP_MONO'):
+                w = v[group_layer].get(group_layer_index, 0.0)
+                cs.append((w, w, w, ))
+            elif(colorize == 'GROUP_COLOR'):
+                w = v[group_layer].get(group_layer_index, 0.0)
+                hue = remap(1.0 - w, 0.0, 1.0, 0.0, 1 / 1.5)
+                c = Color()
+                c.hsv = (hue, 1.0, 1.0, )
+                cs.append((c.r, c.g, c.b, ))
         
         self.vs = vs[:]
         self.ns = ns[:]
@@ -4995,7 +5135,7 @@ class PCV_OT_generate_from_mesh(Operator):
         
         pcv = o.point_cloud_visualizer
         
-        if(pcv.generate_source not in ('SURFACE', )):
+        if(pcv.generate_source not in ('SURFACE', 'VERTICES', )):
             self.report({'ERROR'}, "Source not implemented.")
             return {'CANCELLED'}
         
@@ -5020,12 +5160,20 @@ class PCV_OT_generate_from_mesh(Operator):
                 vcols = o.data.vertex_colors.active
                 uvtex = o.data.uv_layers.active
                 vgroup = o.vertex_groups.active
+            
             try:
-                sampler = PCVTriangleSurfaceSampler(context, o, n, r,
-                                                    colorize=pcv.generate_colors,
-                                                    constant_color=pcv.generate_constant_color,
-                                                    vcols=vcols, uvtex=uvtex, vgroup=vgroup,
-                                                    exact_number_of_points=pcv.generate_exact_number_of_points, )
+                if(pcv.generate_source == 'VERTICES'):
+                    sampler = PCVVertexSampler(context, o,
+                                               colorize=pcv.generate_colors,
+                                               constant_color=pcv.generate_constant_color,
+                                               vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+                    
+                elif(pcv.generate_source == 'SURFACE'):
+                    sampler = PCVTriangleSurfaceSampler(context, o, n, r,
+                                                        colorize=pcv.generate_colors,
+                                                        constant_color=pcv.generate_constant_color,
+                                                        vcols=vcols, uvtex=uvtex, vgroup=vgroup,
+                                                        exact_number_of_points=pcv.generate_exact_number_of_points, )
             except Exception as e:
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
@@ -5795,17 +5943,21 @@ class PCV_PT_generate(Panel):
             r.prop(cls, prop, text='', )
         
         third_label_two_thirds_prop(pcv, 'generate_source', c, )
-        third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
         
-        c.prop(pcv, 'generate_number_of_points')
-        c.prop(pcv, 'generate_seed')
+        if(pcv.generate_source in ('SURFACE', )):
+            third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
+            c.prop(pcv, 'generate_number_of_points')
+            c.prop(pcv, 'generate_seed')
+        
         third_label_two_thirds_prop(pcv, 'generate_colors', c, )
         if(pcv.generate_colors == 'CONSTANT'):
             r = c.row()
             third_label_two_thirds_prop(pcv, 'generate_constant_color', c, )
-        c.prop(pcv, 'generate_exact_number_of_points')
-        c.operator('point_cloud_visualizer.generate_from_mesh')
         
+        if(pcv.generate_source in ('SURFACE', )):
+            c.prop(pcv, 'generate_exact_number_of_points')
+        
+        c.operator('point_cloud_visualizer.generate_from_mesh')
         c.operator('point_cloud_visualizer.reset_runtime', text="Remove Generated", )
         
         c.enabled = PCV_OT_generate_from_mesh.poll(context)
@@ -6152,8 +6304,7 @@ class PCV_properties(PropertyGroup):
     # sequence_frame_offset: IntProperty(name="Offset", default=0, description="", )
     sequence_use_cyclic: BoolProperty(name="Cycle Forever", default=True, description="Cycle preloaded point clouds (ply_index = (current_frame % len(ply_files)) - 1)", )
     
-    generate_source: EnumProperty(name="Source", items=[
-                                                        # ('VERTICES', "Vertices", "Use vertices"),
+    generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
                                                         ('SURFACE', "Surface", "Use triangulated mesh surface"),
                                                         # ('PARTICLES', "Particle System", "Use active particle system"),
                                                         ], default='SURFACE', description="Points generation source", )
