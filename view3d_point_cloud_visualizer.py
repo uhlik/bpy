@@ -2312,6 +2312,10 @@ class PCVControl():
         d = PCVManager.cache[pcv.uuid]
         d['points'] = points
         
+        # kill normals, might not be no longer valid, it will be recreated later
+        if('vertex_normals' in d.keys()):
+            del d['vertex_normals']
+        
         # but because colors i just stored in uint8, store them also as provided to enable reload operator
         cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
         cs_orig = cs_orig.astype(np.float32)
@@ -2552,7 +2556,29 @@ class PCVTriangleSurfaceSampler():
             for i in range(num):
                 v = random_point_in_triangle(*tri)
                 vs.append(v.to_tuple())
-                ns.append(poly.normal.to_tuple())
+                if(poly.smooth):
+                    a = poly.verts[0].normal
+                    b = poly.verts[1].normal
+                    c = poly.verts[2].normal
+                    nws = poly_3d_calc([a, b, c, ], v)
+                    
+                    nx = a.x * nws[0] + b.x * nws[1] + c.x * nws[2]
+                    ny = a.y * nws[0] + b.y * nws[1] + c.y * nws[2]
+                    nz = a.z * nws[0] + b.z * nws[1] + c.z * nws[2]
+                    normal = Vector((nx, ny, nz)).normalized()
+                    ns.append(normal.to_tuple())
+                    
+                    # n = Vector((0.0, 0.0, 0.0, ))
+                    # n += nws[0] * a
+                    # n += nws[1] * b
+                    # n += nws[2] * c
+                    # n = n / 3
+                    # n = n.normalized()
+                    # ns.append(n.to_tuple())
+                    
+                else:
+                    ns.append(poly.normal.to_tuple())
+                
                 if(colorize is None):
                     cs.append((1.0, 0.0, 0.0, ))
                 elif(colorize == 'CONSTANT'):
