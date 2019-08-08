@@ -176,18 +176,20 @@ Generate point cloud from mesh (or object convertible to mesh). To store point c
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18-generate.png)
 
 * `Source` - Points generation source
-* `Algorithm`
+    - `Vertices` - Use mesh vertices
+    - `Surface` - Use triangulated mesh surface
+* `Algorithm` `(Source: Surface)` - Point generating algorithm
     - `Weighted Random In Triangle` - Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface.
-* `Approximate Number Of Points` - Number of points to generate, some algorithms may not generate exact number of points.
-* `Seed` - Random number generator seed
-* `Colors`
+* `Approximate Number Of Points` `(Source: Surface)` - Number of points to generate, some algorithms may not generate exact number of points.
+* `Seed` `(Source: Surface)` - Random number generator seed
+* `Colors` `(Source: Vertices, Surface)` - Color source for generated point cloud
     - `Constant Color` - Use constant color value
     - `Vertex Colors` - Use active vertex colors
     - `UV Texture` - Generate colors from active image texture node in active material using active UV layout
     - `Vertex Group Monochromatic` - Use active vertex group, result will be shades of grey
     - `Vertex Group Colorized` - Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport
-* `Color` - Constant color
-* `Exact Number of Samples` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
+* `Color` `(Source: Vertices, Surface)` - Constant color
+* `Exact Number of Samples` `(Source: Surface)` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
 
 ### Export
 
