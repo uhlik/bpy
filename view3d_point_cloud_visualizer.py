@@ -5032,6 +5032,28 @@ class PCV_OT_generate_from_mesh(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_reset_runtime(Operator):
+    bl_idname = "point_cloud_visualizer.reset_runtime"
+    bl_label = "Reset Runtime"
+    bl_description = "Reset PCV to its default state if in runtime mode (displayed data is set with python and not with ui)"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        pcv = context.object.point_cloud_visualizer
+        if(pcv.runtime):
+            return True
+        return False
+    
+    def execute(self, context):
+        o = context.object
+        c = PCVControl(o)
+        c.erase()
+        c.reset()
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -5758,7 +5780,7 @@ class PCV_PT_generate(Panel):
         c.prop(pcv, 'generate_exact_number_of_points')
         c.operator('point_cloud_visualizer.generate_from_mesh')
         
-        # TODO: add button to reset pcv, because after generation it is set to 'runtime' mode and regular ply loading is disabled
+        c.operator('point_cloud_visualizer.reset_runtime', text="Remove Generated", )
         
         c.enabled = PCV_OT_generate_from_mesh.poll(context)
 
@@ -6191,7 +6213,7 @@ classes = (
     PCV_OT_filter_simplify, PCV_OT_filter_remove_color, PCV_OT_filter_remove_color_delete_selected, PCV_OT_filter_remove_color_deselect,
     PCV_OT_filter_project, PCV_OT_filter_merge, PCV_OT_filter_boolean_intersect, PCV_OT_filter_boolean_exclude,
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
-    PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_from_mesh,
+    PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_from_mesh, PCV_OT_reset_runtime,
     
     PCV_PT_development,
     
