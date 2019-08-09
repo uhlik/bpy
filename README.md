@@ -198,7 +198,7 @@ Generate point cloud from mesh (or object convertible to mesh). To store point c
 * `Color` `(Source: Vertices, Surface, Particles)` - Constant color
 * `Exact Number of Samples` `(Source: Surface)` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
 
-When `Source` is `Particles`, for generating colors (apart from `Constant` color), non-overlapping UV layout is required (can be really bad, useless for real production).
+When `Source` is `Particles`, for generating colors (apart from `Constant` color), **non-overlapping UV layout** is required (can be really bad, useless for real production).
 
 ### Export
 
