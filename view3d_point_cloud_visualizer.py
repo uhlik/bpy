@@ -2819,6 +2819,9 @@ class PCVParticleSystemSampler():
         ns = []
         cs = []
         
+        depsgraph = context.evaluated_depsgraph_get()
+        o = o.evaluated_get(depsgraph)
+        
         psys = o.particle_systems.active
         if(psys is None):
             raise Exception("Cannot find active particle system")
@@ -2834,33 +2837,27 @@ class PCVParticleSystemSampler():
                 raise Exception("Active particle system has 0 alive particles")
         
         for p in psys.particles:
-            if(p.alive_state == "ALIVE"):
-                vs.append(p.location.to_tuple())
-                ns.append(p.velocity.normalized().to_tuple())
-                
-                if(colorize is None):
-                    cs.append((1.0, 0.0, 0.0, ))
-                elif(colorize == 'CONSTANT'):
-                    cs.append(constant_color)
-                elif(colorize == 'VCOLS'):
-                    
-                    # unimplemented
-                    cs.append((1.0, 0.0, 0.0, ))
-                    
-                elif(colorize == 'UVTEX'):
-                    
-                    # unimplemented
-                    cs.append((1.0, 0.0, 0.0, ))
-                    
-                elif(colorize == 'GROUP_MONO'):
-                    
-                    # unimplemented
-                    cs.append((1.0, 0.0, 0.0, ))
-                    
-                elif(colorize == 'GROUP_COLOR'):
-                    
-                    # unimplemented
-                    cs.append((1.0, 0.0, 0.0, ))
+            if(p.alive_state != "ALIVE" and alive_only):
+                continue
+            
+            vs.append(p.location.to_tuple())
+            
+            n = Vector((1.0, 0.0, 0.0, ))
+            n.rotate(p.rotation)
+            ns.append(n.normalized().to_tuple())
+            
+            if(colorize is None):
+                cs.append((1.0, 0.0, 0.0, ))
+            elif(colorize == 'CONSTANT'):
+                cs.append(constant_color)
+            elif(colorize == 'VCOLS'):
+                raise Exception("Colorize type not implemented for particle system")
+            elif(colorize == 'UVTEX'):
+                raise Exception("Colorize type not implemented for particle system")
+            elif(colorize == 'GROUP_MONO'):
+                raise Exception("Colorize type not implemented for particle system")
+            elif(colorize == 'GROUP_COLOR'):
+                raise Exception("Colorize type not implemented for particle system")
         
         a = np.concatenate((vs, ns, cs), axis=1, )
         np.random.shuffle(a)
@@ -6413,7 +6410,7 @@ class PCV_properties(PropertyGroup):
     
     generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
                                                         ('SURFACE', "Surface", "Use triangulated mesh surface"),
-                                                        # ('PARTICLES', "Particle System", "Use active particle system"),
+                                                        ('PARTICLES', "Particle System", "Use active particle system"),
                                                         ], default='SURFACE', description="Points generation source", )
     generate_source_psys: EnumProperty(name="Particles", items=[('ALL', "All", "Use all particles"),
                                                                 ('ALIVE', "Alive", "Use alive particles"),
