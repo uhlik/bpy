@@ -2703,7 +2703,7 @@ class PCVVertexSampler():
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
         
-        if(len(bm.faces) == 0):
+        if(len(bm.verts) == 0):
             raise Exception("Mesh has no faces")
         
         vs = []
