@@ -2494,6 +2494,9 @@ class PCVTriangleSurfaceSampler():
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
         
+        if(len(bm.faces) == 0):
+            raise Exception("Mesh has no faces")
+        
         areas = tuple([p.calc_area() for p in bm.faces])
         area_min = min(areas)
         area_max = max(areas)
@@ -2637,9 +2640,19 @@ class PCVTriangleSurfaceSampler():
                 a = np.concatenate((vs, ns, cs), axis=1, )
                 np.random.shuffle(a)
                 a = a[:num_samples]
-                vs = np.column_stack((a[:, 0], a[:, 1], a[:, 2], ))
-                ns = np.column_stack((a[:, 3], a[:, 4], a[:, 5], ))
-                cs = np.column_stack((a[:, 6], a[:, 7], a[:, 8], ))
+                # vs = np.column_stack((a[:, 0], a[:, 1], a[:, 2], ))
+                # ns = np.column_stack((a[:, 3], a[:, 4], a[:, 5], ))
+                # cs = np.column_stack((a[:, 6], a[:, 7], a[:, 8], ))
+                vs = a[:, :3]
+                ns = a[:, 3:6]
+                cs = a[:, 6:]
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
         
         self.vs = vs[:]
         self.ns = ns[:]
@@ -2689,6 +2702,9 @@ class PCVVertexSampler():
         bmesh.ops.triangulate(bm, faces=bm.faces)
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
+        
+        if(len(bm.faces) == 0):
+            raise Exception("Mesh has no faces")
         
         vs = []
         ns = []
@@ -2781,6 +2797,13 @@ class PCVVertexSampler():
                 c = Color()
                 c.hsv = (hue, 1.0, 1.0, )
                 cs.append((c.r, c.g, c.b, ))
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
         
         self.vs = vs[:]
         self.ns = ns[:]
