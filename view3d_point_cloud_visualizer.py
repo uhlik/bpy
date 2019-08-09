@@ -56,6 +56,7 @@ from bpy_extras.io_utils import axis_conversion, ExportHelper
 from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
 from mathutils.interpolate import poly_3d_calc
+from mathutils.bvhtree import BVHTree
 
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
@@ -2537,7 +2538,7 @@ class PCVTriangleSurfaceSampler():
                 col_layer = bm.loops.layers.color.active
                 if(col_layer is None):
                     raise Exception()
-            except:
+            except Exception:
                 raise Exception("Cannot find active vertex colors")
         if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
             try:
@@ -2545,7 +2546,7 @@ class PCVTriangleSurfaceSampler():
                 if(group_layer is None):
                     raise Exception()
                 group_layer_index = o.vertex_groups.active.index
-            except:
+            except Exception:
                 raise Exception("Cannot find active vertex group")
         
         def generate(poly, vs, ns, cs, override_num=None, ):
@@ -2704,7 +2705,10 @@ class PCVVertexSampler():
         bm.faces.ensure_lookup_table()
         
         if(len(bm.verts) == 0):
-            raise Exception("Mesh has no faces")
+            raise Exception("Mesh has no vertices")
+        if(colorize in ('UVTEX', 'VCOLS', )):
+            if(len(bm.faces) == 0):
+                raise Exception("Mesh has no faces")
         
         vs = []
         ns = []
@@ -2733,7 +2737,7 @@ class PCVVertexSampler():
                 col_layer = bm.loops.layers.color.active
                 if(col_layer is None):
                     raise Exception()
-            except:
+            except Exception:
                 raise Exception("Cannot find active vertex colors")
         if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
             try:
@@ -2741,7 +2745,7 @@ class PCVVertexSampler():
                 if(group_layer is None):
                     raise Exception()
                 group_layer_index = o.vertex_groups.active.index
-            except:
+            except Exception:
                 raise Exception("Cannot find active vertex group")
         
         vs = []
@@ -2815,12 +2819,49 @@ class PCVVertexSampler():
 
 class PCVParticleSystemSampler():
     def __init__(self, context, o, alive_only=True, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
         vs = []
         ns = []
         cs = []
         
         depsgraph = context.evaluated_depsgraph_get()
-        o = o.evaluated_get(depsgraph)
+        if(o.modifiers):
+            owner = o.evaluated_get(depsgraph)
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        else:
+            owner = o
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        
+        o = owner
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
         
         psys = o.particle_systems.active
         if(psys is None):
@@ -2836,7 +2877,86 @@ class PCVParticleSystemSampler():
             if(not ok):
                 raise Exception("Active particle system has 0 alive particles")
         
-        for p in psys.particles:
+        mod = None
+        uv_no = None
+        if(colorize in ('VCOLS', 'UVTEX', 'GROUP_MONO', 'GROUP_COLOR', )):
+            if(uvtex is None):
+                raise Exception("Cannot find active uv layout on emitter")
+            for m in o.modifiers:
+                if(m.type == 'PARTICLE_SYSTEM'):
+                    if(m.particle_system == psys):
+                        mod = m
+                        break
+            uv_no = o.data.uv_layers.active_index
+        
+        if(colorize == 'UVTEX'):
+            try:
+                if(o.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = o.active_material.node_tree.nodes.active
+                if(uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if(uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if(uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if(col_layer is None):
+                    raise Exception()
+            except Exception:
+                raise Exception("Cannot find active vertex colors")
+            # for vertex groups, uv layout is required.. non-overlapping for best results
+            uvlayer = bm.loops.layers.uv.active
+            if(uvlayer is None):
+                raise Exception("Cannot find active UV layout")
+        if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if(group_layer is None):
+                    raise Exception()
+                group_layer_index = o.vertex_groups.active.index
+            except Exception:
+                raise Exception("Cannot find active vertex group")
+            # for vertex groups, uv layout is required.. non-overlapping for best results
+            uvlayer = bm.loops.layers.uv.active
+            if(uvlayer is None):
+                raise Exception("Cannot find active UV layout")
+        
+        # flatten mesh by uv and add original face indexes as int layer
+        def simple_flatten_uv_mesh(bm):
+            bm.faces.index_update()
+            bm.faces.ensure_lookup_table()
+            r = bmesh.new()
+            ilayer = r.faces.layers.int.new('face_indexes')
+            for f in bm.faces:
+                fvs = []
+                for i, l in enumerate(f.loops):
+                    uv = l[uvlayer].uv
+                    rv = r.verts.new((uv.x, uv.y, 0.0))
+                    fvs.append(rv)
+                rf = r.faces.new(fvs)
+                rf[ilayer] = f.index
+            r.faces.index_update()
+            r.faces.ensure_lookup_table()
+            return r
+        
+        if(colorize in ('VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+            # i do not need extra flat mesh each time..
+            bmf = simple_flatten_uv_mesh(bm)
+            bmf_il = bmf.faces.layers.int['face_indexes']
+            # with that i can ray_cast uv location and get original index of face i hit
+            bmf_bvh = BVHTree.FromBMesh(bmf)
+        
+        for i, p in enumerate(psys.particles):
             if(p.alive_state != "ALIVE" and alive_only):
                 continue
             
@@ -2851,13 +2971,49 @@ class PCVParticleSystemSampler():
             elif(colorize == 'CONSTANT'):
                 cs.append(constant_color)
             elif(colorize == 'VCOLS'):
-                raise Exception("Colorize type not implemented for particle system")
+                uv = p.uv_on_emitter(mod)
+                # intersect with flattened mesh and get original index of face from emitter mesh
+                fl, fn, fi, di = bmf_bvh.ray_cast(Vector((uv.x, uv.y, -0.1)), Vector((0.0, 0.0, 1.0)), 0.2, )
+                fpoly = bmf.faces[fi]
+                oi = fpoly[bmf_il]
+                poly = bm.faces[oi]
+                # get final color from barycentric weights
+                ws = poly_3d_calc([fv.co for fv in fpoly.verts], p.location)
+                cols = [l[col_layer][:3] for l in poly.loops]
+                r = sum([cc[0] * ws[ci] for ci, cc in enumerate(cols)])
+                g = sum([cc[1] * ws[ci] for ci, cc in enumerate(cols)])
+                b = sum([cc[2] * ws[ci] for ci, cc in enumerate(cols)])
+                cs.append((r, g, b, ))
             elif(colorize == 'UVTEX'):
-                raise Exception("Colorize type not implemented for particle system")
+                uv = p.uv_on_emitter(mod)
+                w, h = uvimage.size
+                # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                x = int(round(remap(uv.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                y = int(round(remap(uv.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                cs.append(tuple(uvarray[y][x][:3].tolist()))
             elif(colorize == 'GROUP_MONO'):
-                raise Exception("Colorize type not implemented for particle system")
+                uv = p.uv_on_emitter(mod)
+                fl, fn, fi, di = bmf_bvh.ray_cast(Vector((uv.x, uv.y, -0.1)), Vector((0.0, 0.0, 1.0)), 0.2, )
+                fpoly = bmf.faces[fi]
+                oi = fpoly[bmf_il]
+                poly = bm.faces[oi]
+                ws = poly_3d_calc([fv.co for fv in fpoly.verts], p.location)
+                weights = [pv[group_layer].get(group_layer_index, 0.0) for pv in poly.verts]
+                w = sum([ww * ws[wi] for wi, ww in enumerate(weights)])
+                cs.append((w, w, w, ))
             elif(colorize == 'GROUP_COLOR'):
-                raise Exception("Colorize type not implemented for particle system")
+                uv = p.uv_on_emitter(mod)
+                fl, fn, fi, di = bmf_bvh.ray_cast(Vector((uv.x, uv.y, -0.1)), Vector((0.0, 0.0, 1.0)), 0.2, )
+                fpoly = bmf.faces[fi]
+                oi = fpoly[bmf_il]
+                poly = bm.faces[oi]
+                ws = poly_3d_calc([fv.co for fv in fpoly.verts], p.location)
+                weights = [pv[group_layer].get(group_layer_index, 0.0) for pv in poly.verts]
+                w = sum([ww * ws[wi] for wi, ww in enumerate(weights)])
+                hue = remap(1.0 - w, 0.0, 1.0, 0.0, 1 / 1.5)
+                c = Color()
+                c.hsv = (hue, 1.0, 1.0, )
+                cs.append((c.r, c.g, c.b, ))
         
         a = np.concatenate((vs, ns, cs), axis=1, )
         np.random.shuffle(a)
@@ -2868,6 +3024,12 @@ class PCVParticleSystemSampler():
         self.vs = vs[:]
         self.ns = ns[:]
         self.cs = cs[:]
+        
+        if(colorize in ('VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+            bmf.free()
+        
+        bm.free()
+        owner.to_mesh_clear()
 
 
 class PCV_OT_init(Operator):
