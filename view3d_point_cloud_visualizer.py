@@ -5427,20 +5427,17 @@ class PCV_OT_generate_point_cloud(Operator):
                 return {'CANCELLED'}
             
         elif(pcv.generate_source == 'PARTICLES'):
-            # try:
-            #     pass
-            # except Exception as e:
-            #     self.report({'ERROR'}, str(e), )
-            #     return {'CANCELLED'}
-            
-            alive_only = True
-            if(pcv.generate_source_psys == 'ALL'):
-                alive_only = False
-            sampler = PCVParticleSystemSampler(context, o, alive_only=alive_only,
-                                               colorize=pcv.generate_colors,
-                                               constant_color=pcv.generate_constant_color,
-                                               vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
-            
+            try:
+                alive_only = True
+                if(pcv.generate_source_psys == 'ALL'):
+                    alive_only = False
+                sampler = PCVParticleSystemSampler(context, o, alive_only=alive_only,
+                                                   colorize=pcv.generate_colors,
+                                                   constant_color=pcv.generate_constant_color,
+                                                   vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
         else:
             self.report({'ERROR'}, "Source type not implemented.")
             return {'CANCELLED'}
