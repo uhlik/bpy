@@ -172,24 +172,33 @@ Conversion to particles specifics: points are converted to triangle mesh object,
 Generate point cloud from mesh (or object convertible to mesh). To store point cloud, use `Export` to save as ply file.
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18-generate-color-types.jpg)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-verts-psys.jpg)
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.18-generate.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-surface.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-verts.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-psys.png)
 
 * `Source` - Points generation source
     - `Vertices` - Use mesh vertices
     - `Surface` - Use triangulated mesh surface
+    - `Particles` - Use active particle system
+* `Particles` `(Source: Particles)` - Particles source selection
+    - `All` `(Source: Particles)` - Use all particles
+    - `Alive` `(Source: Particles)` - Use only alive particles
 * `Algorithm` `(Source: Surface)` - Point generating algorithm
     - `Weighted Random In Triangle` - Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface.
 * `Approximate Number Of Points` `(Source: Surface)` - Number of points to generate, some algorithms may not generate exact number of points.
 * `Seed` `(Source: Surface)` - Random number generator seed
-* `Colors` `(Source: Vertices, Surface)` - Color source for generated point cloud
+* `Colors` `(Source: Vertices, Surface, Particles)` - Color source for generated point cloud
     - `Constant Color` - Use constant color value
     - `Vertex Colors` - Use active vertex colors
     - `UV Texture` - Generate colors from active image texture node in active material using active UV layout
     - `Vertex Group Monochromatic` - Use active vertex group, result will be shades of grey
     - `Vertex Group Colorized` - Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport
-* `Color` `(Source: Vertices, Surface)` - Constant color
+* `Color` `(Source: Vertices, Surface, Particles)` - Constant color
 * `Exact Number of Samples` `(Source: Surface)` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
+
+When `Source` is `Particles`, for generating colors (apart from `Constant` color), non-overlapping UV layout is required (can be really bad, useless for real production).
 
 ### Export
 
@@ -250,7 +259,8 @@ c.reset()
 
 ### Changelog:
 
-* 0.9.18 point cloud generation
+* 0.9.19 point cloud generation from vertices and particles
+* 0.9.18 point cloud generation from mesh surface
 * 0.9.17 fixes
 * 0.9.16 boolean filters
 * 0.9.15 selection preview for remove color filter
