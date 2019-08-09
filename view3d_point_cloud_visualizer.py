@@ -2813,6 +2813,66 @@ class PCVVertexSampler():
         owner.to_mesh_clear()
 
 
+class PCVParticleSystemSampler():
+    def __init__(self, context, o, alive_only=True, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        vs = []
+        ns = []
+        cs = []
+        
+        psys = o.particle_systems.active
+        if(psys is None):
+            raise Exception("Cannot find active particle system")
+        if(len(psys.particles) == 0):
+            raise Exception("Active particle system has 0 particles")
+        if(alive_only):
+            ok = False
+            for p in psys.particles:
+                if(p.alive_state == "ALIVE"):
+                    ok = True
+                    break
+            if(not ok):
+                raise Exception("Active particle system has 0 alive particles")
+        
+        for p in psys.particles:
+            if(p.alive_state == "ALIVE"):
+                vs.append(p.location.to_tuple())
+                ns.append(p.velocity.normalized().to_tuple())
+                
+                if(colorize is None):
+                    cs.append((1.0, 0.0, 0.0, ))
+                elif(colorize == 'CONSTANT'):
+                    cs.append(constant_color)
+                elif(colorize == 'VCOLS'):
+                    
+                    # unimplemented
+                    cs.append((1.0, 0.0, 0.0, ))
+                    
+                elif(colorize == 'UVTEX'):
+                    
+                    # unimplemented
+                    cs.append((1.0, 0.0, 0.0, ))
+                    
+                elif(colorize == 'GROUP_MONO'):
+                    
+                    # unimplemented
+                    cs.append((1.0, 0.0, 0.0, ))
+                    
+                elif(colorize == 'GROUP_COLOR'):
+                    
+                    # unimplemented
+                    cs.append((1.0, 0.0, 0.0, ))
+        
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -5123,9 +5183,9 @@ class PCV_OT_seq_deinit(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_generate_from_mesh(Operator):
+class PCV_OT_generate_point_cloud(Operator):
     bl_idname = "point_cloud_visualizer.generate_from_mesh"
-    bl_label = "Generate From Mesh"
+    bl_label = "Generate"
     bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
     
     @classmethod
@@ -5158,7 +5218,7 @@ class PCV_OT_generate_from_mesh(Operator):
         
         pcv = o.point_cloud_visualizer
         
-        if(pcv.generate_source not in ('SURFACE', 'VERTICES', )):
+        if(pcv.generate_source not in ('SURFACE', 'VERTICES', 'PARTICLES', )):
             self.report({'ERROR'}, "Source not implemented.")
             return {'CANCELLED'}
         
@@ -5173,36 +5233,57 @@ class PCV_OT_generate_from_mesh(Operator):
             self.report({'ERROR'}, "Color generation not implemented.")
             return {'CANCELLED'}
         
-        if(pcv.generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
-            if(o.type != 'MESH'):
-                vcols = None
-                uvtex = None
-                vgroup = None
-            else:
-                # all of following should return None is not available, at least for mesh object
-                vcols = o.data.vertex_colors.active
-                uvtex = o.data.uv_layers.active
-                vgroup = o.vertex_groups.active
-            
+        if(o.type != 'MESH'):
+            vcols = None
+            uvtex = None
+            vgroup = None
+        else:
+            # all of following should return None is not available, at least for mesh object
+            vcols = o.data.vertex_colors.active
+            uvtex = o.data.uv_layers.active
+            vgroup = o.vertex_groups.active
+        
+        if(pcv.generate_source == 'VERTICES'):
             try:
-                if(pcv.generate_source == 'VERTICES'):
-                    sampler = PCVVertexSampler(context, o,
-                                               colorize=pcv.generate_colors,
-                                               constant_color=pcv.generate_constant_color,
-                                               vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
-                    
-                elif(pcv.generate_source == 'SURFACE'):
+                sampler = PCVVertexSampler(context, o,
+                                           colorize=pcv.generate_colors,
+                                           constant_color=pcv.generate_constant_color,
+                                           vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+        elif(pcv.generate_source == 'SURFACE'):
+            if(pcv.generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
+                try:
                     sampler = PCVTriangleSurfaceSampler(context, o, n, r,
                                                         colorize=pcv.generate_colors,
                                                         constant_color=pcv.generate_constant_color,
                                                         vcols=vcols, uvtex=uvtex, vgroup=vgroup,
                                                         exact_number_of_points=pcv.generate_exact_number_of_points, )
-            except Exception as e:
-                self.report({'ERROR'}, str(e), )
+                except Exception as e:
+                    self.report({'ERROR'}, str(e), )
+                    return {'CANCELLED'}
+            else:
+                self.report({'ERROR'}, "Algorithm not implemented.")
                 return {'CANCELLED'}
             
+        elif(pcv.generate_source == 'PARTICLES'):
+            # try:
+            #     pass
+            # except Exception as e:
+            #     self.report({'ERROR'}, str(e), )
+            #     return {'CANCELLED'}
+            
+            alive_only = True
+            if(pcv.generate_source_psys == 'ALL'):
+                alive_only = False
+            sampler = PCVParticleSystemSampler(context, o, alive_only=alive_only,
+                                               colorize=pcv.generate_colors,
+                                               constant_color=pcv.generate_constant_color,
+                                               vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            
         else:
-            self.report({'ERROR'}, "Algorithm not implemented.")
+            self.report({'ERROR'}, "Source type not implemented.")
             return {'CANCELLED'}
         
         vs = sampler.vs
@@ -5967,6 +6048,9 @@ class PCV_PT_generate(Panel):
         
         third_label_two_thirds_prop(pcv, 'generate_source', c, )
         
+        if(pcv.generate_source == 'PARTICLES'):
+            third_label_two_thirds_prop(pcv, 'generate_source_psys', c, )
+        
         if(pcv.generate_source in ('SURFACE', )):
             third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
             c.prop(pcv, 'generate_number_of_points')
@@ -5983,7 +6067,7 @@ class PCV_PT_generate(Panel):
         c.operator('point_cloud_visualizer.generate_from_mesh')
         c.operator('point_cloud_visualizer.reset_runtime', text="Remove Generated", )
         
-        c.enabled = PCV_OT_generate_from_mesh.poll(context)
+        c.enabled = PCV_OT_generate_point_cloud.poll(context)
 
 
 class PCV_PT_development(Panel):
@@ -6331,6 +6415,9 @@ class PCV_properties(PropertyGroup):
                                                         ('SURFACE', "Surface", "Use triangulated mesh surface"),
                                                         # ('PARTICLES', "Particle System", "Use active particle system"),
                                                         ], default='SURFACE', description="Points generation source", )
+    generate_source_psys: EnumProperty(name="Particles", items=[('ALL', "All", "Use all particles"),
+                                                                ('ALIVE', "Alive", "Use alive particles"),
+                                                                ], default='ALIVE', description="Particles source", )
     generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", "Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface."),
                                                               # ('POSSON_DISK_SAMPLING', "Posson Disk Sampling", ""),
                                                               ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="Point generating algorithm", )
@@ -6413,7 +6500,7 @@ classes = (
     PCV_OT_filter_simplify, PCV_OT_filter_remove_color, PCV_OT_filter_remove_color_delete_selected, PCV_OT_filter_remove_color_deselect,
     PCV_OT_filter_project, PCV_OT_filter_merge, PCV_OT_filter_boolean_intersect, PCV_OT_filter_boolean_exclude,
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
-    PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_from_mesh, PCV_OT_reset_runtime,
+    PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_point_cloud, PCV_OT_reset_runtime,
     
     PCV_PT_development,
     
