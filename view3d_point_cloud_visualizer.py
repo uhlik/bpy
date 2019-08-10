@@ -2663,6 +2663,120 @@ class PCVTriangleSurfaceSampler():
         owner.to_mesh_clear()
 
 
+class PCVPoissonDiskSurfaceSampler():
+    def __init__(self, context, o, rnd, minimal_distance, sampling_exponent=10, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        # pregenerate samples, normals and colors will be handled too
+        num_presamples = int((sum([p.area for p in o.data.polygons]) / (minimal_distance ** 2)) * sampling_exponent)
+        presampler = PCVTriangleSurfaceSampler(context, o, num_presamples, rnd, colorize=colorize, constant_color=constant_color, vcols=vcols, uvtex=uvtex, vgroup=vgroup, exact_number_of_points=False, )
+        pre_vs = presampler.vs
+        pre_ns = presampler.ns
+        pre_cs = presampler.cs
+        # join to points
+        ppoints = []
+        for i in range(len(pre_vs)):
+            ppoints.append(tuple(pre_vs[i].tolist()) + tuple(pre_ns[i].tolist()) + tuple(pre_cs[i].tolist()))
+        # keep track of used/unused points
+        pbools = [True] * len(ppoints)
+        
+        def random_point():
+            while(True):
+                i = rnd.randint(0, len(ppoints) - 1)
+                if(pbools[i]):
+                    pbools[i] = False
+                    return ppoints[i]
+        
+        accepted = []
+        candidates = []
+        # get starting point
+        candidates.append(random_point())
+        
+        # make kdtree of all points for getting annulus points
+        ptree = KDTree(len(ppoints))
+        for i in range(len(ppoints)):
+            ptree.insert(ppoints[i][:3], i)
+        ptree.balance()
+        
+        def annulus_points(c):
+            # generate k point with candidate annulus
+            pool = []
+            # points within radius minimal_distance
+            ball = ptree.find_range(c[:3], minimal_distance)
+            ball_indexes = set([i for _, i, _ in ball])
+            # points within radius minimal_distance * 2
+            ball2 = ptree.find_range(c[:3], minimal_distance * 2)
+            ball2_indexes = set([i for _, i, _ in ball2])
+            # difference between those two are points in annulus
+            s = ball2_indexes.difference(ball_indexes)
+            pool = []
+            for i in s:
+                if(pbools[i]):
+                    # pool.append(tuple(ptree.data[i]))
+                    pool.append(tuple(pre_vs[i].tolist()) + tuple(pre_ns[i].tolist()) + tuple(pre_cs[i].tolist()))
+                    # don't reuse points, if point is ok, will be added to candidate, if not will not be used anymore
+                    pbools[i] = False
+                    # # isn't the 'hole' problem here?
+                    # # this might leave a gap on mesh
+                    # # because i am no generating new samples and with this i cut out pre generated neighbours?
+                    # if(len(pool) >= k):
+                    #     break
+            return pool
+        
+        log("sampling..", 1)
+        
+        loop = True
+        while(loop):
+            # choose one random candidate
+            c = candidates[rnd.randint(0, len(candidates) - 1)]
+            # generate k points in candidate annulus
+            ap = annulus_points(c)
+            na = False
+            for i, a in enumerate(ap):
+                # this is not quite right to create kdtree each iteration..
+                tps = candidates + accepted
+                tpsl = len(tps)
+                tree = KDTree(tpsl)
+                for j in range(tpsl):
+                    tree.insert(tps[j][:3], j)
+                tree.balance()
+                
+                ball = tree.find_range(a[:3], minimal_distance)
+                ball_indexes = set([i for _, i, _ in ball])
+                if(len(ball) == 0):
+                    # add if annulus points is acceptable as candidate - no other candidates or accepted are within minimal_distance
+                    candidates.append(a)
+                    na = True
+            if(not na):
+                # if no candidate or accepted is within all annulus points minimal_distance accept candidate and remove from candidates
+                accepted.append(c)
+                candidates.remove(c)
+            # no candidates left, we end here
+            if(len(candidates) == 0):
+                loop = False
+            
+            if(debug_mode()):
+                sys.stdout.write("\r")
+                sys.stdout.write("        accepted: {0} | candidates: {1}  ".format(len(accepted), len(candidates)))
+                sys.stdout.write("\b")
+                sys.stdout.flush()
+        
+        if(debug_mode()):
+            sys.stdout.write("\n")
+        log("done..", 1)
+        
+        # split point data back
+        vs = []
+        ns = []
+        cs = []
+        for i in range(len(accepted)):
+            vs.append(accepted[i][:3])
+            ns.append(accepted[i][3:6])
+            cs.append(accepted[i][6:])
+        self.vs = vs
+        self.ns = ns
+        self.cs = cs
+
+
 class PCVVertexSampler():
     def __init__(self, context, o, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
         log("{}:".format(self.__class__.__name__), 0)
@@ -5422,6 +5536,16 @@ class PCV_OT_generate_point_cloud(Operator):
                 except Exception as e:
                     self.report({'ERROR'}, str(e), )
                     return {'CANCELLED'}
+            elif(pcv.generate_algorithm == 'POISSON_DISK_SAMPLING'):
+                try:
+                    sampler = PCVPoissonDiskSurfaceSampler(context, o, r, minimal_distance=pcv.generate_minimal_distance,
+                                                           sampling_exponent=pcv.generate_sampling_exponent,
+                                                           colorize=pcv.generate_colors,
+                                                           constant_color=pcv.generate_constant_color,
+                                                           vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+                except Exception as e:
+                    self.report({'ERROR'}, str(e), )
+                    return {'CANCELLED'}
             else:
                 self.report({'ERROR'}, "Algorithm not implemented.")
                 return {'CANCELLED'}
@@ -5459,6 +5583,9 @@ class PCV_OT_generate_point_cloud(Operator):
         
         c = PCVControl(o)
         c.draw(vs, ns, cs)
+        
+        if(debug_mode()):
+            o.display_type = 'BOUNDS'
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -6209,16 +6336,20 @@ class PCV_PT_generate(Panel):
         
         if(pcv.generate_source in ('SURFACE', )):
             third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
+        
+        if(pcv.generate_algorithm in ('WEIGHTED_RANDOM_IN_TRIANGLE', )):
             c.prop(pcv, 'generate_number_of_points')
             c.prop(pcv, 'generate_seed')
+            c.prop(pcv, 'generate_exact_number_of_points')
+        if(pcv.generate_algorithm in ('POISSON_DISK_SAMPLING', )):
+            c.prop(pcv, 'generate_minimal_distance')
+            c.prop(pcv, 'generate_sampling_exponent')
+            # c.prop(pcv, 'generate_seed')
         
         third_label_two_thirds_prop(pcv, 'generate_colors', c, )
         if(pcv.generate_colors == 'CONSTANT'):
             r = c.row()
             third_label_two_thirds_prop(pcv, 'generate_constant_color', c, )
-        
-        if(pcv.generate_source in ('SURFACE', )):
-            c.prop(pcv, 'generate_exact_number_of_points')
         
         c.operator('point_cloud_visualizer.generate_from_mesh')
         c.operator('point_cloud_visualizer.reset_runtime', text="Remove Generated", )
@@ -6575,7 +6706,7 @@ class PCV_properties(PropertyGroup):
                                                                 ('ALIVE', "Alive", "Use alive particles"),
                                                                 ], default='ALIVE', description="Particles source", )
     generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", "Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface."),
-                                                              # ('POSSON_DISK_SAMPLING', "Posson Disk Sampling", ""),
+                                                              ('POISSON_DISK_SAMPLING', "Poisson Disk Sampling", "Warning: slow. very slow indeed.. Uses Weighted Random In Triangle algorithm to pregenerate samples with all its inconveniences."),
                                                               ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="Point generating algorithm", )
     generate_number_of_points: IntProperty(name="Approximate Number Of Points", default=100000, min=1, description="Number of points to generate, some algorithms may not generate exact number of points.", )
     generate_seed: IntProperty(name="Seed", default=0, min=0, description="Random number generator seed", )
@@ -6587,6 +6718,8 @@ class PCV_properties(PropertyGroup):
                                                         ], default='CONSTANT', description="Color source for generated point cloud", )
     generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
     generate_exact_number_of_points: BoolProperty(name="Exact Number of Samples", default=False, description="Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value", )
+    generate_minimal_distance: FloatProperty(name="Minimal Distance", default=0.1, precision=3, subtype='DISTANCE', description="Poisson Disk minimal distance between points, the smaller value, the slower calculation", )
+    generate_sampling_exponent: IntProperty(name="Sampling Exponent", default=5, min=1, description="Poisson Disk presampling exponent, lower values are faster but less even, higher values are slower exponentially", )
     
     # in-development properties
     # TODO: do some extra panel for extra shaders and rewrite PCVManager.render to draw only what is needed
