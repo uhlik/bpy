@@ -19,9 +19,9 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 19),
+           "version": (0, 9, 20),
            "blender": (2, 80, 0),
-           "location": "3D Viewport > Sidebar > View > Point Cloud Visualizer",
+           "location": "3D Viewport > Sidebar > Point Cloud Visualizer",
            "warning": "",
            "wiki_url": "https://github.com/uhlik/bpy",
            "tracker_url": "https://github.com/uhlik/bpy/issues",
@@ -4525,6 +4525,9 @@ class PCV_OT_edit_start(Operator):
         ns = c['normals']
         cs = c['colors']
         
+        # ensure object mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
         # prepare mesh
         bm = bmesh.new()
         for v in vs:
@@ -4555,9 +4558,11 @@ class PCV_OT_edit_start(Operator):
         o.point_cloud_visualizer.edit_is_edit_mesh = True
         pcv.edit_initialized = True
         pcv.edit_pre_edit_alpha = pcv.global_alpha
-        pcv.global_alpha = 0.5
+        pcv.global_alpha = pcv.edit_overlay_alpha
         pcv.edit_pre_edit_display = pcv.display_percent
         pcv.display_percent = 100.0
+        pcv.edit_pre_edit_size = pcv.point_size
+        pcv.point_size = pcv.edit_overlay_size
         
         return {'FINISHED'}
 
@@ -4665,6 +4670,7 @@ class PCV_OT_edit_end(Operator):
         p.point_cloud_visualizer.edit_initialized = False
         p.point_cloud_visualizer.global_alpha = p.point_cloud_visualizer.edit_pre_edit_alpha
         p.point_cloud_visualizer.display_percent = p.point_cloud_visualizer.edit_pre_edit_display
+        p.point_cloud_visualizer.point_size = p.point_cloud_visualizer.edit_pre_edit_size
         
         return {'FINISHED'}
 
@@ -4700,9 +4706,11 @@ class PCV_OT_edit_cancel(Operator):
         
         pcv.edit_initialized = False
         pcv.global_alpha = pcv.edit_pre_edit_alpha
-        pcv.edit_pre_edit_alpha = 1.0
+        pcv.edit_pre_edit_alpha = 0.5
         pcv.display_percent = pcv.edit_pre_edit_display
         pcv.edit_pre_edit_display = 100.0
+        pcv.point_size = pcv.edit_pre_edit_size
+        pcv.edit_pre_edit_size = 3
         
         # also beware, this changes uuid
         bpy.ops.point_cloud_visualizer.reload()
@@ -5618,18 +5626,25 @@ class PCV_OT_reset_runtime(Operator):
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "View"
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
     bl_label = "Point Cloud Visualizer"
-    bl_options = {'DEFAULT_CLOSED'}
+    # bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
-        o = context.active_object
-        if(o):
-            return True
-        return False
+        # o = context.active_object
+        # if(o):
+        #     return True
+        # return False
+        return True
     
     def draw(self, context):
+        o = context.active_object
+        if(not o):
+            self.layout.label(text='Select an object..', icon='ERROR', )
+            return
+        
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
@@ -5654,12 +5669,19 @@ class PCV_PT_panel(Panel):
             
             sub.separator()
             
+            sub.prop(pcv, 'edit_overlay_alpha')
+            sub.prop(pcv, 'edit_overlay_size')
+            
+            sub.separator()
+            
             r = sub.row(align=True)
             r.operator('point_cloud_visualizer.edit_update')
             r.operator('point_cloud_visualizer.edit_end')
             
             if(context.mode != 'EDIT_MESH'):
                 sub.label(text="Must be in Edit Mode", icon='ERROR', )
+            
+            sub.enabled = PCV_OT_edit_update.poll(context)
             
             return
         
@@ -6689,8 +6711,24 @@ class PCV_properties(PropertyGroup):
     edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
-    edit_pre_edit_alpha: FloatProperty(default=1.0, options={'HIDDEN', }, )
+    edit_pre_edit_alpha: FloatProperty(default=0.5, options={'HIDDEN', }, )
     edit_pre_edit_display: FloatProperty(default=100.0, options={'HIDDEN', }, )
+    edit_pre_edit_size: IntProperty(default=3, options={'HIDDEN', }, )
+    
+    def _edit_overlay_alpha_update(self, context, ):
+        o = context.object
+        p = o.parent
+        pcv = p.point_cloud_visualizer
+        pcv.global_alpha = self.edit_overlay_alpha
+    
+    def _edit_overlay_size_update(self, context, ):
+        o = context.object
+        p = o.parent
+        pcv = p.point_cloud_visualizer
+        pcv.point_size = self.edit_overlay_size
+    
+    edit_overlay_alpha: FloatProperty(name="Overlay Alpha", default=0.5, min=0.0, max=1.0, precision=2, subtype='FACTOR', description="Overlay point alpha", update=_edit_overlay_alpha_update, )
+    edit_overlay_size: IntProperty(name="Overlay Size", default=3, min=1, max=10, subtype='PIXEL', description="Overlay point size", update=_edit_overlay_size_update, )
     
     # sequence_enabled: BoolProperty(default=False, options={'HIDDEN', }, )
     # sequence_frame_duration: IntProperty(name="Frames", default=1, min=1, description="", )
@@ -6706,7 +6744,7 @@ class PCV_properties(PropertyGroup):
                                                                 ('ALIVE', "Alive", "Use alive particles"),
                                                                 ], default='ALIVE', description="Particles source", )
     generate_algorithm: EnumProperty(name="Algorithm", items=[('WEIGHTED_RANDOM_IN_TRIANGLE', "Weighted Random In Triangle", "Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface."),
-                                                              ('POISSON_DISK_SAMPLING', "Poisson Disk Sampling", "Warning: slow. very slow indeed.. Uses Weighted Random In Triangle algorithm to pregenerate samples with all its inconveniences."),
+                                                              ('POISSON_DISK_SAMPLING', "Poisson Disk Sampling", "Warning: slow, very slow indeed.. Uses Weighted Random In Triangle algorithm to pregenerate samples with all its inconveniences."),
                                                               ], default='WEIGHTED_RANDOM_IN_TRIANGLE', description="Point generating algorithm", )
     generate_number_of_points: IntProperty(name="Approximate Number Of Points", default=100000, min=1, description="Number of points to generate, some algorithms may not generate exact number of points.", )
     generate_seed: IntProperty(name="Seed", default=0, min=0, description="Random number generator seed", )

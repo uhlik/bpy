@@ -32,7 +32,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 * Install and activate addon in a usual way.
 * Add any object type to scene.
-* Go to 3d View Sidebar (N) > `Point Cloud Visualizer` panel, click file browser icon, select ply file, click `Load PLY`. `Reload` button next to it reloads ply from disk.
+* Go to 3d View Sidebar (N) > `Point Cloud Visualizer` tab, click file browser icon, select ply file, click `Load PLY`. `Reload` button next to it reloads ply from disk.
 * Click `Draw` button to display point cloud, `Erase` to hide point cloud. Adjust percentage of displayed points with `Display`, point size with `Size` and point transparency with `Alpha`.
 * Display point normals as lines - click `Normal` icon, adjust line length with `Length` next to it.
 * Transforming parent object transforms point cloud as well.
@@ -63,6 +63,8 @@ Quasi point cloud Edit Mode. Hit `Start` and all points are converted to helper 
 * New points can be reliably (for now) created by duplicating existing points. If you create new points, they will all have the same random normal and random color.
 
 `Start` - Start edit mode, create helper object and switch to it
+`Overlay Alpha` - Overlay point alpha
+`Overlay Size` - Overlay point size
 `Update` - Update displayed cloud from edited mesh
 `End` - Update displayed cloud from edited mesh, stop edit mode and remove helper object
 `Cancel` - Stop edit mode, try to remove helper object and reload original point cloud
@@ -187,6 +189,7 @@ Generate point cloud from mesh (or object convertible to mesh). To store point c
     - `Alive` `(Source: Particles)` - Use only alive particles
 * `Algorithm` `(Source: Surface)` - Point generating algorithm
     - `Weighted Random In Triangle` - Average triangle areas to approximate number of random points in each to get even distribution of points. If some very small polygons are left without points, increase number of samples. Mesh is triangulated before processing, on non-planar polygons, points will not be exactly on original polygon surface.
+    - `Poisson Disk Sampling` - Warning: slow, very slow indeed.. Uses Weighted Random In Triangle algorithm to pregenerate samples with all its inconveniences.
 * `Approximate Number Of Points` `(Source: Surface)` - Number of points to generate, some algorithms may not generate exact number of points.
 * `Seed` `(Source: Surface)` - Random number generator seed
 * `Colors` `(Source: Vertices, Surface, Particles)` - Color source for generated point cloud
@@ -196,7 +199,9 @@ Generate point cloud from mesh (or object convertible to mesh). To store point c
     - `Vertex Group Monochromatic` - Use active vertex group, result will be shades of grey
     - `Vertex Group Colorized` - Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport
 * `Color` `(Source: Vertices, Surface, Particles)` - Constant color
-* `Exact Number of Samples` `(Source: Surface)` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
+* `Exact Number of Samples` `(Source: Surface, Algorithm: Triangle)` - Generate exact number of points, if selected algorithm result is less points, more points will be calculated on random polygons at the end, if result is more points, points will be shuffled and sliced to match exact value
+* `Minimal Distance` `(Source: Surface, Algorithm: Poisson)` - Poisson Disk minimal distance between points, the smaller value, the slower calculation
+* `Sampling Exponent` `(Source: Surface, Algorithm: Poisson)` - Poisson Disk presampling exponent, lower values are faster but less even, higher values are slower exponentially
 
 When `Source` is `Particles`, for generating colors (apart from `Constant` color), **non-overlapping UV layout** is required (can be really bad, useless for real production).
 
@@ -253,12 +258,14 @@ c.reset()
 
 * `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing
 * `Normal Color` - Display color for vertex normals
+* `Selection Color` - Display color for selection
 * `Shuffle Points` - Shuffle points upon loading, display percentage is more useable if points are shuffled, disabled if you plan to export ply and you need to keep point order
 * `Convert 16bit Colors` - Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype
 * `Gamma Correct 16bit Colors` - When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'
 
 ### Changelog:
 
+* 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes
 * 0.9.19 point cloud generation from vertices and particles
 * 0.9.18 point cloud generation from mesh surface
 * 0.9.17 fixes
