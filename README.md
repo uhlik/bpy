@@ -258,6 +258,9 @@ c.draw(vs, [], [])
 c.draw(vs)
 # it is also possible to pass nothing in which case nothing is drawn
 c.draw()
+```
+
+```python
 # to stop any drawing
 c.erase()
 # to return object control to user
