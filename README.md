@@ -249,6 +249,9 @@ ns = np.array([[0.0, 0.0, 1.0]] * n)
 cs = np.random.random((n, 3))
 # draw points
 c.draw(vs, ns, cs)
+```
+
+```python
 # if some data like normals/colors are not available
 c.draw(vs, None, None)
 c.draw(vs, [], [])
