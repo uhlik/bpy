@@ -6791,6 +6791,26 @@ class PCV_properties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
+'''
+def update_panel_bl_category(self, context):
+    try:
+        p = PCV_PT_panel
+        if('bl_rna' in p.__dict__):
+            bpy.utils.unregister_class(p)
+        prefs = context.preferences.addons[__name__].preferences
+        v = prefs.category
+        ei = prefs.bl_rna.properties['category'].enum_items
+        n = ''
+        for e in ei:
+            if(e.identifier == v):
+                n = e.name
+        p.bl_category = n
+        bpy.utils.register_class(p)
+    except Exception as e:
+        log('PCV: setting tab name failed ({})'.format(str(e)))
+'''
+
+
 class PCV_preferences(AddonPreferences):
     bl_idname = __name__
     
@@ -6800,6 +6820,10 @@ class PCV_preferences(AddonPreferences):
     convert_16bit_colors: BoolProperty(name="Convert 16bit Colors", description="Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype", default=True, )
     gamma_correct_16bit_colors: BoolProperty(name="Gamma Correct 16bit Colors", description="When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'", default=False, )
     shuffle_points: BoolProperty(name="Shuffle Points", description="Shuffle points upon loading, display percentage is more useable if points are shuffled", default=True, )
+    '''
+    category: EnumProperty(name="Tab Name", items=[('POINT_CLOUD_VISUALIZER', "Point Cloud Visualizer", ""),
+                                                   ('PCV', "PCV", ""), ], default='POINT_CLOUD_VISUALIZER', description="", update=update_panel_bl_category, )
+    '''
     
     def draw(self, context):
         l = self.layout
@@ -6814,6 +6838,10 @@ class PCV_preferences(AddonPreferences):
         c.prop(self, "gamma_correct_16bit_colors")
         if(not self.convert_16bit_colors):
             c.active = False
+        '''
+        r = l.row()
+        r.prop(self, "category")
+        '''
 
 
 @persistent
@@ -6844,6 +6872,9 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    '''
+    update_panel_bl_category(None, bpy.context)
+    '''
 
 
 def unregister():
