@@ -16,7 +16,7 @@ Addons for **blender 2.7x** are here: [2.7x branch](https://github.com/uhlik/bpy
 ***
 ***
 
-## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/view3d_point_cloud_visualizer.py) (for blender 2.80)
+## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_point_cloud_visualizer.py) (for blender 2.80)
 
 **Display, edit, filter, render, convert, generate and export colored point cloud PLY files.**
 
@@ -233,7 +233,7 @@ To display point cloud data from other addons/custom scripts.
 ```python
 import bpy
 import numpy as np
-from view3d_point_cloud_visualizer import PCVControl
+from space_view3d_point_cloud_visualizer import PCVControl
 o = bpy.context.active_object
 c = PCVControl(o)
 n = 100
