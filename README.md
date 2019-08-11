@@ -265,7 +265,7 @@ c.reset()
 
 ### Changelog:
 
-* 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes
+* 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes, removed manual depth sorting during render
 * 0.9.19 point cloud generation from vertices and particles
 * 0.9.18 point cloud generation from mesh surface
 * 0.9.17 fixes
