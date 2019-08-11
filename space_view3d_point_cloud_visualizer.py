@@ -2499,6 +2499,8 @@ class PCVTriangleSurfaceSampler():
             raise Exception("Mesh has no faces")
         
         areas = tuple([p.calc_area() for p in bm.faces])
+        if(sum(areas) == 0.0):
+            raise Exception("Mesh surface area is zero")
         area_min = min(areas)
         area_max = max(areas)
         avg_ppf = num_samples / len(areas)
