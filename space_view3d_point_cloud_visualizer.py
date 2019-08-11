@@ -2648,6 +2648,9 @@ class PCVTriangleSurfaceSampler():
                 ns = a[:, 3:6]
                 cs = a[:, 6:]
         
+        if(len(vs) == 0):
+            raise Exception("No points generated, increase number of points or decrease minimal distance")
+        
         # and shuffle..
         a = np.concatenate((vs, ns, cs), axis=1, )
         np.random.shuffle(a)
