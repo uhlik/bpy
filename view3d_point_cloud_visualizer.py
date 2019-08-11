@@ -3316,6 +3316,7 @@ class PCV_OT_render(Operator):
     
     def execute(self, context):
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
         scene = context.scene
@@ -3415,6 +3416,7 @@ class PCV_OT_render(Operator):
             gpu.matrix.load_projection_matrix(Matrix.Identity(4))
             
             bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
+            bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
             
             o = cloud['object']
             vs = cloud['vertices']
@@ -3429,8 +3431,8 @@ class PCV_OT_render(Operator):
             cs = cs[:l]
             ns = ns[:l]
             
-            # TODO try to remove manual depth test during offscreen rendering
-            
+            '''
+            # NOTTODO-ITISDONE try to remove manual depth test during offscreen rendering
             # sort by depth
             mw = o.matrix_world
             depth = []
@@ -3443,7 +3445,7 @@ class PCV_OT_render(Operator):
             vs = [a for _, a, b, c in sps][::-1]
             cs = [b for _, a, b, c in sps][::-1]
             ns = [c for _, a, b, c in sps][::-1]
-            
+            '''
             if(pcv.illumination):
                 shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
@@ -3497,6 +3499,7 @@ class PCV_OT_render(Operator):
             
         finally:
             bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
+            bgl.glDisable(bgl.GL_DEPTH_TEST)
             bgl.glDisable(bgl.GL_BLEND)
             offscreen.unbind()
             offscreen.free()
