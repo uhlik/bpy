@@ -6799,6 +6799,7 @@ def _update_panel_bl_category(self, context):
     _sub_panels = (
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
+        PCV_PT_development, PCV_PT_debug,
     )
     try:
         p = _main_panel
