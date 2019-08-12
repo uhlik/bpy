@@ -269,12 +269,18 @@ c.reset()
 
 ### Addon Preferences:
 
-* `Default Color` - Default color to be used upon loading PLY to cache when vertex colors are missing
-* `Normal Color` - Display color for vertex normals
-* `Selection Color` - Display color for selection
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.21-prefs.png)
+
+* `Default` - Default color to be used upon loading PLY to cache when vertex colors are missing
+* `Normal` - Display color for vertex normals lines
+* `Selection` - Display color for selection
 * `Shuffle Points` - Shuffle points upon loading, display percentage is more useable if points are shuffled, disabled if you plan to export ply and you need to keep point order
 * `Convert 16bit Colors` - Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype
 * `Gamma Correct 16bit Colors` - When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'
+* `Tab Name` - To have PCV in its own separate tab, choose one
+* `Custom Tab Name` - Check if you want to have PCV in custom named tab or in existing tab
+* `Name` - Custom PCV tab name, if you choose one from already existing tabs it will append to that tab
+
 
 ### Changelog:
 

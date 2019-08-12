@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 20),
+           "version": (0, 9, 21),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -6793,39 +6793,52 @@ class PCV_properties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
-'''
-def update_panel_bl_category(self, context):
+def _update_panel_bl_category(self, context):
+    _main_panel = PCV_PT_panel
+    # NOTE: maybe generate those from 'classes' tuple, or, just don't forget to append new panel also here..
+    _sub_panels = (
+        PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
+        PCV_PT_filter_merge, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
+    )
     try:
-        p = PCV_PT_panel
-        if('bl_rna' in p.__dict__):
-            bpy.utils.unregister_class(p)
+        p = _main_panel
+        bpy.utils.unregister_class(p)
+        for sp in _sub_panels:
+            bpy.utils.unregister_class(sp)
         prefs = context.preferences.addons[__name__].preferences
-        v = prefs.category
-        ei = prefs.bl_rna.properties['category'].enum_items
+        c = prefs.category_custom
         n = ''
-        for e in ei:
-            if(e.identifier == v):
-                n = e.name
+        if(c):
+            n = prefs.category_custom_name
+        else:
+            v = prefs.category
+            ei = prefs.bl_rna.properties['category'].enum_items
+            for e in ei:
+                if(e.identifier == v):
+                    n = e.name
+        if(n == ''):
+            raise Exception('Name is empty string')
         p.bl_category = n
         bpy.utils.register_class(p)
+        for sp in _sub_panels:
+            bpy.utils.register_class(sp)
     except Exception as e:
         log('PCV: setting tab name failed ({})'.format(str(e)))
-'''
 
 
 class PCV_preferences(AddonPreferences):
     bl_idname = __name__
     
-    default_vertex_color: FloatVectorProperty(name="Default Color", default=(0.65, 0.65, 0.65, ), min=0, max=1, subtype='COLOR', size=3, description="Default color to be used upon loading PLY to cache when vertex colors are missing", )
-    normal_color: FloatVectorProperty(name="Normal Color", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals", )
-    selection_color: FloatVectorProperty(name="Selection Color", description="Display color for selection", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
+    default_vertex_color: FloatVectorProperty(name="Default", default=(0.65, 0.65, 0.65, ), min=0, max=1, subtype='COLOR', size=3, description="Default color to be used upon loading PLY to cache when vertex colors are missing", )
+    normal_color: FloatVectorProperty(name="Normal", default=((35 / 255) ** 2.2, (97 / 255) ** 2.2, (221 / 255) ** 2.2, ), min=0, max=1, subtype='COLOR', size=3, description="Display color for vertex normals lines", )
+    selection_color: FloatVectorProperty(name="Selection", description="Display color for selection", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, )
     convert_16bit_colors: BoolProperty(name="Convert 16bit Colors", description="Convert 16bit colors to 8bit, applied when Red channel has 'uint16' dtype", default=True, )
     gamma_correct_16bit_colors: BoolProperty(name="Gamma Correct 16bit Colors", description="When 16bit colors are encountered apply gamma as 'c ** (1 / 2.2)'", default=False, )
     shuffle_points: BoolProperty(name="Shuffle Points", description="Shuffle points upon loading, display percentage is more useable if points are shuffled", default=True, )
-    '''
     category: EnumProperty(name="Tab Name", items=[('POINT_CLOUD_VISUALIZER', "Point Cloud Visualizer", ""),
-                                                   ('PCV', "PCV", ""), ], default='POINT_CLOUD_VISUALIZER', description="", update=update_panel_bl_category, )
-    '''
+                                                   ('PCV', "PCV", ""), ], default='POINT_CLOUD_VISUALIZER', description="To have PCV in its own separate tab, choose one", update=_update_panel_bl_category, )
+    category_custom: BoolProperty(name="Custom Tab Name", default=False, description="Check if you want to have PCV in custom named tab or in existing tab", update=_update_panel_bl_category, )
+    category_custom_name: StringProperty(name="Name", default="View", description="Custom PCV tab name, if you choose one from already existing tabs it will append to that tab", update=_update_panel_bl_category, )
     
     def draw(self, context):
         l = self.layout
@@ -6840,10 +6853,21 @@ class PCV_preferences(AddonPreferences):
         c.prop(self, "gamma_correct_16bit_colors")
         if(not self.convert_16bit_colors):
             c.active = False
-        '''
+        
+        f = 0.5
         r = l.row()
-        r.prop(self, "category")
-        '''
+        s = r.split(factor=f)
+        c = s.column()
+        c.prop(self, "category")
+        if(self.category_custom):
+            c.enabled = False
+        s = s.split(factor=1.0)
+        r = s.row()
+        r.prop(self, "category_custom")
+        c = r.column()
+        c.prop(self, "category_custom_name")
+        if(not self.category_custom):
+            c.enabled = False
 
 
 @persistent
@@ -6874,9 +6898,8 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    '''
-    update_panel_bl_category(None, bpy.context)
-    '''
+    
+    _update_panel_bl_category(None, bpy.context)
 
 
 def unregister():
