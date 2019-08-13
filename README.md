@@ -26,7 +26,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.20.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.22.png)
 
 ##### Basic Usage:
 
@@ -46,9 +46,21 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 * `Alpha` - global points alpha
 * `Normals` - display point normals as lines, adjust line length with `Length` next to it
 * `Illumination` - enable extra illumination, works only when vertex normals can be loaded
-* `Light Direction` - light direction
-* `Light Intensity` - light intensity
-* `Shadow Intensity` - shadow intensity
+* `Light Direction` - illumination light direction
+* `Light Intensity` - illumination light intensity
+* `Shadow Intensity` - illumination shadow intensity
+* `Depth` - enable depth debug shader
+* `Brightness` - depth shader color brightness
+* `Contrast` - depth shader color contrast
+* `False Colors` - display depth shader in false colors
+* `Color A` - depth shader false colors front color
+* `Color B` - depth shader false colors back color
+* `Normal` - enable normal debug shader
+* `Position` - enable position debug shader
+
+### Shaders
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.22-shaders.jpg)
 
 ### Edit
 
@@ -124,7 +136,7 @@ Load another ply and merge with currently displayed. Hit `Merge With Other PLY`,
 
 ### Render
 
-Currently only sigle point cloud per render/frame is supported. If you need more clouds at once, select another cloud parent and re-render with different suffix in `Render` subpanel. Output image is RGBA 8bit PNG - transparent background with colored point cloud, which can be composed over something else later.
+Currently only sigle point cloud per render/frame is supported. Output image is RGBA 8bit PNG - transparent background with colored point cloud, which can be composed over something else later.
 
 ##### Usage:
 
@@ -136,6 +148,7 @@ Currently only sigle point cloud per render/frame is supported. If you need more
 * Set render image size with `Resolution X`, `Resolution Y` and `Resolution %`.
 * At default resolution settings are taken from scene, to make them independent, click chain icon next to properties, correct aspect ratio is not calculated, if you link properties again, values are copied from scene.
 * If `Illumination` is enabled it will be rendered as well
+* If one of debug shaders is enabled, it will be rendered instead of regular shader
 * Hit `Render` or `Animation`
 
 ##### Render options:
@@ -284,6 +297,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.22 extra debug shaders
 * 0.9.21 preferences
 * 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes, removed manual depth sorting during render
 * 0.9.19 point cloud generation from vertices and particles

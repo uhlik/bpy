@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 21),
+           "version": (0, 9, 22),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1196,11 +1196,13 @@ class PCVShaders():
     normals_fragment_shader = '''
         layout(location = 0) out vec4 frag_color;
         
+        uniform float global_alpha;
         in vec4 vertex_color;
         
         void main()
         {
-            frag_color = vertex_color;
+            // frag_color = vertex_color;
+            frag_color = vec4(vertex_color[0], vertex_color[1], vertex_color[2], global_alpha);
         }
     '''
     normals_geometry_shader = '''
@@ -1743,7 +1745,9 @@ class PCVManager():
         else:
             pass
         
-        batch.draw(shader)
+        if(not pcv.override_default_shader):
+            # NOTE: just don't draw default shader, quick and easy solution, other shader will be drawn instead, would better to not create it..
+            batch.draw(shader)
         
         if(pcv.vertex_normals and pcv.has_normals):
             def make(ci):
@@ -1783,11 +1787,12 @@ class PCVManager():
             col = tuple([c ** (1 / 2.2) for c in col]) + (pcv.vertex_normals_alpha, )
             shader.uniform_float("color", col, )
             shader.uniform_float("length", pcv.vertex_normals_size, )
+            shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
         # in-development
         if(pcv.dev_depth_enabled):
-            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             # if(debug_mode()):
             #     import cProfile
@@ -1849,7 +1854,6 @@ class PCVManager():
             if(mind > maxd):
                 maxdist = mind
             shader.uniform_float("maxdist", float(maxdist) * l)
-            
             shader.uniform_float("center", (cx, cy, cz, ))
             
             shader.uniform_float("brightness", pcv.dev_depth_brightness)
@@ -1897,7 +1901,7 @@ class PCVManager():
         
         # in-development
         if(pcv.dev_normal_colors_enabled):
-            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             vs = ci['vertices']
             ns = ci['normals']
@@ -1938,7 +1942,7 @@ class PCVManager():
         
         # in-development
         if(pcv.dev_position_colors_enabled):
-            # TODO: this shader is drawn over regular shader now, drawing only one should speed it up
+            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             vs = ci['vertices']
             l = ci['current_display_length']
@@ -3436,27 +3440,29 @@ class PCV_OT_render(Operator):
             cs = cs[:l]
             ns = ns[:l]
             
-            '''
-            # NOTTODO-ITISDONE try to remove manual depth test during offscreen rendering
-            # sort by depth
-            mw = o.matrix_world
-            depth = []
-            for i, v in enumerate(vs):
-                vw = mw @ Vector(v)
-                depth.append(world_to_camera_view(scene, cam, vw)[2])
-            zps = zip(depth, vs, cs, ns)
-            sps = sorted(zps, key=lambda a: a[0])
-            # split and reverse
-            vs = [a for _, a, b, c in sps][::-1]
-            cs = [b for _, a, b, c in sps][::-1]
-            ns = [c for _, a, b, c in sps][::-1]
-            '''
-            if(pcv.illumination):
+            if(pcv.dev_depth_enabled):
+                if(pcv.illumination):
+                    shader = GPUShader(PCVShaders.depth_vertex_shader_illumination, PCVShaders.depth_fragment_shader_illumination, )
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, })
+                elif(pcv.dev_depth_false_colors):
+                    shader = GPUShader(PCVShaders.depth_vertex_shader_false_colors, PCVShaders.depth_fragment_shader_false_colors, )
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
+                else:
+                    shader = GPUShader(PCVShaders.depth_vertex_shader_simple, PCVShaders.depth_fragment_shader_simple, )
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
+            elif(pcv.dev_normal_colors_enabled):
+                shader = GPUShader(PCVShaders.normal_colors_vertex_shader, PCVShaders.normal_colors_fragment_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, })
+            elif(pcv.dev_position_colors_enabled):
+                shader = GPUShader(PCVShaders.position_colors_vertex_shader, PCVShaders.position_colors_fragment_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
+            elif(pcv.illumination):
                 shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             else:
                 shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+            
             shader.bind()
             
             view_matrix = cam.matrix_world.inverted()
@@ -3470,7 +3476,62 @@ class PCV_OT_render(Operator):
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
             
-            if(pcv.illumination and pcv.has_normals and cloud['illumination']):
+            if(pcv.dev_depth_enabled):
+                # pm = bpy.context.region_data.perspective_matrix
+                # shader.uniform_float("perspective_matrix", pm)
+                # shader.uniform_float("object_matrix", o.matrix_world)
+                
+                # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+                cx = np.sum(vs[:, 0]) / len(vs)
+                cy = np.sum(vs[:, 1]) / len(vs)
+                cz = np.sum(vs[:, 2]) / len(vs)
+                _, _, s = o.matrix_world.decompose()
+                l = s.length
+                maxd = abs(np.max(vs))
+                mind = abs(np.min(vs))
+                maxdist = maxd
+                if(mind > maxd):
+                    maxdist = mind
+                shader.uniform_float("maxdist", float(maxdist) * l)
+                shader.uniform_float("center", (cx, cy, cz, ))
+                
+                shader.uniform_float("brightness", pcv.dev_depth_brightness)
+                shader.uniform_float("contrast", pcv.dev_depth_contrast)
+                
+                # shader.uniform_float("point_size", pcv.point_size)
+                # shader.uniform_float("alpha_radius", pcv.alpha_radius)
+                # shader.uniform_float("global_alpha", pcv.global_alpha)
+                
+                if(pcv.illumination):
+                    cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
+                    _, obrot, _ = o.matrix_world.decompose()
+                    mr = obrot.to_matrix().to_4x4()
+                    mr.invert()
+                    direction = cm @ pcv.light_direction
+                    direction = mr @ direction
+                    shader.uniform_float("light_direction", direction)
+                    inverted_direction = direction.copy()
+                    inverted_direction.negate()
+                    c = pcv.light_intensity
+                    shader.uniform_float("light_intensity", (c, c, c, ))
+                    shader.uniform_float("shadow_direction", inverted_direction)
+                    c = pcv.shadow_intensity
+                    shader.uniform_float("shadow_intensity", (c, c, c, ))
+                    if(pcv.dev_depth_false_colors):
+                        shader.uniform_float("color_a", pcv.dev_depth_color_a)
+                        shader.uniform_float("color_b", pcv.dev_depth_color_b)
+                    else:
+                        shader.uniform_float("color_a", (1.0, 1.0, 1.0))
+                        shader.uniform_float("color_b", (0.0, 0.0, 0.0))
+                else:
+                    if(pcv.dev_depth_false_colors):
+                        shader.uniform_float("color_a", pcv.dev_depth_color_a)
+                        shader.uniform_float("color_b", pcv.dev_depth_color_b)
+            elif(pcv.dev_normal_colors_enabled):
+                pass
+            elif(pcv.dev_position_colors_enabled):
+                pass
+            elif(pcv.illumination and pcv.has_normals and cloud['illumination']):
                 cm = Matrix(((-1.0, 0.0, 0.0, 0.0, ), (0.0, -0.0, 1.0, 0.0, ), (0.0, -1.0, -0.0, 0.0, ), (0.0, 0.0, 0.0, 1.0, ), ))
                 _, obrot, _ = o.matrix_world.decompose()
                 mr = obrot.to_matrix().to_4x4()
@@ -5824,6 +5885,57 @@ class PCV_PT_panel(Panel):
             ccc.prop(pcv, 'shadow_intensity')
             if(not pcv.has_normals):
                 cc.enabled = e
+            
+            sub.separator()
+        
+        # # other shaders
+        # e = ok
+        # c = sub.column()
+        # r = c.row(align=True)
+        # r.prop(pcv, 'dev_depth_enabled', toggle=True, )
+        # r.prop(pcv, 'dev_depth_edit', toggle=True, icon_only=True, icon='TOOL_SETTINGS', )
+        # if(pcv.dev_depth_edit):
+        #     cc = c.column(align=True)
+        #     cc.prop(pcv, 'dev_depth_brightness')
+        #     cc.prop(pcv, 'dev_depth_contrast')
+        #     c.prop(pcv, 'dev_depth_false_colors')
+        #     r = c.row(align=True)
+        #     r.prop(pcv, 'dev_depth_color_a', text="", )
+        #     r.prop(pcv, 'dev_depth_color_b', text="", )
+        #     r.enabled = pcv.dev_depth_false_colors
+        #
+        #     sub.separator()
+        # c.enabled = e
+        #
+        # c = sub.column()
+        # c.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        # c.enabled = e
+        #
+        # c = sub.column()
+        # c.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
+        # c.enabled = e
+        
+        # other shaders
+        c = sub.column()
+        c.enabled = ok
+        r = c.row(align=True)
+        r.prop(pcv, 'dev_depth_enabled', toggle=True, )
+        r.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        r.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
+        
+        # r = c.row(align=True)
+        # r.prop(pcv, 'debug_shader', expand=True, )
+        
+        if(pcv.dev_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_depth_brightness')
+            cc.prop(pcv, 'dev_depth_contrast')
+            c.prop(pcv, 'dev_depth_false_colors')
+            r = c.row(align=True)
+            r.prop(pcv, 'dev_depth_color_a', text="", )
+            r.prop(pcv, 'dev_depth_color_b', text="", )
+            r.enabled = pcv.dev_depth_false_colors
+            # sub.separator()
 
 
 class PCV_PT_render(Panel):
@@ -6767,16 +6879,55 @@ class PCV_properties(PropertyGroup):
     generate_minimal_distance: FloatProperty(name="Minimal Distance", default=0.1, precision=3, subtype='DISTANCE', description="Poisson Disk minimal distance between points, the smaller value, the slower calculation", )
     generate_sampling_exponent: IntProperty(name="Sampling Exponent", default=5, min=1, description="Poisson Disk presampling exponent, lower values are faster but less even, higher values are slower exponentially", )
     
-    # in-development properties
-    # TODO: do some extra panel for extra shaders and rewrite PCVManager.render to draw only what is needed
-    dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", )
-    dev_depth_brightness: FloatProperty(name="Brightness", description="", default=0.0, min=-10.0, max=10.0, )
-    dev_depth_contrast: FloatProperty(name="Contrast", description="", default=1.0, min=-10.0, max=10.0, )
-    dev_depth_false_colors: BoolProperty(name="False Colors", default=False, description="", )
-    dev_depth_color_a: FloatVectorProperty(name="Color A", description="", default=(0.0, 1.0, 0.0, ), min=0, max=1, subtype='COLOR', size=3, )
-    dev_depth_color_b: FloatVectorProperty(name="Color B", description="", default=(0.0, 0.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, )
-    dev_normal_colors_enabled: BoolProperty(name="Normals", default=False, description="", )
-    dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", )
+    # debug_shader: EnumProperty(name="Debug Shader", items=[('NONE', "None", ""),
+    #                                                        ('DEPTH', "Depth", ""),
+    #                                                        ('NORMAL', "Normal", ""),
+    #                                                        ('POSITION', "Position", ""),
+    #                                                        ], default='NONE', description="", )
+    override_default_shader: BoolProperty(default=False, options={'HIDDEN', }, )
+    
+    # def _update_override_default_shader(self, context, ):
+    #     if(self.dev_depth_enabled or self.dev_normal_colors_enabled or self.dev_position_colors_enabled):
+    #         self.override_default_shader = True
+    #     else:
+    #         self.override_default_shader = False
+    
+    def _update_dev_depth(self, context, ):
+        if(self.dev_depth_enabled):
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    def _update_dev_normal(self, context, ):
+        if(self.dev_normal_colors_enabled):
+            self.dev_depth_enabled = False
+            self.dev_position_colors_enabled = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    def _update_dev_position(self, context, ):
+        if(self.dev_position_colors_enabled):
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    # dev_depth_enabled: BoolProperty(name="Depth", default=False, description="", update=_update_override_default_shader, )
+    dev_depth_enabled: BoolProperty(name="Depth", default=False, description="Enable depth debug shader", update=_update_dev_depth, )
+    # dev_depth_edit: BoolProperty(name="Edit", description="Edit depth shader properties", default=False, )
+    dev_depth_brightness: FloatProperty(name="Brightness", description="Depth shader color brightness", default=0.0, min=-10.0, max=10.0, )
+    dev_depth_contrast: FloatProperty(name="Contrast", description="Depth shader color contrast", default=1.0, min=-10.0, max=10.0, )
+    dev_depth_false_colors: BoolProperty(name="False Colors", default=False, description="Display depth shader in false colors", )
+    dev_depth_color_a: FloatVectorProperty(name="Color A", description="Depth shader false colors front color", default=(0.0, 1.0, 0.0, ), min=0, max=1, subtype='COLOR', size=3, )
+    dev_depth_color_b: FloatVectorProperty(name="Color B", description="Depth shader false colors back color", default=(0.0, 0.0, 1.0, ), min=0, max=1, subtype='COLOR', size=3, )
+    # dev_normal_colors_enabled: BoolProperty(name="Normal", default=False, description="", update=_update_override_default_shader, )
+    dev_normal_colors_enabled: BoolProperty(name="Normal", default=False, description="Enable normal debug shader", update=_update_dev_normal, )
+    # dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", update=_update_override_default_shader, )
+    dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="Enable position debug shader", update=_update_dev_position, )
     
     def _dev_sel_color_update(self, context, ):
         bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
@@ -6799,7 +6950,8 @@ def _update_panel_bl_category(self, context):
     _sub_panels = (
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
-        PCV_PT_development, PCV_PT_debug,
+        # PCV_PT_development,
+        PCV_PT_debug,
     )
     try:
         p = _main_panel
@@ -6869,6 +7021,12 @@ class PCV_preferences(AddonPreferences):
         c.prop(self, "category_custom_name")
         if(not self.category_custom):
             c.enabled = False
+    
+    # @classmethod
+    # def prefs(cls, context=None, ):
+    #     if(context is None):
+    #         context = bpy.context
+    #     return context.preferences.addons[__name__].preferences
 
 
 @persistent
@@ -6890,8 +7048,7 @@ classes = (
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
     PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_point_cloud, PCV_OT_reset_runtime,
     
-    PCV_PT_development,
-    
+    # PCV_PT_development,
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
