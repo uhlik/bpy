@@ -193,11 +193,9 @@ Generate point cloud from mesh (or object convertible to mesh). To store point c
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-verts-psys.jpg)
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-surface.png)
-
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.20-gen-poisson.png)
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-verts.png)
-
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.19-gen-psys.png)
 
 * `Source` - Points generation source
