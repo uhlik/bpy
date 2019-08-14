@@ -60,7 +60,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### Shaders
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.22-shaders.jpg)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.23-shaders.jpg)
 
 ### Edit
 
@@ -295,6 +295,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.23 position shader update, normals alpha fix, added bounding box
 * 0.9.22 extra debug shaders
 * 0.9.21 preferences
 * 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes, removed manual depth sorting during render

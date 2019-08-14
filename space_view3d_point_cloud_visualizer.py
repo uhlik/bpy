@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 22),
+           "version": (0, 9, 23),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1202,7 +1202,7 @@ class PCVShaders():
         void main()
         {
             // frag_color = vertex_color;
-            frag_color = vec4(vertex_color[0], vertex_color[1], vertex_color[2], global_alpha);
+            frag_color = vec4(vertex_color[0], vertex_color[1], vertex_color[2], vertex_color[3] * global_alpha);
         }
     '''
     normals_geometry_shader = '''
@@ -1478,7 +1478,124 @@ class PCVShaders():
             if(r > alpha_radius){
                 discard;
             }
-            fragColor = vec4(f_color, global_alpha) * a;
+            fragColor = vec4(mod(f_color, 1.0), global_alpha) * a;
+        }
+    '''
+    
+    bbox_vertex_shader = '''
+        layout(location = 0) in vec3 position;
+        
+        void main()
+        {
+            gl_Position = vec4(position, 1.0);
+        }
+    '''
+    bbox_fragment_shader = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        uniform float global_alpha;
+        in vec4 vertex_color;
+        
+        void main()
+        {
+            frag_color = vec4(vertex_color.rgb, vertex_color[3] * global_alpha);
+        }
+    '''
+    bbox_geometry_shader = '''
+        layout(points) in;
+        layout(line_strip, max_vertices = 256) out;
+        
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
+        
+        uniform float length = 0.1;
+        uniform vec3 center = vec3(0.0, 0.0, 0.0);
+        uniform vec3 dimensions = vec3(1.0, 1.0, 1.0);
+        
+        out vec4 vertex_color;
+        
+        void line();
+        
+        void line(vec4 o, vec3 a, vec3 b)
+        {
+            gl_Position = perspective_matrix * object_matrix * (o + vec4(a, 0.0));
+            EmitVertex();
+            gl_Position = perspective_matrix * object_matrix * (o + vec4(b, 0.0));
+            EmitVertex();
+            EndPrimitive();
+        }
+        
+        void main()
+        {
+            vertex_color = color;
+            
+            //vec4 o = gl_in[0].gl_Position;
+            vec4 o = vec4(center, 1.0);
+            
+            float w = dimensions[0] / 2;
+            float h = dimensions[1] / 2;
+            float d = dimensions[2] / 2;
+            float l = length;
+            
+            vec3 p00 = vec3(-(w - l),       -h,       -d);
+            vec3 p01 = vec3(      -w,       -h,       -d);
+            vec3 p02 = vec3(      -w,       -h, -(d - l));
+            vec3 p03 = vec3(      -w, -(h - l),       -d);
+            vec3 p04 = vec3(-(w - l),       -h,        d);
+            vec3 p05 = vec3(      -w,       -h,        d);
+            vec3 p06 = vec3(      -w, -(h - l),        d);
+            vec3 p07 = vec3(      -w,       -h,  (d - l));
+            vec3 p08 = vec3(      -w,  (h - l),       -d);
+            vec3 p09 = vec3(      -w,        h,       -d);
+            vec3 p10 = vec3(      -w,        h, -(d - l));
+            vec3 p11 = vec3(-(w - l),        h,       -d);
+            vec3 p12 = vec3(-(w - l),        h,        d);
+            vec3 p13 = vec3(      -w,        h,        d);
+            vec3 p14 = vec3(      -w,        h,  (d - l));
+            vec3 p15 = vec3(      -w,  (h - l),        d);
+            vec3 p16 = vec3(       w, -(h - l),       -d);
+            vec3 p17 = vec3(       w,       -h,       -d);
+            vec3 p18 = vec3(       w,       -h, -(d - l));
+            vec3 p19 = vec3( (w - l),       -h,       -d);
+            vec3 p20 = vec3( (w - l),       -h,        d);
+            vec3 p21 = vec3(       w,       -h,        d);
+            vec3 p22 = vec3(       w,       -h,  (d - l));
+            vec3 p23 = vec3(       w, -(h - l),        d);
+            vec3 p24 = vec3( (w - l),        h,       -d);
+            vec3 p25 = vec3(       w,        h,       -d);
+            vec3 p26 = vec3(       w,        h, -(d - l));
+            vec3 p27 = vec3(       w,  (h - l),       -d);
+            vec3 p28 = vec3(       w,  (h - l),        d);
+            vec3 p29 = vec3(       w,        h,        d);
+            vec3 p30 = vec3(       w,        h,  (d - l));
+            vec3 p31 = vec3( (w - l),        h,        d);
+            
+            line(o, p00, p01);
+            line(o, p01, p03);
+            line(o, p02, p01);
+            line(o, p04, p05);
+            line(o, p05, p07);
+            line(o, p06, p05);
+            line(o, p08, p09);
+            line(o, p09, p11);
+            line(o, p10, p09);
+            line(o, p12, p13);
+            line(o, p13, p15);
+            line(o, p14, p13);
+            line(o, p16, p17);
+            line(o, p17, p19);
+            line(o, p18, p17);
+            line(o, p20, p21);
+            line(o, p21, p23);
+            line(o, p22, p21);
+            line(o, p24, p25);
+            line(o, p25, p27);
+            line(o, p26, p25);
+            line(o, p28, p29);
+            line(o, p29, p31);
+            line(o, p30, p29);
+            
         }
     '''
 
@@ -1994,6 +2111,84 @@ class PCVManager():
             shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             bgl.glClear(bgl.GL_DEPTH_BUFFER_BIT)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_bbox_enabled):
+            vs = ci['vertices']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'BOUNDING_BOX'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        use_stored = True
+                        batch = v['batch']
+                        shader = v['shader']
+                        break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.bbox_vertex_shader, PCVShaders.bbox_fragment_shader, geocode=PCVShaders.bbox_geometry_shader, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": [(0.0, 0.0, 0.0, )], }, )
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch, }
+                ci['extra']['BOUNDING_BOX'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            # col = bpy.context.preferences.addons[__name__].preferences.normal_color[:]
+            # col = tuple([c ** (1 / 2.2) for c in col]) + (pcv.vertex_normals_alpha, )
+            
+            # col = pcv.dev_bbox_color
+            # col = tuple([c ** (1 / 2.2) for c in col]) + (1.0, )
+            col = tuple(pcv.dev_bbox_color) + (pcv.dev_bbox_alpha, )
+            
+            shader.uniform_float("color", col, )
+            # shader.uniform_float("length", pcv.vertex_normals_size, )
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            # # cx = np.sum(vs[:, 0]) / len(vs)
+            # # cy = np.sum(vs[:, 1]) / len(vs)
+            # # cz = np.sum(vs[:, 2]) / len(vs)
+            # cx = np.median(vs[:, 0])
+            # cy = np.median(vs[:, 1])
+            # cz = np.median(vs[:, 2])
+            # center = [cx, cy, cz]
+            # # center = [0.0, 0.0, 0.0]
+            # # print(center)
+            # shader.uniform_float("center", center)
+            
+            # TODO: store values somewhere, might be slow if calculated every frame
+            
+            minx = np.min(vs[:, 0])
+            miny = np.min(vs[:, 1])
+            minz = np.min(vs[:, 2])
+            maxx = np.max(vs[:, 0])
+            maxy = np.max(vs[:, 1])
+            maxz = np.max(vs[:, 2])
+            
+            def calc(mini, maxi):
+                if(mini <= 0.0 and maxi <= 0.0):
+                    return abs(mini) - abs(maxi)
+                elif(mini <= 0.0 and maxi >= 0.0):
+                    return abs(mini) + maxi
+                else:
+                    return maxi - mini
+            
+            dimensions = [calc(minx, maxx), calc(miny, maxy), calc(minz, maxz)]
+            shader.uniform_float("dimensions", dimensions)
+            
+            center = [(minx + maxx) / 2, (miny + maxy) / 2, (minz + maxz) / 2]
+            shader.uniform_float("center", center)
+            
+            mindim = abs(min(dimensions)) / 2 * pcv.dev_bbox_size
+            shader.uniform_float("length", mindim)
+            
             batch.draw(shader)
         
         # and now back to some production stuff..
@@ -5936,6 +6131,27 @@ class PCV_PT_panel(Panel):
             r.prop(pcv, 'dev_depth_color_b', text="", )
             r.enabled = pcv.dev_depth_false_colors
             # sub.separator()
+        if(pcv.dev_normal_colors_enabled):
+            pass
+        if(pcv.dev_position_colors_enabled):
+            pass
+        
+        # r = c.row(align=True)
+        # r.prop(pcv, 'dev_bbox_enabled', toggle=True, icon='SHADING_BBOX', text="", icon_only=True, )
+        # if(pcv.dev_bbox_enabled):
+        #     r.prop(pcv, 'dev_bbox_color', text="", )
+        #     r = c.row(align=True)
+        #     r.prop(pcv, 'dev_bbox_size')
+        #     r.prop(pcv, 'dev_bbox_alpha')
+        
+        # TODO: do some nice buttons for bbox, now it takes more space than it should, or just add toggle and props to preferences
+        
+        c.prop(pcv, 'dev_bbox_enabled', toggle=True, )
+        if(pcv.dev_bbox_enabled):
+            r = c.row()
+            r.prop(pcv, 'dev_bbox_color', text="", )
+            c.prop(pcv, 'dev_bbox_size')
+            c.prop(pcv, 'dev_bbox_alpha')
 
 
 class PCV_PT_render(Panel):
@@ -6928,6 +7144,11 @@ class PCV_properties(PropertyGroup):
     dev_normal_colors_enabled: BoolProperty(name="Normal", default=False, description="Enable normal debug shader", update=_update_dev_normal, )
     # dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", update=_update_override_default_shader, )
     dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="Enable position debug shader", update=_update_dev_position, )
+    
+    dev_bbox_enabled: BoolProperty(name="Bounding Box", default=False, description="", )
+    dev_bbox_color: FloatVectorProperty(name="Color", description="", default=(0.7, 0.7, 0.7), min=0, max=1, subtype='COLOR', size=3, )
+    dev_bbox_size: FloatProperty(name="Size", description="", default=0.3, min=0.1, max=0.9, subtype='FACTOR', )
+    dev_bbox_alpha: FloatProperty(name="Alpha", description="", default=0.7, min=0.0, max=1.0, subtype='FACTOR', )
     
     def _dev_sel_color_update(self, context, ):
         bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
