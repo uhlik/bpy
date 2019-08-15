@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 23),
+           "version": (0, 9, 24),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -4433,6 +4433,69 @@ class PCV_OT_filter_project(Operator):
         depsgraph.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
         
+        # this should be None if not available
+        vcols = o.data.vertex_colors.active
+        uvtex = o.data.uv_layers.active
+        vgroup = o.vertex_groups.active
+        # now check if color source is available, if not, cancel
+        if(pcv.filter_project_colorize):
+            
+            # depsgraph = context.evaluated_depsgraph_get()
+            # if(o.modifiers):
+            #     owner = o.evaluated_get(depsgraph)
+            #     me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+            # else:
+            #     owner = o
+            #     me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+            
+            bm = bmesh.new()
+            bm.from_mesh(target_mesh)
+            bmesh.ops.triangulate(bm, faces=bm.faces)
+            bm.verts.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+            
+            if(pcv.filter_project_colorize_from == 'VCOLS'):
+                try:
+                    col_layer = bm.loops.layers.color.active
+                    if(col_layer is None):
+                        raise Exception()
+                except Exception:
+                    self.report({'ERROR'}, "Cannot find active vertex colors", )
+                    return {'CANCELLED'}
+            elif(pcv.filter_project_colorize_from == 'UVTEX'):
+                try:
+                    if(o.active_material is None):
+                        raise Exception("Cannot find active material")
+                    uvtexnode = o.active_material.node_tree.nodes.active
+                    if(uvtexnode is None):
+                        raise Exception("Cannot find active image texture in active material")
+                    if(uvtexnode.type != 'TEX_IMAGE'):
+                        raise Exception("Cannot find active image texture in active material")
+                    uvimage = uvtexnode.image
+                    if(uvimage is None):
+                        raise Exception("Cannot find active image texture with loaded image in active material")
+                    uvimage.update()
+                    uvarray = np.asarray(uvimage.pixels)
+                    uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                    uvlayer = bm.loops.layers.uv.active
+                    if(uvlayer is None):
+                        raise Exception("Cannot find active UV layout")
+                except Exception as e:
+                    self.report({'ERROR'}, str(e), )
+                    return {'CANCELLED'}
+            elif(pcv.filter_project_colorize_from in ['GROUP_MONO', 'GROUP_COLOR', ]):
+                try:
+                    group_layer = bm.verts.layers.deform.active
+                    if(group_layer is None):
+                        raise Exception()
+                    group_layer_index = o.vertex_groups.active.index
+                except Exception:
+                    self.report({'ERROR'}, "Cannot find active vertex group", )
+                    return {'CANCELLED'}
+            else:
+                self.report({'ERROR'}, "Unsupported color source", )
+                return {'CANCELLED'}
+        
         def distance(a, b, ):
             return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
         
@@ -4440,6 +4503,74 @@ class PCV_OT_filter_project(Operator):
             c = Vector(co)
             n = Vector(no)
             return c + (n.normalized() * v)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        def gen_color(bm, result, location, normal, index, distance, ):
+            col = (0.0, 0.0, 0.0, )
+            
+            poly = bm.faces[index]
+            v = location
+            
+            if(pcv.filter_project_colorize_from == 'VCOLS'):
+                ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                ac = poly.loops[0][col_layer][:3]
+                bc = poly.loops[1][col_layer][:3]
+                cc = poly.loops[2][col_layer][:3]
+                r = ac[0] * ws[0] + bc[0] * ws[1] + cc[0] * ws[2]
+                g = ac[1] * ws[0] + bc[1] * ws[1] + cc[1] * ws[2]
+                b = ac[2] * ws[0] + bc[2] * ws[1] + cc[2] * ws[2]
+                col = (r, g, b, )
+            elif(pcv.filter_project_colorize_from == 'UVTEX'):
+                uvtriangle = []
+                for l in poly.loops:
+                    uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0, )))
+                uvpoint = barycentric_transform(v, poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, *uvtriangle, )
+                w, h = uvimage.size
+                # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                x = int(round(remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                y = int(round(remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                col = tuple(uvarray[y][x][:3].tolist())
+            elif(pcv.filter_project_colorize_from == 'GROUP_MONO'):
+                ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                aw = poly.verts[0][group_layer].get(group_layer_index, 0.0)
+                bw = poly.verts[1][group_layer].get(group_layer_index, 0.0)
+                cw = poly.verts[2][group_layer].get(group_layer_index, 0.0)
+                m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                col = (m, m, m, )
+            elif(pcv.filter_project_colorize_from == 'GROUP_COLOR'):
+                ws = poly_3d_calc([poly.verts[0].co, poly.verts[1].co, poly.verts[2].co, ], v)
+                aw = poly.verts[0][group_layer].get(group_layer_index, 0.0)
+                bw = poly.verts[1][group_layer].get(group_layer_index, 0.0)
+                cw = poly.verts[2][group_layer].get(group_layer_index, 0.0)
+                m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                hue = remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
+                c = Color()
+                c.hsv = (hue, 1.0, 1.0, )
+                col = (c.r, c.g, c.b, )
+            
+            return col
         
         a = np.empty(l, dtype=dt, )
         
@@ -4472,25 +4603,39 @@ class PCV_OT_filter_project(Operator):
             
             rp = np.copy(p)
             
+            # store ray_cast results which was used for current point and pass them to gen_color
+            used = None
+            
             if(p_result and n_result):
                 if(p_distance < n_distance):
                     rp['x'] = p_location[0]
                     rp['y'] = p_location[1]
                     rp['z'] = p_location[2]
+                    used = (p_result, p_location, p_normal, p_index, p_distance)
                 else:
                     rp['x'] = n_location[0]
                     rp['y'] = n_location[1]
                     rp['z'] = n_location[2]
+                    used = (n_result, n_location, n_normal, n_index, n_distance)
             elif(p_result):
                 rp['x'] = p_location[0]
                 rp['y'] = p_location[1]
                 rp['z'] = p_location[2]
+                used = (p_result, p_location, p_normal, p_index, p_distance)
             elif(n_result):
                 rp['x'] = n_location[0]
                 rp['y'] = n_location[1]
                 rp['z'] = n_location[2]
+                used = (n_result, n_location, n_normal, n_index, n_distance)
             else:
                 rp['delete'] = 1
+            
+            if(pcv.filter_project_colorize):
+                if(used is not None):
+                    col = gen_color(bm, *used)
+                    rp['red'] = col[0]
+                    rp['green'] = col[1]
+                    rp['blue'] = col[2]
             
             a[i] = rp
         
@@ -4529,6 +4674,11 @@ class PCV_OT_filter_project(Operator):
         vs, ns = apply_matrix(vs, ns, m)
         
         # cleanup
+        
+        if(pcv.filter_project_colorize):
+            bm.free()
+            # owner.to_mesh_clear()
+        
         collection.objects.unlink(target)
         bpy.data.objects.remove(target)
         bpy.data.meshes.remove(target_mesh)
@@ -6378,6 +6528,18 @@ class PCV_PT_filter_project(Panel):
         r.prop(pcv, 'filter_project_positive', toggle=True, )
         
         c.prop(pcv, 'filter_project_discard')
+        
+        cc = c.column(align=True)
+        f = 0.5
+        r = cc.row(align=True, )
+        s = r.split(factor=f, align=True, )
+        s.prop(pcv, 'filter_project_colorize', toggle=True, )
+        s = s.split(factor=1.0, align=True, )
+        r = s.row(align=True, )
+        ccc = r.column(align=True)
+        ccc.prop(pcv, 'filter_project_colorize_from', text="", )
+        ccc.enabled = pcv.filter_project_colorize
+        
         c.prop(pcv, 'filter_project_shift')
         c.operator('point_cloud_visualizer.filter_project')
         
@@ -7038,6 +7200,12 @@ class PCV_properties(PropertyGroup):
     filter_project_positive: BoolProperty(name="Positive", description="Search along point normal forwards", default=True, update=_project_positive_radio_update, )
     filter_project_negative: BoolProperty(name="Negative", description="Search along point normal backwards", default=True, update=_project_negative_radio_update, )
     filter_project_discard: BoolProperty(name="Discard Unprojectable", description="Discard points which didn't hit anything", default=False, )
+    filter_project_colorize: BoolProperty(name="Colorize", description="Colorize projected points", default=False, )
+    filter_project_colorize_from: EnumProperty(name="Source", items=[('VCOLS', "Vertex Colors", "Use active vertex colors from target"),
+                                                                     ('UVTEX', "UV Texture", "Use colors from active image texture node in active material using active UV layout from target"),
+                                                                     ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group from target, result will be shades of grey"),
+                                                                     ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group from target, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
+                                                                     ], default='UVTEX', description="Color source for projected point cloud", )
     filter_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     
     filter_boolean_object: StringProperty(name="Object", default="", )

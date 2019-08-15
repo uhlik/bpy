@@ -99,14 +99,21 @@ Simplify point cloud to exact number of evenly distributed samples. All loaded p
 
 ##### Project
 
-Project points on mesh (or object convertible to mesh) surface. Projects point along their normals until it hit surface or `Search Distance` is reached. You can choose between `Positive` (along normal direction), `Negative` (vice versa) or both. Optionally you can `Discard Unprojectable` points that was not possible to project and after projection `Shift` points a fixed distance along normal (positive value) or the other way around (negative value).
+Project points on mesh (or object convertible to mesh) surface. Projects point along their normals until it hit surface or `Search Distance` is reached. You can choose between `Positive` (along normal direction), `Negative` (vice versa) or both. Optionally you can `Discard Unprojectable` points that was not possible to project and after projection `Shift` points a fixed distance along normal (positive value) or the other way around (negative value). Projected points can be optionally colorized by vertex colors, uv texture and vertex group from target mesh.
 
 * `Object` - Mesh or object convertible to mesh
 * `Search Distance` - Maximum search distance in which to search for surface
 * `Positive` - Search along point normal forwards
 * `Negative` - Search along point normal backwards
 * `Discard Unprojectable` - Discard points which didn't hit anything
+* `Colorize` - Colorize projected points
+* `Source` - Color source for projected point cloud
+    - `Vertex Colors` - Use active vertex colors from target
+    - `UV Texture` - Use colors from active image texture node in active material using active UV layout from target
+    - `Vertex Group Monochromatic` - Use active vertex group from target, result will be shades of grey
+    - `Vertex Group Colorized` - Use active vertex group from target, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport
 * `Shift` - Shift points after projection above (positive value) or below (negative value) surface
+* `Project` - execute operator
 
 ##### Boolean
 
@@ -295,6 +302,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.24 project colors
 * 0.9.23 fixes
 * 0.9.22 extra debug shaders
 * 0.9.21 preferences
