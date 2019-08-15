@@ -295,7 +295,7 @@ c.reset()
 
 ### Changelog:
 
-* 0.9.23 position shader update, normals alpha fix, added bounding box
+* 0.9.23 fixes
 * 0.9.22 extra debug shaders
 * 0.9.21 preferences
 * 0.9.20 ui changes, poisson disk sampling generation, size and alpha available in edit mode, various fixes, removed manual depth sorting during render

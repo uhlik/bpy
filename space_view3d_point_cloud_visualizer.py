@@ -6144,14 +6144,12 @@ class PCV_PT_panel(Panel):
         #     r.prop(pcv, 'dev_bbox_size')
         #     r.prop(pcv, 'dev_bbox_alpha')
         
-        # TODO: do some nice buttons for bbox, now it takes more space than it should, or just add toggle and props to preferences
-        
-        c.prop(pcv, 'dev_bbox_enabled', toggle=True, )
-        if(pcv.dev_bbox_enabled):
-            r = c.row()
-            r.prop(pcv, 'dev_bbox_color', text="", )
-            c.prop(pcv, 'dev_bbox_size')
-            c.prop(pcv, 'dev_bbox_alpha')
+        # c.prop(pcv, 'dev_bbox_enabled', toggle=True, )
+        # if(pcv.dev_bbox_enabled):
+        #     r = c.row()
+        #     r.prop(pcv, 'dev_bbox_color', text="", )
+        #     c.prop(pcv, 'dev_bbox_size')
+        #     c.prop(pcv, 'dev_bbox_alpha')
 
 
 class PCV_PT_render(Panel):
