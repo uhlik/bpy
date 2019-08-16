@@ -3350,6 +3350,125 @@ class PCVParticleSystemSampler():
         owner.to_mesh_clear()
 
 
+class PCVRandomVolumeSampler():
+    def __init__(self, ob, num_samples, rnd, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        def is_point_inside_mesh_v1(point, ob, mwi, ):
+            axes = [Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0)), ]
+            r = False
+            for a in axes:
+                o = mwi @ point
+                c = 0
+                while True:
+                    _, l, n, i = ob.ray_cast(o, o + a * 10000.0)
+                    if(i == -1):
+                        break
+                    c += 1
+                    o = l + a * 0.00001
+                if(c % 2 == 0):
+                    r = True
+                    break
+            return not r
+        
+        def is_point_inside_mesh_v2(p, o, shift=0.000001, search_distance=10000.0, ):
+            p = Vector(p)
+            path = []
+            hits = 0
+            direction = Vector((0.0, 0.0, 1.0))
+            opposite_direction = direction.copy()
+            opposite_direction.negate()
+            path.append(p)
+            loc = p
+            ok = True
+            
+            def shift_vector(co, no, v):
+                return co + (no.normalized() * v)
+            
+            while(ok):
+                end = shift_vector(loc, direction, search_distance)
+                loc = shift_vector(loc, direction, shift)
+                _, loc, nor, ind = o.ray_cast(loc, end)
+                if(ind != -1):
+                    a = shift_vector(loc, opposite_direction, shift)
+                    path.append(a)
+                    hits += 1
+                else:
+                    ok = False
+            if(hits % 2 == 1):
+                return True
+            return False
+        
+        def is_point_inside_mesh_v3(p, o):
+            _, loc, nor, ind = o.closest_point_on_mesh(p)
+            if(ind != -1):
+                v = loc - p
+                d = v.dot(nor)
+                if(d >= 0):
+                    return True, loc, nor, ind
+            return False, None, None, None
+        
+        def max_values(o):
+            bbox = [Vector(b) for b in o.bound_box]
+            nx = sorted(bbox, key=lambda c: c.x, reverse=False)[0].x
+            ny = sorted(bbox, key=lambda c: c.y, reverse=False)[0].y
+            nz = sorted(bbox, key=lambda c: c.z, reverse=False)[0].z
+            x = sorted(bbox, key=lambda c: c.x, reverse=True)[0].x
+            y = sorted(bbox, key=lambda c: c.y, reverse=True)[0].y
+            z = sorted(bbox, key=lambda c: c.z, reverse=True)[0].z
+            return nx, ny, nz, x, y, z
+        
+        xmin, ymin, zmin, xmax, ymax, zmax = max_values(ob)
+        
+        def sample():
+            x = remap(rnd.random(), 0.0, 1.0, xmin, xmax)
+            y = remap(rnd.random(), 0.0, 1.0, ymin, ymax)
+            z = remap(rnd.random(), 0.0, 1.0, zmin, zmax)
+            return Vector((x, y, z))
+        
+        vs = []
+        ns = []
+        cs = []
+        progress = Progress(num_samples, indent=1, )
+        while(len(vs) < num_samples):
+            a = sample()
+            ok1 = is_point_inside_mesh_v1(a, ob, Matrix())
+            ok2 = is_point_inside_mesh_v2(a, ob)
+            ok3, location, normal, index = is_point_inside_mesh_v3(a, ob)
+            if(ok1 and ok2 and ok3):
+                vs.append(a.to_tuple())
+                ns.append(normal.to_tuple())
+                cs.append((1.0, 1.0, 1.0, ))
+                progress.step()
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -4429,6 +4548,7 @@ class PCV_OT_filter_project(Operator):
         collection = view_layer.active_layer_collection.collection
         target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
         collection.objects.link(target)
+        # TODO use BVHTree for ray_cast without need to add object to scene
         # still no idea, have to read about it..
         depsgraph.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -6037,6 +6157,66 @@ class PCV_OT_reset_runtime(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_generate_volume_point_cloud(Operator):
+    bl_idname = "point_cloud_visualizer.generate_volume_from_mesh"
+    bl_label = "Generate Volume"
+    bl_description = "Generate colored point cloud in mesh (or object convertible to mesh) volume"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        # pcv = context.object.point_cloud_visualizer
+        # if(pcv.uuid in PCVSequence.cache.keys()):
+        #     return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+        
+        return True
+    
+    def execute(self, context):
+        log("Generate From Mesh:", 0)
+        _t = time.time()
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        n = pcv.generate_number_of_points
+        r = random.Random(pcv.generate_seed)
+        g = PCVRandomVolumeSampler(o, n, r, )
+        vs = g.vs
+        ns = g.ns
+        cs = g.cs
+        
+        log("generated {} points.".format(len(vs)), 1)
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        if(ok):
+            bpy.ops.point_cloud_visualizer.erase()
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        if(debug_mode()):
+            o.display_type = 'BOUNDS'
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+    
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -6920,6 +7100,7 @@ class PCV_PT_development(Panel):
                         e = True
         
         c = sub.column()
+        '''
         c.prop(pcv, 'dev_depth_enabled', toggle=True, )
         if(pcv.dev_depth_enabled):
             cc = c.column(align=True)
@@ -6956,13 +7137,14 @@ class PCV_PT_development(Panel):
         c.enabled = e
         
         sub.separator()
-        
+        '''
         c = sub.column()
         c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
             r = c.row()
             r.prop(pcv, 'dev_selection_shader_color', text="", )
         c.enabled = e
+        
         
         # ok = False
         # for k, v in PCVManager.cache.items():
@@ -7009,6 +7191,12 @@ class PCV_PT_development(Panel):
         c.prop(pcv, 'generate_exact_number_of_points')
         c.operator('point_cloud_visualizer.generate_from_mesh')
         '''
+        
+        sub.separator()
+        sub.label(text="Generate Volume:")
+        sub.prop(pcv, 'generate_number_of_points')
+        sub.prop(pcv, 'generate_seed')
+        sub.operator('point_cloud_visualizer.generate_volume_from_mesh')
 
 
 class PCV_PT_debug(Panel):
@@ -7337,7 +7525,7 @@ def _update_panel_bl_category(self, context):
     _sub_panels = (
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
-        # PCV_PT_development,
+        PCV_PT_development,
         PCV_PT_debug,
     )
     try:
@@ -7435,7 +7623,7 @@ classes = (
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
     PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_point_cloud, PCV_OT_reset_runtime,
     
-    # PCV_PT_development,
+    PCV_OT_generate_volume_point_cloud, PCV_PT_development,
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
