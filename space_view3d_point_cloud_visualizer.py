@@ -1963,6 +1963,7 @@ class PCVManager():
             shader.uniform_float("object_matrix", o.matrix_world)
             
             # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+            # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
             cx = np.sum(vs[:, 0]) / len(vs)
             cy = np.sum(vs[:, 1]) / len(vs)
             cz = np.sum(vs[:, 2]) / len(vs)
@@ -6219,6 +6220,212 @@ class PCV_OT_generate_volume_point_cloud(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_gamma_correct(Operator):
+    bl_idname = "point_cloud_visualizer.gamma_correct"
+    bl_label = "Apply Gamma Correction"
+    bl_description = "Apply gamma correction"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        cs = cs ** (1 / 2.2)
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_gamma_uncorrect(Operator):
+    bl_idname = "point_cloud_visualizer.gamma_uncorrect"
+    bl_label = "Unapply Gamma Correction"
+    bl_description = "Unapply gamma correction"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        cs = cs ** 2.2
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_adjustment_brightness_contrast(Operator):
+    bl_idname = "point_cloud_visualizer.adjustment_brightness_contrast"
+    bl_label = "Brightness / Contrast"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        b = pcv.color_adjustment_brightness
+        c = pcv.color_adjustment_contrast
+        
+        if(b == 0.0 and c == 1.0):
+            return {'CANCELLED'}
+        
+        cs = (cs - 0.5) * c + 0.5 + b
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_adjustment_color_hsv(Operator):
+    bl_idname = "point_cloud_visualizer.adjustment_color_hsv"
+    bl_label = "HSV"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        # e = pcv.color_adjustment_exposure
+        # g = pcv.color_adjustment_gamma
+        # b = pcv.color_adjustment_brightness
+        # c = pcv.color_adjustment_contrast
+        h = pcv.color_adjustment_hue
+        s = pcv.color_adjustment_saturation
+        v = pcv.color_adjustment_value
+        # i = pcv.color_adjustment_invert
+        
+        if(h == 0.0 and s == 0.0 and v == 0.0):
+            return {'CANCELLED'}
+        
+        # cs = cs * (2 ** e)
+        # cs = cs * e
+        # cs = cs ** g
+        # cs = (cs - 0.5) * c + 0.5 + b
+        if(h > 1.0):
+            h = h % 1.0
+        for _i, c in enumerate(cs):
+            col = Color(c[:3])
+            _h, _s, _v = col.hsv
+            # if(_h + h > 1.0):
+            #     _h = (_h + h) % 1.0
+            # elif(_h + h < 0.0):
+            #     _h = (_h + h) % 1.0
+            # else:
+            #     _h += h
+            _h = (_h + h) % 1.0
+            _s += s
+            _v += v
+            col.hsv = (_h, _s, _v)
+            cs[_i][0] = col.r
+            cs[_i][1] = col.g
+            cs[_i][2] = col.b
+        # if(i):
+        #     cs = 1 - cs
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_adjustment_invert(Operator):
+    bl_idname = "point_cloud_visualizer.adjustment_invert"
+    bl_label = "Invert"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        c = PCVManager.cache[pcv.uuid]
+        vs = c['vertices']
+        ns = c['normals']
+        cs = c['colors']
+        
+        cs = 1.0 - cs
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -7037,14 +7244,15 @@ class PCV_PT_generate(Panel):
         if(pcv.generate_source in ('SURFACE', )):
             third_label_two_thirds_prop(pcv, 'generate_algorithm', c, )
         
-        if(pcv.generate_algorithm in ('WEIGHTED_RANDOM_IN_TRIANGLE', )):
-            c.prop(pcv, 'generate_number_of_points')
-            c.prop(pcv, 'generate_seed')
-            c.prop(pcv, 'generate_exact_number_of_points')
-        if(pcv.generate_algorithm in ('POISSON_DISK_SAMPLING', )):
-            c.prop(pcv, 'generate_minimal_distance')
-            c.prop(pcv, 'generate_sampling_exponent')
-            # c.prop(pcv, 'generate_seed')
+        if(pcv.generate_source in ('SURFACE', )):
+            if(pcv.generate_algorithm in ('WEIGHTED_RANDOM_IN_TRIANGLE', )):
+                c.prop(pcv, 'generate_number_of_points')
+                c.prop(pcv, 'generate_seed')
+                c.prop(pcv, 'generate_exact_number_of_points')
+            if(pcv.generate_algorithm in ('POISSON_DISK_SAMPLING', )):
+                c.prop(pcv, 'generate_minimal_distance')
+                c.prop(pcv, 'generate_sampling_exponent')
+                # c.prop(pcv, 'generate_seed')
         
         third_label_two_thirds_prop(pcv, 'generate_colors', c, )
         if(pcv.generate_colors == 'CONSTANT'):
@@ -7195,9 +7403,35 @@ class PCV_PT_development(Panel):
         
         sub.separator()
         sub.label(text="Generate Volume:")
-        sub.prop(pcv, 'generate_number_of_points')
-        sub.prop(pcv, 'generate_seed')
-        sub.operator('point_cloud_visualizer.generate_volume_from_mesh')
+        c = sub.column(align=True)
+        c.prop(pcv, 'generate_number_of_points')
+        c.prop(pcv, 'generate_seed')
+        c.operator('point_cloud_visualizer.generate_volume_from_mesh')
+        
+        sub.separator()
+        sub.label(text="Gamma:")
+        c = sub.column(align=True)
+        c.operator('point_cloud_visualizer.gamma_correct')
+        c.operator('point_cloud_visualizer.gamma_uncorrect')
+        
+        sub.separator()
+        sub.label(text="Color Adjustments")
+        # sub.prop(pcv, 'color_adjustment_exposure')
+        # sub.prop(pcv, 'color_adjustment_gamma')
+        c = sub.column(align=True)
+        c.prop(pcv, 'color_adjustment_brightness')
+        c.prop(pcv, 'color_adjustment_contrast')
+        c.operator('point_cloud_visualizer.adjustment_brightness_contrast')
+        c.enabled = PCV_OT_adjustment_brightness_contrast.poll(context)
+        c = sub.column(align=True)
+        c.prop(pcv, 'color_adjustment_hue')
+        c.prop(pcv, 'color_adjustment_saturation')
+        c.prop(pcv, 'color_adjustment_value')
+        c.operator('point_cloud_visualizer.adjustment_color_hsv')
+        c.enabled = PCV_OT_adjustment_color_hsv.poll(context)
+        c = sub.column(align=True)
+        c.operator('point_cloud_visualizer.adjustment_invert')
+        c.enabled = PCV_OT_adjustment_invert.poll(context)
 
 
 class PCV_PT_debug(Panel):
@@ -7232,19 +7466,24 @@ class PCV_PT_debug(Panel):
         
         sub.label(text="properties:")
         b = sub.box()
-        c = b.column()
-        for k, p in pcv.bl_rna.properties.items():
-            v = 'n/a'
-            if(p.type == 'POINTER'):
-                v = 'POINTER'
-            else:
-                v = p.default
-                if(k in pcv.keys()):
-                    v = pcv[k]
-            if(p.type == 'BOOLEAN'):
-                v = bool(v)
-            c.label(text="{}: {}".format(k, v))
-        c.scale_y = 0.5
+        
+        r = b.row()
+        r.prop(pcv, 'debug_panel_show_properties', icon='TRIA_DOWN' if pcv.debug_panel_show_properties else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        if(pcv.debug_panel_show_properties):
+            
+            c = b.column()
+            for k, p in pcv.bl_rna.properties.items():
+                v = 'n/a'
+                if(p.type == 'POINTER'):
+                    v = 'POINTER'
+                else:
+                    v = p.default
+                    if(k in pcv.keys()):
+                        v = pcv[k]
+                if(p.type == 'BOOLEAN'):
+                    v = bool(v)
+                c.label(text="{}: {}".format(k, v))
+            c.scale_y = 0.5
         
         sub.label(text="manager:")
         c = sub.column(align=True)
@@ -7262,13 +7501,18 @@ class PCV_PT_debug(Panel):
             sub.label(text="cache details:")
             for k, v in PCVManager.cache.items():
                 b = sub.box()
-                c = b.column()
-                c.scale_y = 0.5
-                for ki, vi in sorted(v.items()):
-                    if(type(vi) == np.ndarray):
-                        c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
-                    else:
-                        c.label(text="{}: {}".format(ki, vi))
+                
+                r = b.row()
+                r.prop(pcv, 'debug_panel_show_cache_items', icon='TRIA_DOWN' if pcv.debug_panel_show_cache_items else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+                r.label(text=k)
+                if(pcv.debug_panel_show_cache_items):
+                    c = b.column()
+                    c.scale_y = 0.5
+                    for ki, vi in sorted(v.items()):
+                        if(type(vi) == np.ndarray):
+                            c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
+                        else:
+                            c.label(text="{}: {}".format(ki, vi))
         
         sub.label(text="sequence:")
         c = sub.column(align=True)
@@ -7511,6 +7755,17 @@ class PCV_properties(PropertyGroup):
     dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
     dev_selection_shader_color: FloatVectorProperty(name="Color", description="", default=(1.0, 0.0, 0.0, 0.5), min=0, max=1, subtype='COLOR', size=4, update=_dev_sel_color_update, )
     
+    # color_adjustment_exposure: FloatProperty(name="Exposure", description="", default=0.0, )
+    # color_adjustment_gamma: FloatProperty(name="Gamma", description="", default=1.0, )
+    color_adjustment_brightness: FloatProperty(name="Brightness", description="", default=0.0, min=-1.0, max=1.0, subtype='FACTOR', )
+    color_adjustment_contrast: FloatProperty(name="Contrast", description="", default=1.0, min=0.0, max=2.0, subtype='FACTOR', )
+    color_adjustment_hue: FloatProperty(name="Hue", description="", default=0.0, min=-1.0, max=1.0, subtype='FACTOR', )
+    color_adjustment_saturation: FloatProperty(name="Saturation", description="", default=0.0, min=-1.0, max=1.0, subtype='FACTOR', )
+    color_adjustment_value: FloatProperty(name="Value", description="", default=0.0, min=-1.0, max=1.0, subtype='FACTOR', )
+    
+    debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
+    debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.point_cloud_visualizer = PointerProperty(type=cls)
@@ -7624,7 +7879,9 @@ classes = (
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
     PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_point_cloud, PCV_OT_reset_runtime,
     
-    PCV_OT_generate_volume_point_cloud, PCV_PT_development,
+    PCV_OT_generate_volume_point_cloud,
+    PCV_OT_gamma_correct, PCV_OT_gamma_uncorrect, PCV_OT_adjustment_brightness_contrast, PCV_OT_adjustment_color_hsv, PCV_OT_adjustment_invert,
+    PCV_PT_development,
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
