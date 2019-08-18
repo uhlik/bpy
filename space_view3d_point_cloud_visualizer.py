@@ -6214,7 +6214,6 @@ class PCV_OT_generate_volume_point_cloud(Operator):
         log("completed in {}.".format(_d), 1)
         
         return {'FINISHED'}
-    
 
 
 class PCV_PT_panel(Panel):
@@ -7144,7 +7143,6 @@ class PCV_PT_development(Panel):
             r = c.row()
             r.prop(pcv, 'dev_selection_shader_color', text="", )
         c.enabled = e
-        
         
         # ok = False
         # for k, v in PCVManager.cache.items():
