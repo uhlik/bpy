@@ -1798,6 +1798,9 @@ class PCVManager():
         if(not o.visible_get()):
             # if parent object is not visible, skip drawing
             # this should checked earlier, but until now i can't be sure i have correct object reference
+            
+            # NOTE: use bpy.context.view_layer.objects.active instead of context.active_object and add option to not hide cloud when parent object is hidden? seems like this is set when object is clicked in outliner even when hidden, at least properties buttons are changed.. if i unhide and delete the object, props buttons are not drawn, if i click on another already hidden object, correct buttons are back, so i need to check if there is something active.. also this would require rewriting all panels polls, now they check for context.active_object and if None, which is when object is hidden, panel is not drawn..
+            
             bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
             bgl.glDisable(bgl.GL_DEPTH_TEST)
             bgl.glDisable(bgl.GL_BLEND)
