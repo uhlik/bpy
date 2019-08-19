@@ -1910,9 +1910,7 @@ class PCVManager():
             shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
-        # in-development
         if(pcv.dev_depth_enabled):
-            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             # if(debug_mode()):
             #     import cProfile
@@ -2020,9 +2018,7 @@ class PCVManager():
             #     ps.print_stats()
             #     print(s.getvalue())
         
-        # in-development
         if(pcv.dev_normal_colors_enabled):
-            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             vs = ci['vertices']
             ns = ci['normals']
@@ -2061,9 +2057,7 @@ class PCVManager():
             shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
-        # in-development
         if(pcv.dev_position_colors_enabled):
-            # NOTTODO: this shader is drawn over regular shader now, drawing only one should speed it up
             
             vs = ci['vertices']
             l = ci['current_display_length']
@@ -2101,7 +2095,6 @@ class PCVManager():
             shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
-        # in-development
         if(pcv.dev_selection_shader_display):
             vs = ci['vertices']
             l = ci['current_display_length']
