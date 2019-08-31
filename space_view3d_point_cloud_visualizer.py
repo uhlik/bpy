@@ -6310,6 +6310,8 @@ class PCV_OT_adjustment_brightness_contrast(Operator):
         ns = c['normals']
         cs = c['colors']
         
+        # TODO: do adjustments real time in shader and when finished, do the same in python to actual numbers, this way it can be used practically
+        
         b = pcv.color_adjustment_brightness
         c = pcv.color_adjustment_contrast
         
