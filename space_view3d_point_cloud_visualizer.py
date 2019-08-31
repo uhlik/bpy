@@ -1760,6 +1760,8 @@ class PCVManager():
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
+        # TODO: try to implement clip planes using an object bounding box
+        
         ci = PCVManager.cache[uuid]
         
         shader = ci['shader']
@@ -4033,6 +4035,7 @@ class PCV_OT_convert(Operator):
         
         g = None
         if(pcv.mesh_type in ('INSTANCER', 'PARTICLES', )):
+            # TODO: if normals are missing or align to normal is not required, make just vertices instead of triangles and use that as source for particles and instances, will be a bit faster
             g = PCMeshInstancerMeshGenerator(mesh_type='TRIANGLE', )
         else:
             g = PCMeshInstancerMeshGenerator(mesh_type=pcv.mesh_type, )
@@ -5459,6 +5462,8 @@ class PCV_OT_filter_boolean_intersect(Operator):
         # still no idea, have to read about it..
         depsgraph.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        # TODO: use object bounding box for fast check if point can even be inside/outside of mesh and then use ray casting etc..
         
         # v1 raycasting in three axes and counting hits
         def is_point_inside_mesh_v1(p, o, ):
