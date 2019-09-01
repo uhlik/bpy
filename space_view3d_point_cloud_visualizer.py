@@ -5446,7 +5446,7 @@ class PCV_OT_filter_boolean_intersect(Operator):
         
         # apply parent matrix to points
         m = c['object'].matrix_world.copy()
-        vs, ns = apply_matrix(vs, ns, m)
+        # vs, ns = apply_matrix(vs, ns, m)
         
         sc = context.scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -5455,6 +5455,7 @@ class PCV_OT_filter_boolean_intersect(Operator):
         target_mesh = tmp_mesh.copy()
         target_mesh.name = 'target_mesh_{}'.format(pcv.uuid)
         target_mesh.transform(o.matrix_world.copy())
+        target_mesh.transform(m.inverted())
         view_layer = context.view_layer
         collection = view_layer.active_layer_collection.collection
         target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
@@ -5664,7 +5665,7 @@ class PCV_OT_filter_boolean_exclude(Operator):
         
         # apply parent matrix to points
         m = c['object'].matrix_world.copy()
-        vs, ns = apply_matrix(vs, ns, m)
+        # vs, ns = apply_matrix(vs, ns, m)
         
         sc = context.scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -5673,6 +5674,7 @@ class PCV_OT_filter_boolean_exclude(Operator):
         target_mesh = tmp_mesh.copy()
         target_mesh.name = 'target_mesh_{}'.format(pcv.uuid)
         target_mesh.transform(o.matrix_world.copy())
+        target_mesh.transform(m.inverted())
         view_layer = context.view_layer
         collection = view_layer.active_layer_collection.collection
         target = bpy.data.objects.new('target_mesh_{}'.format(pcv.uuid), target_mesh)
