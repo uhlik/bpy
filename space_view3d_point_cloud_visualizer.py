@@ -5463,7 +5463,28 @@ class PCV_OT_filter_boolean_intersect(Operator):
         depsgraph.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
         
-        # TODO: use object bounding box for fast check if point can even be inside/outside of mesh and then use ray casting etc..
+        # use object bounding box for fast check if point can even be inside/outside of mesh and then use ray casting etc..
+        bounds = [bv[:] for bv in target.bound_box]
+        xmin = min([v[0] for v in bounds])
+        xmax = max([v[0] for v in bounds])
+        ymin = min([v[1] for v in bounds])
+        ymax = max([v[1] for v in bounds])
+        zmin = min([v[2] for v in bounds])
+        zmax = max([v[2] for v in bounds])
+        
+        def is_in_bound_box(v):
+            x = False
+            if(xmin < v[0] < xmax):
+                x = True
+            y = False
+            if(ymin < v[1] < ymax):
+                y = True
+            z = False
+            if(zmin < v[2] < zmax):
+                z = True
+            if(x and y and z):
+                return True
+            return False
         
         # v1 raycasting in three axes and counting hits
         def is_point_inside_mesh_v1(p, o, ):
@@ -5545,6 +5566,13 @@ class PCV_OT_filter_boolean_intersect(Operator):
             # if(inside1 and inside2 and inside3):
             #     indexes.append(i)
             '''
+            
+            in_bb = is_in_bound_box(v)
+            if(not in_bb):
+                # is not in bounds i can skip completely
+                indexes.append(i)
+                continue
+            
             inside3 = is_point_inside_mesh_v3(vv, target, )
             if(not inside3):
                 indexes.append(i)
@@ -5653,6 +5681,29 @@ class PCV_OT_filter_boolean_exclude(Operator):
         depsgraph.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()
         
+        # use object bounding box for fast check if point can even be inside/outside of mesh and then use ray casting etc..
+        bounds = [bv[:] for bv in target.bound_box]
+        xmin = min([v[0] for v in bounds])
+        xmax = max([v[0] for v in bounds])
+        ymin = min([v[1] for v in bounds])
+        ymax = max([v[1] for v in bounds])
+        zmin = min([v[2] for v in bounds])
+        zmax = max([v[2] for v in bounds])
+        
+        def is_in_bound_box(v):
+            x = False
+            if(xmin < v[0] < xmax):
+                x = True
+            y = False
+            if(ymin < v[1] < ymax):
+                y = True
+            z = False
+            if(zmin < v[2] < zmax):
+                z = True
+            if(x and y and z):
+                return True
+            return False
+        
         # v1 raycasting in three axes and counting hits
         def is_point_inside_mesh_v1(p, o, ):
             axes = [Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0)), Vector((0.0, 0.0, 1.0)), ]
@@ -5726,9 +5777,20 @@ class PCV_OT_filter_boolean_exclude(Operator):
             if(inside1 and inside2 and inside3):
                 indexes.append(i)
             '''
-            inside3 = is_point_inside_mesh_v3(vv, target, )
-            if(inside3):
-                indexes.append(i)
+            
+            in_bb = is_in_bound_box(v)
+            if(in_bb):
+                # indexes.append(i)
+                # continue
+                
+                # is in bound so i can check further
+                inside3 = is_point_inside_mesh_v3(vv, target, )
+                if(inside3):
+                    indexes.append(i)
+            
+            # inside3 = is_point_inside_mesh_v3(vv, target, )
+            # if(inside3):
+            #     indexes.append(i)
         
         c = PCVManager.cache[pcv.uuid]
         vs = c['vertices']
