@@ -5906,7 +5906,7 @@ class PCV_OT_sequence_preload(Operator):
             prefix = f[:m.start()]
             suffix = f[m.end():]
         else:
-            operator.report({'ERROR'}, 'Filename does not contain any sequence number')
+            self.report({'ERROR'}, 'Filename does not contain any sequence number')
             return {'CANCELLED'}
         
         sel = []
@@ -5954,12 +5954,12 @@ class PCV_OT_sequence_preload(Operator):
                 try:
                     points = PlyPointCloudReader(p).points
                 except Exception as e:
-                    operator.report({'ERROR'}, str(e))
+                    self.report({'ERROR'}, str(e))
                 if(len(points) == 0):
-                    operator.report({'ERROR'}, "No vertices loaded from file at {}".format(p))
+                    self.report({'ERROR'}, "No vertices loaded from file at {}".format(p))
                 else:
                     if(not set(('x', 'y', 'z')).issubset(points.dtype.names)):
-                        operator.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
+                        self.report({'ERROR'}, "Loaded data seems to miss vertex locations.")
                         return {'CANCELLED'}
                     
                     vs = np.column_stack((points['x'], points['y'], points['z'], ))
@@ -7254,6 +7254,8 @@ class PCV_PT_sequence(Panel):
         # c.enabled = PCV_OT_sequence_preload.poll(context)
         # c.enabled = pcv.sequence_enabled
         c.operator('point_cloud_visualizer.sequence_clear')
+        
+        l.enabled = not pcv.runtime
 
 
 class PCV_PT_generate(Panel):
