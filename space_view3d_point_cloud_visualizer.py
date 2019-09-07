@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 24),
+           "version": (0, 9, 25),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -7207,10 +7207,6 @@ class PCV_PT_filter_color_adjustment(Panel):
     
     @classmethod
     def poll(cls, context):
-        if(not debug_mode()):
-            # NOTE: remove when ready..
-            return False
-        
         o = context.active_object
         if(o is None):
             return False

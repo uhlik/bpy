@@ -141,6 +141,24 @@ Load another ply and merge with currently displayed. Hit `Merge With Other PLY`,
 
 * `Merge With Other PLY` - run operator
 
+##### Color Adjustment
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.25-color-adjustment.png)
+
+Adjust exposure, gamma, brightness, contrast, hue, saturation, value or invert colors. Click `Enable` to enable color adjustment shader, adjust values as needed, click `Apply` to apply colors to points. Click `Reset` to set all to default value. Shader can be disabled without changes anytime unchecking `Enable`. When color adjustment shader is enabled, all other shaders are disabled.
+
+* `Enabled` - Enable color adjustment shader, other shaders will be overrided until disabled
+* `Exposure` - formula: color = color * (2 ** value)
+* `Gamma` - formula: color = color ** (1 / value)
+* `Brightness` - formula: color = (color - 0.5) * contrast + 0.5 + brightness
+* `Contrast` - formula: color = (color - 0.5) * contrast + 0.5 + brightness
+* `Hue` - formula: color.h = (color.h + (value % 1.0)) % 1.0
+* `Saturation` - formula: color.s += value
+* `Value` - formula: color.v += value
+* `Invert` - formula: color = 1.0 - color
+* `Reset` - Reset color adjustment values
+* `Apply` - Apply color adjustments to points, reset and exit
+
 ### Render
 
 Currently only sigle point cloud per render/frame is supported. Output image is RGBA 8bit PNG - transparent background with colored point cloud, which can be composed over something else later.
@@ -302,6 +320,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.25 color adjustment, faster boolean
 * 0.9.24 project colors
 * 0.9.23 fixes
 * 0.9.22 extra debug shaders
