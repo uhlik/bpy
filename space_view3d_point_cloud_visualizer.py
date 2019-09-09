@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 25),
+           "version": (0, 9, 26),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -6524,8 +6524,11 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         cs = c['colors']
         
         cs = cs * (2 ** pcv.color_adjustment_shader_exposure)
+        cs = np.clip(cs, 0.0, 1.0, )
         cs = cs ** (1 / pcv.color_adjustment_shader_gamma)
+        cs = np.clip(cs, 0.0, 1.0, )
         cs = (cs - 0.5) * pcv.color_adjustment_shader_contrast + 0.5 + pcv.color_adjustment_shader_brightness
+        cs = np.clip(cs, 0.0, 1.0, )
         
         h = pcv.color_adjustment_shader_hue
         s = pcv.color_adjustment_shader_saturation
@@ -6542,10 +6545,10 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
             cs[_i][0] = col.r
             cs[_i][1] = col.g
             cs[_i][2] = col.b
+        cs = np.clip(cs, 0.0, 1.0, )
         
         if(pcv.color_adjustment_shader_invert):
             cs = 1.0 - cs
-        
         cs = np.clip(cs, 0.0, 1.0, )
         
         bpy.ops.point_cloud_visualizer.color_adjustment_shader_reset()

@@ -320,6 +320,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.26 color adjustment fixes
 * 0.9.25 color adjustment, faster boolean
 * 0.9.24 project colors
 * 0.9.23 fixes
