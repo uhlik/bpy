@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 26),
+           "version": (0, 9, 27),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -1719,6 +1719,155 @@ class PCVShaders():
             }
             
             fragColor = vec4(color, alpha);
+            
+        }
+    '''
+    
+    vertex_shader_simple_render_smooth = '''
+        in vec3 position;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
+            f_alpha_radius = alpha_radius;
+        }
+    '''
+    fragment_shader_simple_render_smooth = '''
+        in vec4 f_color;
+        in float f_alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float d = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            d = fwidth(r);
+            a = 1.0 - smoothstep(1.0 - (d / 2), 1.0 + (d / 2), r);
+            //fragColor = f_color * a;
+            fragColor = vec4(f_color.rgb, f_color.a * a);
+        }
+    '''
+    
+    vertex_shader_illumination_render_smooth = '''
+        in vec3 position;
+        in vec3 normal;
+        in vec4 color;
+        
+        // uniform float show_illumination;
+        uniform vec3 light_direction;
+        uniform vec3 light_intensity;
+        uniform vec3 shadow_direction;
+        uniform vec3 shadow_intensity;
+        // uniform float show_normals;
+        
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        
+        out vec4 f_color;
+        out float f_alpha_radius;
+        out vec3 f_normal;
+        
+        out vec3 f_light_direction;
+        out vec3 f_light_intensity;
+        out vec3 f_shadow_direction;
+        out vec3 f_shadow_intensity;
+        // out float f_show_normals;
+        // out float f_show_illumination;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_normal = normal;
+            // f_color = color;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
+            f_alpha_radius = alpha_radius;
+            
+            // f_light_direction = normalize(vec3(inverse(object_matrix) * vec4(light_direction, 1.0)));
+            f_light_direction = light_direction;
+            f_light_intensity = light_intensity;
+            // f_shadow_direction = normalize(vec3(inverse(object_matrix) * vec4(shadow_direction, 1.0)));
+            f_shadow_direction = shadow_direction;
+            f_shadow_intensity = shadow_intensity;
+            // f_show_normals = show_normals;
+            // f_show_illumination = show_illumination;
+        }
+    '''
+    fragment_shader_illumination_render_smooth = '''
+        in vec4 f_color;
+        in vec3 f_normal;
+        in float f_alpha_radius;
+        
+        in vec3 f_light_direction;
+        in vec3 f_light_intensity;
+        in vec3 f_shadow_direction;
+        in vec3 f_shadow_intensity;
+        // in float f_show_normals;
+        // in float f_show_illumination;
+        
+        out vec4 fragColor;
+        
+        void main()
+        {
+            // float r = 0.0f;
+            // float a = 1.0f;
+            // vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            // r = dot(cxy, cxy);
+            // if(r > f_alpha_radius){
+            //     discard;
+            // }
+            // // fragColor = f_color * a;
+            // 
+            // vec4 col;
+            // 
+            // // if(f_show_normals > 0.5){
+            // //     col = vec4(f_normal, 1.0) * a;
+            // // }else if(f_show_illumination > 0.5){
+            // 
+            // // if(f_show_illumination > 0.5){
+            // //     vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
+            // //     vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
+            // //     col = (f_color + light - shadow) * a;
+            // // }else{
+            // //     col = f_color * a;
+            // // }
+            // 
+            // vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
+            // vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
+            // col = (f_color + light - shadow) * a;
+            // 
+            // fragColor = col;
+            
+            float r = 0.0f;
+            float d = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            d = fwidth(r);
+            a = 1.0 - smoothstep(1.0 - (d / 2), 1.0 + (d / 2), r);
+            //fragColor = vec4(f_color.rgb, f_color.a * a);
+            
+            vec4 col;
+            vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
+            vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
+            //col = (f_color + light - shadow) * a;
+            col = (f_color + light - shadow) * 1.0;
+            //fragColor = col;
+            fragColor = vec4(col.rgb, f_color.a * a);
             
         }
     '''
@@ -3826,10 +3975,18 @@ class PCV_OT_render(Operator):
         
         if(pcv.render_resolution_linked):
             scale = render.resolution_percentage / 100
+            
+            if(pcv.render_supersampling > 1):
+                scale *= pcv.render_supersampling
+            
             width = int(render.resolution_x * scale)
             height = int(render.resolution_y * scale)
         else:
             scale = pcv.render_resolution_percentage / 100
+            
+            if(pcv.render_supersampling > 1):
+                scale *= pcv.render_supersampling
+            
             width = int(pcv.render_resolution_x * scale)
             height = int(pcv.render_resolution_y * scale)
         
@@ -3927,6 +4084,25 @@ class PCV_OT_render(Operator):
             cs = cs[:l]
             ns = ns[:l]
             
+            use_smoothstep = False
+            if(pcv.render_smoothstep):
+                # for anti-aliasing basic shader should be enabled
+                # if(not pcv.illumination and not pcv.override_default_shader):
+                if(not pcv.override_default_shader):
+                    use_smoothstep = True
+                    # sort by depth
+                    mw = o.matrix_world
+                    depth = []
+                    for i, v in enumerate(vs):
+                        vw = mw @ Vector(v)
+                        depth.append(world_to_camera_view(scene, cam, vw)[2])
+                    zps = zip(depth, vs, cs, ns)
+                    sps = sorted(zps, key=lambda a: a[0])
+                    # split and reverse
+                    vs = [a for _, a, b, c in sps][::-1]
+                    cs = [b for _, a, b, c in sps][::-1]
+                    ns = [c for _, a, b, c in sps][::-1]
+            
             if(pcv.dev_depth_enabled):
                 if(pcv.illumination):
                     shader = GPUShader(PCVShaders.depth_vertex_shader_illumination, PCVShaders.depth_fragment_shader_illumination, )
@@ -3944,11 +4120,19 @@ class PCV_OT_render(Operator):
                 shader = GPUShader(PCVShaders.position_colors_vertex_shader, PCVShaders.position_colors_fragment_shader, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
             elif(pcv.illumination):
-                shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
-                batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
+                if(use_smoothstep):
+                    shader = GPUShader(PCVShaders.vertex_shader_illumination_render_smooth, PCVShaders.fragment_shader_illumination_render_smooth)
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
+                else:
+                    shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             else:
-                shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-                batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+                if(use_smoothstep):
+                    shader = GPUShader(PCVShaders.vertex_shader_simple_render_smooth, PCVShaders.fragment_shader_simple_render_smooth)
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+                else:
+                    shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
             
             shader.bind()
             
@@ -3959,7 +4143,10 @@ class PCV_OT_render(Operator):
             
             shader.uniform_float("perspective_matrix", perspective_matrix)
             shader.uniform_float("object_matrix", o.matrix_world)
-            shader.uniform_float("point_size", pcv.render_point_size)
+            if(pcv.render_supersampling > 1):
+                shader.uniform_float("point_size", pcv.render_point_size * pcv.render_supersampling)
+            else:
+                shader.uniform_float("point_size", pcv.render_point_size)
             shader.uniform_float("alpha_radius", pcv.alpha_radius)
             shader.uniform_float("global_alpha", pcv.global_alpha)
             
@@ -4064,6 +4251,11 @@ class PCV_OT_render(Operator):
         image = bpy.data.images[image_name]
         image.scale(width, height)
         image.pixels = [v / 255 for v in buffer]
+        
+        if(pcv.render_supersampling > 1):
+            width = int(width / pcv.render_supersampling)
+            height = int(height / pcv.render_supersampling)
+            image.scale(width, height)
         
         # save as image file
         def save_render(operator, scene, image, output_path, ):
@@ -6857,6 +7049,14 @@ class PCV_PT_render(Panel):
         c = sub.column()
         c.prop(pcv, 'render_display_percent')
         c.prop(pcv, 'render_point_size')
+        c.prop(pcv, 'render_supersampling')
+        r = c.row()
+        r.prop(pcv, 'render_smoothstep')
+        ok = False
+        # if(not pcv.illumination and not pcv.override_default_shader):
+        if(not pcv.override_default_shader):
+            ok = True
+        r.enabled = ok
         
         c = sub.column()
         
@@ -7658,6 +7858,8 @@ class PCV_properties(PropertyGroup):
     render_resolution_x: IntProperty(name="Resolution X", default=1920, min=4, max=65536, description="Number of horizontal pixels in rendered image", subtype='PIXEL', )
     render_resolution_y: IntProperty(name="Resolution Y", default=1080, min=4, max=65536, description="Number of vertical pixels in rendered image", subtype='PIXEL', )
     render_resolution_percentage: IntProperty(name="Resolution %", default=100, min=1, max=100, description="Percentage scale for render resolution", subtype='PERCENTAGE', )
+    render_smoothstep: BoolProperty(name="Smooth Circles", default=False, description="Currently works only for basic shader with/without illumination and generally is much slower than Supersampling, use only when Supersampling fails", )
+    render_supersampling: IntProperty(name="Supersampling", default=1, soft_min=1, soft_max=4, min=1, max=10, description="Render larger image and then resize back, 1 - disabled, 2 - render 200%, 3 - render 300%, ...", )
     
     def _render_resolution_linked_update(self, context, ):
         if(not self.render_resolution_linked):

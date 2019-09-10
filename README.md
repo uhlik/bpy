@@ -180,13 +180,19 @@ Currently only sigle point cloud per render/frame is supported. Output image is 
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.10-render.png)
 
-* `Size` - point render size in pixels
 * `Count` - percentage of rendered points
+* `Size` - point render size in pixels
+* `Supersampling` - Render larger image and then resize back to anti-alias, 1 - disabled, 2 - render 200%, 3 - render 300%, etc.
+* `Smooth Circles` - Currently works only for basic shader with/without illumination and generally is much slower than Supersampling, use only when Supersampling fails
 * `Output` - path where to save rendered images, `#` characters defines the position and length of frame numbers, image is always saved, filetype is always png, accepts relative paths, upon hitting `Render` path is validated, changed to absolute and written back
 * `Resolution X` - image width in pixels
 * `Resolution Y` - image height in pixels
 * `Resolution %` - percentage scale for resolution
 * `Resolution Linked` - when enabled, settings are taken from scene, if not they are independent on scene, but aspect ratio is not calculated
+
+##### Render smoothing/anti-aliasing notes:
+
+Use `Supersampling` for most of the time with lowest value (to be exact, `2` works great) that look still good. If you run into problems due to very large supersampled image sizes Blender or hardware cannot handle, you can try to disable `Supersampling` and use `Smooth Circles` to draw smooth points directly in target resolution, but you are limited to basic shader and points before drawing have to be depth sorted manually which can be very slow with large point counts.
 
 ### Convert
 
@@ -320,6 +326,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.27 render supersampling and draw smooth circles
 * 0.9.26 color adjustment fixes
 * 0.9.25 color adjustment, faster boolean
 * 0.9.24 project colors
