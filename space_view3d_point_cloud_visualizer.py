@@ -4170,6 +4170,8 @@ class PCVPreviewEngineDraftNumpySampler():
         ns = np.take(normals, indices, axis=0, )
         cs = colors
         
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down
+        
         # and shuffle..
         a = np.concatenate((vs, ns, cs), axis=1, )
         np.random.shuffle(a)
