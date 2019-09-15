@@ -69,8 +69,8 @@ def log(msg, indent=0, ):
 
 
 def debug_mode():
-    # return True
-    return (bpy.app.debug_value != 0)
+    return True
+    # return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -3791,6 +3791,397 @@ class PCVRandomVolumeSampler():
         self.cs = cs[:]
 
 
+class PCVPreviewEngineSampler():
+    def __init__(self, context, o, target, rnd, percentage=1.0, triangulate=True, use_modifiers=True, source=None, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        owner = None
+        if(use_modifiers and target.modifiers):
+            depsgraph = context.evaluated_depsgraph_get()
+            owner = target.evaluated_get(depsgraph)
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        else:
+            owner = target
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=None, )
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        if(not triangulate):
+            if(colorize in ('VCOLS', 'UVTEX', 'GROUP_MONO', 'GROUP_COLOR', )):
+                bmesh.ops.triangulate(bm, faces=bm.faces)
+        else:
+            bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        
+        if(source is None):
+            source = 'VERTICES'
+        
+        if(len(bm.verts) == 0):
+            raise Exception("Mesh has no vertices")
+        if(colorize in ('UVTEX', 'VCOLS', 'VIEWPORT_DISPLAY_COLOR', )):
+            if(len(bm.faces) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            try:
+                if(len(target.data.materials) == 0):
+                    raise Exception("Cannot find any material")
+                materials = target.data.materials
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'UVTEX'):
+            try:
+                if(target.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = target.active_material.node_tree.nodes.active
+                if(uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if(uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if(uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if(col_layer is None):
+                    raise Exception()
+            except Exception:
+                raise Exception("Cannot find active vertex colors")
+        if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if(group_layer is None):
+                    raise Exception()
+                group_layer_index = target.vertex_groups.active.index
+            except Exception:
+                raise Exception("Cannot find active vertex group")
+        
+        # if(percentage < 1.0):
+        #     if(source == 'FACES'):
+        #         rnd_layer = bm.faces.layers.float.new('face_random')
+        #         for f in bm.faces:
+        #             f[rnd_layer] = rnd.random()
+        #     if(source == 'VERTICES'):
+        #         rnd_layer = bm.verts.layers.float.new('vertex_random')
+        #         for v in bm.verts:
+        #             v[rnd_layer] = rnd.random()
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        if(source == 'FACES'):
+            for f in bm.faces:
+                if(percentage < 1.0):
+                    # if(f[rnd_layer] > percentage):
+                    #     continue
+                    if(rnd.random() > percentage):
+                        continue
+                
+                v = f.calc_center_median()
+                vs.append(v.to_tuple())
+                ns.append(f.normal.to_tuple())
+                
+                if(colorize is None):
+                    cs.append((1.0, 0.0, 0.0, ))
+                elif(colorize == 'CONSTANT'):
+                    cs.append(constant_color)
+                elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                    cs.append(materials[f.material_index].diffuse_color[:3])
+                elif(colorize == 'VCOLS'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    ac = f.loops[0][col_layer][:3]
+                    bc = f.loops[1][col_layer][:3]
+                    cc = f.loops[2][col_layer][:3]
+                    r = ac[0] * ws[0] + bc[0] * ws[1] + cc[0] * ws[2]
+                    g = ac[1] * ws[0] + bc[1] * ws[1] + cc[1] * ws[2]
+                    b = ac[2] * ws[0] + bc[2] * ws[1] + cc[2] * ws[2]
+                    cs.append((r, g, b, ))
+                elif(colorize == 'UVTEX'):
+                    uvtriangle = []
+                    for l in f.loops:
+                        uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0, )))
+                    uvpoint = barycentric_transform(v, f.verts[0].co, f.verts[1].co, f.verts[2].co, *uvtriangle, )
+                    w, h = uvimage.size
+                    # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                    x = int(round(remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                    y = int(round(remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                    cs.append(tuple(uvarray[y][x][:3].tolist()))
+                elif(colorize == 'GROUP_MONO'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    aw = f.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = f.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = f.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    cs.append((m, m, m, ))
+                elif(colorize == 'GROUP_COLOR'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    aw = f.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = f.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = f.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    hue = remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
+                    c = Color()
+                    c.hsv = (hue, 1.0, 1.0, )
+                    cs.append((c.r, c.g, c.b, ))
+        else:
+            # source == 'VERTICES'
+            for v in bm.verts:
+                if(percentage < 1.0):
+                    # if(v[rnd_layer] > percentage):
+                    #     continue
+                    if(rnd.random() > percentage):
+                        continue
+                
+                if(len(v.link_loops) == 0 and colorize in ('UVTEX', 'VCOLS', 'VIEWPORT_DISPLAY_COLOR', )):
+                    # single vertex without faces, skip when faces are required for colorizing
+                    continue
+                
+                vs.append(v.co.to_tuple())
+                ns.append(v.normal.to_tuple())
+                
+                if(colorize is None):
+                    cs.append((1.0, 0.0, 0.0, ))
+                elif(colorize == 'CONSTANT'):
+                    cs.append(constant_color)
+                elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    lfs = v.link_faces
+                    for f in lfs:
+                        c = materials[f.material_index].diffuse_color[:3]
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(lfs)
+                    g /= len(lfs)
+                    b /= len(lfs)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'VCOLS'):
+                    ls = v.link_loops
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    for l in ls:
+                        c = l[col_layer][:3]
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(ls)
+                    g /= len(ls)
+                    b /= len(ls)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'UVTEX'):
+                    ls = v.link_loops
+                    w, h = uvimage.size
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    for l in ls:
+                        uvloc = l[uvlayer].uv.to_tuple()
+                        # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                        x = int(round(remap(uvloc[0] % 1.0, 0.0, 1.0, 0, w - 1)))
+                        y = int(round(remap(uvloc[1] % 1.0, 0.0, 1.0, 0, h - 1)))
+                        c = tuple(uvarray[y][x][:3].tolist())
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(ls)
+                    g /= len(ls)
+                    b /= len(ls)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'GROUP_MONO'):
+                    w = v[group_layer].get(group_layer_index, 0.0)
+                    cs.append((w, w, w, ))
+                elif(colorize == 'GROUP_COLOR'):
+                    w = v[group_layer].get(group_layer_index, 0.0)
+                    hue = remap(1.0 - w, 0.0, 1.0, 0.0, 1 / 1.5)
+                    c = Color()
+                    c.hsv = (hue, 1.0, 1.0, )
+                    cs.append((c.r, c.g, c.b, ))
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+        
+        bm.free()
+        owner.to_mesh_clear()
+
+
+class PCVPreviewEngineDraftSampler():
+    def __init__(self, context, o, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        np.random.seed(seed=seed)
+        rnd = np.random.uniform(low=0.0, high=1.0, size=len(me.polygons), )
+        
+        for i, f in enumerate(me.polygons):
+            if(percentage < 1.0):
+                if(rnd[i] > percentage):
+                    continue
+            
+            v = f.center
+            vs.append(v.to_tuple())
+            ns.append(f.normal.to_tuple())
+            
+            if(colorize == 'CONSTANT'):
+                cs.append(constant_color)
+            elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                cs.append(materials[f.material_index].diffuse_color[:3])
+        
+        # # skip normals..
+        # n = len(vs)
+        # ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+        #                       np.full(n, 0.0, dtype=np.float32, ),
+        #                       np.full(n, 1.0, dtype=np.float32, ), ))
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVPreviewEngineDraftNumpySampler():
+    def __init__(self, context, o, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        
+        np.random.seed(seed=seed)
+        rnd = np.random.uniform(low=0.0, high=1.0, size=l, )
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        rnd[rnd < percentage] = 1
+        rnd[rnd < 1] = 0
+        indices = []
+        for i, v in enumerate(rnd):
+            if(v):
+                indices.append(i)
+        indices = np.array(indices, dtype=np.int, )
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
+                                      np.full(li, constant_color[1], dtype=np.float32, ),
+                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            for i, index in enumerate(indices):
+                p = me.polygons[index]
+                c = materials[p.material_index].diffuse_color[:3]
+                colors[i][0] = c[0]
+                colors[i][1] = c[1]
+                colors[i][2] = c[2]
+        
+        vs = np.take(centers, indices, axis=0, )
+        ns = np.take(normals, indices, axis=0, )
+        cs = colors
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -6754,6 +7145,182 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_preview_engine_generate(Operator):
+    bl_idname = "point_cloud_visualizer.preview_engine_generate"
+    bl_label = "Generate"
+    bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        # pcv = context.object.point_cloud_visualizer
+        # if(pcv.uuid in PCVSequence.cache.keys()):
+        #     return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+        
+        return True
+    
+    def execute(self, context):
+        # if(debug_mode()):
+        #     import cProfile
+        #     import pstats
+        #     import io
+        #     pr = cProfile.Profile()
+        #     pr.enable()
+        
+        log("Generate From Mesh:", 0)
+        _t = time.time()
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        
+        target = bpy.data.objects.get(pcv.preview_engine_generate_target)
+        if(target is None):
+            self.report({'ERROR'}, "Target object is missing.")
+            return {'CANCELLED'}
+        
+        if(target.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+            self.report({'ERROR'}, "Object does not have geometry data.")
+            return {'CANCELLED'}
+        
+        if(pcv.preview_engine_generate_generator == 'DRAFT'):
+            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+                pass
+            else:
+                self.report({'ERROR'}, "Color generation not implemented.")
+                return {'CANCELLED'}
+            
+            try:
+                sampler = PCVPreviewEngineDraftSampler(context, o, target,
+                                                       percentage=pcv.preview_engine_generate_percentage,
+                                                       seed=pcv.preview_engine_generate_seed,
+                                                       colorize=pcv.preview_engine_generate_colors_draft,
+                                                       constant_color=pcv.preview_engine_generate_constant_color, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+            
+        elif(pcv.preview_engine_generate_generator == 'DRAFT_NUMPY'):
+            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+                pass
+            else:
+                self.report({'ERROR'}, "Color generation not implemented.")
+                return {'CANCELLED'}
+            
+            try:
+                # if(debug_mode()):
+                #     import cProfile
+                #     import pstats
+                #     import io
+                #     pr = cProfile.Profile()
+                #     pr.enable()
+                
+                sampler = PCVPreviewEngineDraftNumpySampler(context, o, target,
+                                                            percentage=pcv.preview_engine_generate_percentage,
+                                                            seed=pcv.preview_engine_generate_seed,
+                                                            colorize=pcv.preview_engine_generate_colors_draft,
+                                                            constant_color=pcv.preview_engine_generate_constant_color, )
+                
+                # if(debug_mode()):
+                #     pr.disable()
+                #     s = io.StringIO()
+                #     sortby = 'cumulative'
+                #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+                #     ps.print_stats()
+                #     print(s.getvalue())
+                
+            except Exception as e:
+                
+                # import traceback
+                # print(e)
+                # traceback.print_tb(e.__traceback__)
+                
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+            
+        else:
+            if(pcv.preview_engine_generate_source not in ('VERTICES', 'FACES', )):
+                self.report({'ERROR'}, "Source not implemented.")
+                return {'CANCELLED'}
+            
+            if(pcv.preview_engine_generate_colors in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', 'UVTEX', 'VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+                if(target.type in ('CURVE', 'SURFACE', 'FONT', ) and pcv.preview_engine_generate_colors != 'CONSTANT'):
+                    self.report({'ERROR'}, "Object type does not support UV textures, vertex colors or vertex groups.")
+                    return {'CANCELLED'}
+            else:
+                self.report({'ERROR'}, "Color generation not implemented.")
+                return {'CANCELLED'}
+            
+            if(target.type != 'MESH'):
+                vcols = None
+                uvtex = None
+                vgroup = None
+            else:
+                # all of following should return None is not available, at least for mesh object
+                vcols = target.data.vertex_colors.active
+                uvtex = target.data.uv_layers.active
+                vgroup = target.vertex_groups.active
+            
+            r = random.Random(pcv.preview_engine_generate_seed)
+            
+            try:
+                sampler = PCVPreviewEngineSampler(context, o, target, r,
+                                                  percentage=pcv.preview_engine_generate_percentage,
+                                                  triangulate=pcv.preview_engine_generate_triangulate,
+                                                  use_modifiers=pcv.preview_engine_generate_use_modifiers,
+                                                  source=pcv.preview_engine_generate_source,
+                                                  colorize=pcv.preview_engine_generate_colors,
+                                                  constant_color=pcv.preview_engine_generate_constant_color,
+                                                  vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+        
+        vs = sampler.vs
+        ns = sampler.ns
+        cs = sampler.cs
+        
+        log("generated {} points.".format(len(vs)), 1)
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        if(ok):
+            bpy.ops.point_cloud_visualizer.erase()
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        # if(debug_mode()):
+        #     target.display_type = 'BOUNDS'
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        # if(debug_mode()):
+        #     pr.disable()
+        #     s = io.StringIO()
+        #     sortby = 'cumulative'
+        #     ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        #     ps.print_stats()
+        #     print(s.getvalue())
+        
+        pcv.preview_engine_generate_benchmark = "Completed in {}.".format(_d)
+        
+        return {'FINISHED'}
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -7724,6 +8291,104 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
 
 
+class PCV_PT_preview_engine(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Preview Engine"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        if(not debug_mode()):
+            return False
+        
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        c.label(text="Generate point cloud from taget mesh object", icon='EXPERIMENTAL', )
+        
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        def third_label_two_thirds_prop(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, text='', )
+        
+        def third_label_two_thirds_prop_search(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        # c.prop_search(pcv, 'preview_engine_generate_target', context.scene, 'objects')
+        third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target', context.scene, 'objects', c, )
+        
+        third_label_two_thirds_prop(pcv, 'preview_engine_generate_generator', c, )
+        
+        if(pcv.preview_engine_generate_generator in ('DRAFT', 'DRAFT_NUMPY', )):
+            c.prop(pcv, 'preview_engine_generate_percentage')
+            c.prop(pcv, 'preview_engine_generate_seed')
+            third_label_two_thirds_prop(pcv, 'preview_engine_generate_colors_draft', c, )
+            if(pcv.preview_engine_generate_colors_draft == 'CONSTANT'):
+                r = c.row()
+                third_label_two_thirds_prop(pcv, 'preview_engine_generate_constant_color', c, )
+            
+        else:
+            third_label_two_thirds_prop(pcv, 'preview_engine_generate_source', c, )
+            c.prop(pcv, 'preview_engine_generate_percentage')
+            c.prop(pcv, 'preview_engine_generate_seed')
+            c.prop(pcv, 'preview_engine_generate_triangulate')
+            c.prop(pcv, 'preview_engine_generate_use_modifiers')
+            
+            third_label_two_thirds_prop(pcv, 'preview_engine_generate_colors', c, )
+            if(pcv.preview_engine_generate_colors == 'CONSTANT'):
+                r = c.row()
+                third_label_two_thirds_prop(pcv, 'preview_engine_generate_constant_color', c, )
+        
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.preview_engine_generate')
+        r.operator('point_cloud_visualizer.reset_runtime', text="", icon='X', )
+        
+        c.enabled = PCV_OT_preview_engine_generate.poll(context)
+        
+        if(pcv.preview_engine_generate_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
+            c.label(text=pcv.preview_engine_generate_benchmark)
+
+
 class PCV_PT_debug(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -8070,6 +8735,31 @@ class PCV_properties(PropertyGroup):
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    preview_engine_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
+                                                                          ('DRAFT_NUMPY', "Draft Numpy", "Draft Numpy engine"),
+                                                                          ('PRODUCTION', "Production", "Production engine"),
+                                                                         ], default='DRAFT', description="Generator type", )
+    preview_engine_generate_target: StringProperty(name="Target", default="", )
+    preview_engine_generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
+                                                                       ('FACES', "Faces", "Use mesh face centers"),
+                                                                      ], default='VERTICES', description="Points generation source", )
+    preview_engine_generate_percentage: FloatProperty(name="Percentage", description="Adjust number of points generated, 1.0 is maximum number of points from given source, 0.5 half, etc.", default=1.0, min=0.0, max=1.0, subtype='FACTOR', precision=5, )
+    preview_engine_generate_seed: IntProperty(name="Seed", default=0, min=0, description="Percentage random number generator seed", )
+    preview_engine_generate_triangulate: BoolProperty(name="Triangulate", description="If False, try not to triangulate mesh if possible, depends on color generation type, if True, always triangulate", default=False, )
+    preview_engine_generate_use_modifiers: BoolProperty(name="Use Modifiers", description="Generate from mesh with applied modifiers or not", default=True, )
+    preview_engine_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                                       ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
+                                                                       ('VCOLS', "Vertex Colors", "Use active vertex colors"),
+                                                                       ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
+                                                                       ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group, result will be shades of grey"),
+                                                                       ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
+                                                                      ], default='CONSTANT', description="Color source for generated point cloud", )
+    preview_engine_generate_colors_draft: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                                             ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
+                                                                            ], default='CONSTANT', description="Color source for generated point cloud", )
+    preview_engine_generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    preview_engine_generate_benchmark: StringProperty(name="Benchmark", default="", )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.point_cloud_visualizer = PointerProperty(type=cls)
@@ -8086,6 +8776,7 @@ def _update_panel_bl_category(self, context):
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
+        PCV_PT_preview_engine,
         PCV_PT_debug,
     )
     try:
@@ -8186,6 +8877,8 @@ classes = (
     
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
+    
+    PCV_PT_preview_engine, PCV_OT_preview_engine_generate,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
