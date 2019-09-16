@@ -3917,7 +3917,9 @@ class PCVPreviewEngineSampler():
                 elif(colorize == 'CONSTANT'):
                     cs.append(constant_color)
                 elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
-                    cs.append(materials[f.material_index].diffuse_color[:3])
+                    c = materials[f.material_index].diffuse_color[:3]
+                    c = [v ** (1 / 2.2) for v in c]
+                    cs.append(c)
                 elif(colorize == 'VCOLS'):
                     ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
                     ac = f.loops[0][col_layer][:3]
@@ -3981,6 +3983,7 @@ class PCVPreviewEngineSampler():
                     lfs = v.link_faces
                     for f in lfs:
                         c = materials[f.material_index].diffuse_color[:3]
+                        c = [v ** (1 / 2.2) for v in c]
                         r += c[0]
                         g += c[1]
                         b += c[2]
@@ -4086,7 +4089,9 @@ class PCVPreviewEngineDraftSampler():
             if(colorize == 'CONSTANT'):
                 cs.append(constant_color)
             elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
-                cs.append(materials[f.material_index].diffuse_color[:3])
+                c = materials[f.material_index].diffuse_color[:3]
+                c = [v ** (1 / 2.2) for v in c]
+                cs.append(c)
         
         # # skip normals..
         # n = len(vs)
@@ -4162,6 +4167,7 @@ class PCVPreviewEngineDraftNumpySampler():
             for i, index in enumerate(indices):
                 p = me.polygons[index]
                 c = materials[p.material_index].diffuse_color[:3]
+                c = [v ** (1 / 2.2) for v in c]
                 colors[i][0] = c[0]
                 colors[i][1] = c[1]
                 colors[i][2] = c[2]
