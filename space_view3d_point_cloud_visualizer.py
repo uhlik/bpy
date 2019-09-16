@@ -4111,7 +4111,7 @@ class PCVPreviewEngineDraftSampler():
         self.cs = cs[:]
 
 
-class PCVPreviewEngineDraftNumpySampler():
+class PCVPreviewEngineDraftPercentageNumpySampler():
     def __init__(self, context, o, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
@@ -4177,6 +4177,87 @@ class PCVPreviewEngineDraftNumpySampler():
         cs = colors
         
         # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVPreviewEngineDraftFixedCountNumpySampler():
+    def __init__(self, context, o, target, count=-1, seed=0, colorize=None, constant_color=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed)
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        indices = np.random.randint(0, l, count, dtype=np.int, )
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
+                                      np.full(li, constant_color[1], dtype=np.float32, ),
+                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            for i, index in enumerate(indices):
+                p = me.polygons[index]
+                c = materials[p.material_index].diffuse_color[:3]
+                c = [v ** (1 / 2.2) for v in c]
+                colors[i][0] = c[0]
+                colors[i][1] = c[1]
+                colors[i][2] = c[2]
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = colors
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
         
         # and shuffle..
         a = np.concatenate((vs, ns, cs), axis=1, )
@@ -7231,11 +7312,11 @@ class PCV_OT_preview_engine_generate(Operator):
                 #     pr = cProfile.Profile()
                 #     pr.enable()
                 
-                sampler = PCVPreviewEngineDraftNumpySampler(context, o, target,
-                                                            percentage=pcv.preview_engine_generate_percentage,
-                                                            seed=pcv.preview_engine_generate_seed,
-                                                            colorize=pcv.preview_engine_generate_colors_draft,
-                                                            constant_color=pcv.preview_engine_generate_constant_color, )
+                sampler = PCVPreviewEngineDraftPercentageNumpySampler(context, o, target,
+                                                                      percentage=pcv.preview_engine_generate_percentage,
+                                                                      seed=pcv.preview_engine_generate_seed,
+                                                                      colorize=pcv.preview_engine_generate_colors_draft,
+                                                                      constant_color=pcv.preview_engine_generate_constant_color, )
                 
                 # if(debug_mode()):
                 #     pr.disable()
@@ -7253,7 +7334,29 @@ class PCV_OT_preview_engine_generate(Operator):
                 
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
+        
+        elif(pcv.preview_engine_generate_generator == 'DRAFT_NUMPY_FIXED'):
+            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+                pass
+            else:
+                self.report({'ERROR'}, "Color generation not implemented.")
+                return {'CANCELLED'}
             
+            try:
+                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, o, target,
+                                                                      count=pcv.preview_engine_generate_fixed_count,
+                                                                      seed=pcv.preview_engine_generate_seed,
+                                                                      colorize=pcv.preview_engine_generate_colors_draft,
+                                                                      constant_color=pcv.preview_engine_generate_constant_color, )
+            except Exception as e:
+                
+                import traceback
+                print(e)
+                traceback.print_tb(e.__traceback__)
+                
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+        
         else:
             if(pcv.preview_engine_generate_source not in ('VERTICES', 'FACES', )):
                 self.report({'ERROR'}, "Source not implemented.")
@@ -8375,8 +8478,11 @@ class PCV_PT_preview_engine(Panel):
         
         third_label_two_thirds_prop(pcv, 'preview_engine_generate_generator', c, )
         
-        if(pcv.preview_engine_generate_generator in ('DRAFT', 'DRAFT_NUMPY', )):
-            c.prop(pcv, 'preview_engine_generate_percentage')
+        if(pcv.preview_engine_generate_generator in ('DRAFT', 'DRAFT_NUMPY', 'DRAFT_NUMPY_FIXED', )):
+            if(pcv.preview_engine_generate_generator in ('DRAFT_NUMPY_FIXED', )):
+                c.prop(pcv, 'preview_engine_generate_fixed_count')
+            else:
+                c.prop(pcv, 'preview_engine_generate_percentage')
             c.prop(pcv, 'preview_engine_generate_seed')
             third_label_two_thirds_prop(pcv, 'preview_engine_generate_colors_draft', c, )
             if(pcv.preview_engine_generate_colors_draft == 'CONSTANT'):
@@ -8752,7 +8858,8 @@ class PCV_properties(PropertyGroup):
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
     preview_engine_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
-                                                                          ('DRAFT_NUMPY', "Draft Numpy", "Draft Numpy engine"),
+                                                                          ('DRAFT_NUMPY', "Draft Numpy Percentage", "Draft Numpy engine"),
+                                                                          ('DRAFT_NUMPY_FIXED', "Draft Numpy Fixed Count", "Draft Numpy engine"),
                                                                           ('PRODUCTION', "Production", "Production engine"),
                                                                          ], default='DRAFT', description="Generator type", )
     preview_engine_generate_target: StringProperty(name="Target", default="", )
@@ -8760,6 +8867,7 @@ class PCV_properties(PropertyGroup):
                                                                        ('FACES', "Faces", "Use mesh face centers"),
                                                                       ], default='VERTICES', description="Points generation source", )
     preview_engine_generate_percentage: FloatProperty(name="Percentage", description="Adjust number of points generated, 1.0 is maximum number of points from given source, 0.5 half, etc.", default=1.0, min=0.0, max=1.0, subtype='FACTOR', precision=5, )
+    preview_engine_generate_fixed_count: IntProperty(name="Count", default=10000, min=0, description="Fixed count of generated points", )
     preview_engine_generate_seed: IntProperty(name="Seed", default=0, min=0, description="Percentage random number generator seed", )
     preview_engine_generate_triangulate: BoolProperty(name="Triangulate", description="If False, try not to triangulate mesh if possible, depends on color generation type, if True, always triangulate", default=False, )
     preview_engine_generate_use_modifiers: BoolProperty(name="Use Modifiers", description="Generate from mesh with applied modifiers or not", default=True, )
