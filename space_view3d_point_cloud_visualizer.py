@@ -7307,8 +7307,16 @@ class PCV_OT_preview_engine_generate(Operator):
         if(ok):
             bpy.ops.point_cloud_visualizer.erase()
         
+        # # apply taget matrix_world to locations
+        # tm = target.matrix_world
+        # vs.shape = (-1, 3)
+        # vs = np.c_[vs, np.ones(vs.shape[0])]
+        # vs = np.dot(tm, vs.T)[0:3].T.reshape((-1))
+        # vs.shape = (-1, 3)
+        
         c = PCVControl(o)
         c.draw(vs, ns, cs)
+        # c.draw(vs, [], cs)
         
         # if(debug_mode()):
         #     target.display_type = 'BOUNDS'
