@@ -4233,6 +4233,15 @@ class PCVPreviewEngineDraftFixedCountNumpySampler():
         
         indices = np.random.randint(0, l, count, dtype=np.int, )
         
+        material_indices = np.zeros(l, dtype=np.int, )
+        me.polygons.foreach_get('material_index', material_indices, )
+        material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+        for i, m in enumerate(materials):
+            mc = m.diffuse_color[:3]
+            material_colors[i][0] = mc[0] ** (1 / 2.2)
+            material_colors[i][1] = mc[1] ** (1 / 2.2)
+            material_colors[i][2] = mc[2] ** (1 / 2.2)
+        
         li = len(indices)
         if(colorize == 'CONSTANT'):
             colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
@@ -4240,13 +4249,7 @@ class PCVPreviewEngineDraftFixedCountNumpySampler():
                                       np.full(li, constant_color[2], dtype=np.float32, ), ))
         elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             colors = np.zeros((li, 3), dtype=np.float32, )
-            for i, index in enumerate(indices):
-                p = me.polygons[index]
-                c = materials[p.material_index].diffuse_color[:3]
-                c = [v ** (1 / 2.2) for v in c]
-                colors[i][0] = c[0]
-                colors[i][1] = c[1]
-                colors[i][2] = c[2]
+            colors = np.take(material_colors, material_indices, axis=0,)
         
         if(l == count):
             vs = centers
@@ -4255,7 +4258,7 @@ class PCVPreviewEngineDraftFixedCountNumpySampler():
         else:
             vs = np.take(centers, indices, axis=0, )
             ns = np.take(normals, indices, axis=0, )
-            cs = colors
+            cs = np.take(colors, indices, axis=0, )
         
         # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
         
