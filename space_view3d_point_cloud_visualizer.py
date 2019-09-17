@@ -7517,7 +7517,7 @@ class PCV_OT_preview_engine_generate_psys(Operator):
             # join all frags
             vs = np.concatenate([i[0] for i in all_frags], axis=0, )
             cs = np.concatenate([i[1] for i in all_frags], axis=0, )
-        if(settings.render_type == 'OBJECT'):
+        elif(settings.render_type == 'OBJECT'):
             co = settings.instance_object
             if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
                 self.report({'ERROR'}, "Object does not have geometry data.")
