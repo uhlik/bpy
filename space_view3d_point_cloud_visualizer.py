@@ -7487,6 +7487,7 @@ class PCV_OT_preview_engine_generate_psys(Operator):
                 sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, co, count=MAX_COUNT, colorize='VIEWPORT_DISPLAY_COLOR', )
                 # store
                 fragments.append((sampler.vs, sampler.cs, ))
+                # FIXME: better not to access data by object name, find something different
                 fragments_indices[co.name] = (i, co, )
             
             # process all instances, transform fragment and store
