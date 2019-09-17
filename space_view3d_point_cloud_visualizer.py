@@ -4050,7 +4050,7 @@ class PCVPreviewEngineSampler():
 
 
 class PCVPreviewEngineDraftSampler():
-    def __init__(self, context, o, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+    def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
         if(colorize is None):
@@ -4112,7 +4112,7 @@ class PCVPreviewEngineDraftSampler():
 
 
 class PCVPreviewEngineDraftPercentageNumpySampler():
-    def __init__(self, context, o, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+    def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
         if(colorize is None):
@@ -4191,7 +4191,7 @@ class PCVPreviewEngineDraftPercentageNumpySampler():
 
 
 class PCVPreviewEngineDraftFixedCountNumpySampler():
-    def __init__(self, context, o, target, count=-1, seed=0, colorize=None, constant_color=None, ):
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
         if(colorize is None):
@@ -7291,7 +7291,7 @@ class PCV_OT_preview_engine_generate(Operator):
                 return {'CANCELLED'}
             
             try:
-                sampler = PCVPreviewEngineDraftSampler(context, o, target,
+                sampler = PCVPreviewEngineDraftSampler(context, target,
                                                        percentage=pcv.preview_engine_generate_percentage,
                                                        seed=pcv.preview_engine_generate_seed,
                                                        colorize=pcv.preview_engine_generate_colors_draft,
@@ -7315,7 +7315,7 @@ class PCV_OT_preview_engine_generate(Operator):
                 #     pr = cProfile.Profile()
                 #     pr.enable()
                 
-                sampler = PCVPreviewEngineDraftPercentageNumpySampler(context, o, target,
+                sampler = PCVPreviewEngineDraftPercentageNumpySampler(context, target,
                                                                       percentage=pcv.preview_engine_generate_percentage,
                                                                       seed=pcv.preview_engine_generate_seed,
                                                                       colorize=pcv.preview_engine_generate_colors_draft,
@@ -7346,16 +7346,16 @@ class PCV_OT_preview_engine_generate(Operator):
                 return {'CANCELLED'}
             
             try:
-                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, o, target,
+                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, target,
                                                                       count=pcv.preview_engine_generate_fixed_count,
                                                                       seed=pcv.preview_engine_generate_seed,
                                                                       colorize=pcv.preview_engine_generate_colors_draft,
                                                                       constant_color=pcv.preview_engine_generate_constant_color, )
             except Exception as e:
                 
-                import traceback
-                print(e)
-                traceback.print_tb(e.__traceback__)
+                # import traceback
+                # print(e)
+                # traceback.print_tb(e.__traceback__)
                 
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
@@ -7439,6 +7439,125 @@ class PCV_OT_preview_engine_generate(Operator):
         #     print(s.getvalue())
         
         pcv.preview_engine_generate_benchmark = "Completed in {}.".format(_d)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_preview_engine_generate_psys(Operator):
+    bl_idname = "point_cloud_visualizer.preview_engine_generate_psys"
+    bl_label = "Generate"
+    bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        _t = time.time()
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        depsgraph = context.evaluated_depsgraph_get()
+        o = o.evaluated_get(depsgraph)
+        psys = o.particle_systems[pcv.preview_engine_generate_target_psys]
+        
+        if(psys is None):
+            self.report({'ERROR'}, "Target particle system is missing.")
+            return {'CANCELLED'}
+        
+        settings = psys.settings
+        if(settings.render_type not in ('OBJECT', 'COLLECTION', )):
+            self.report({'ERROR'}, "Only Object or Collection supported.")
+            return {'CANCELLED'}
+        
+        MAX_COUNT = 10000
+        
+        if(settings.render_type == 'COLLECTION'):
+            collection = settings.instance_collection
+            cos = collection.objects
+            fragments = []
+            fragments_indices = {}
+            for i, co in enumerate(cos):
+                if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                    self.report({'ERROR'}, "Object does not have geometry data.")
+                    return {'CANCELLED'}
+                # extract points
+                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, co, count=MAX_COUNT, colorize='VIEWPORT_DISPLAY_COLOR', )
+                # store
+                fragments.append((sampler.vs, sampler.cs, ))
+                fragments_indices[co.name] = (i, co, )
+            
+            # process all instances, transform fragment and store
+            all_frags = []
+            # loop over instances
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                # if it is from psys
+                if(object_instance.particle_system == psys):
+                    # and it is instance
+                    if(object_instance.is_instance):
+                        # get matrix
+                        m = object_instance.matrix_world
+                        # unapply emitter matrix
+                        m = o.matrix_world.inverted() @ m
+                        # get correct fragment
+                        i, _ = fragments_indices[obj.name]
+                        fvs, fcs = fragments[i]
+                        # transform
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        # store
+                        all_frags.append((fvs, fcs, ))
+            
+            # join all frags
+            vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+            cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+        if(settings.render_type == 'OBJECT'):
+            co = settings.instance_object
+            if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                self.report({'ERROR'}, "Object does not have geometry data.")
+                return {'CANCELLED'}
+            # extract points
+            sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, co, count=MAX_COUNT, colorize='VIEWPORT_DISPLAY_COLOR', )
+            ofvs = sampler.vs
+            ofcs = sampler.cs
+            
+            all_frags = []
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                if(object_instance.particle_system == psys):
+                    if(object_instance.is_instance):
+                        m = object_instance.matrix_world
+                        m = o.matrix_world.inverted() @ m
+                        fvs = ofvs[:]
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        all_frags.append((fvs, ofcs, ))
+            
+            vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+            cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
+        else:
+            self.report({'ERROR'}, "Only Object or Collection supported.")
+            return {'CANCELLED'}
+        
+        # draw
+        c = PCVControl(context.object)
+        c.draw(vs, [], cs)
+        
+        
+        
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        pcv.preview_engine_generate_psys_benchmark = "Completed in {}.".format(_d)
         
         return {'FINISHED'}
 
@@ -8512,6 +8631,21 @@ class PCV_PT_preview_engine(Panel):
         
         if(pcv.preview_engine_generate_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
             c.label(text=pcv.preview_engine_generate_benchmark)
+        
+        l.separator()
+        
+        c = l.column()
+        c.label(text="Generate point cloud from particle system instances", icon='EXPERIMENTAL', )
+        
+        # third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target_object', context.scene, 'objects', c, )
+        third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target_psys', context.active_object, 'particle_systems', c, )
+        
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.preview_engine_generate_psys')
+        r.operator('point_cloud_visualizer.reset_runtime', text="", icon='X', )
+        
+        if(pcv.preview_engine_generate_psys_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
+            c.label(text=pcv.preview_engine_generate_psys_benchmark)
 
 
 class PCV_PT_debug(Panel):
@@ -8886,6 +9020,9 @@ class PCV_properties(PropertyGroup):
                                                                             ], default='CONSTANT', description="Color source for generated point cloud", )
     preview_engine_generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
     preview_engine_generate_benchmark: StringProperty(name="Benchmark", default="", )
+    # preview_engine_generate_target_object: StringProperty(name="Object", default="", )
+    preview_engine_generate_target_psys: StringProperty(name="Particle System", default="", )
+    preview_engine_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
     
     @classmethod
     def register(cls):
@@ -9005,7 +9142,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCV_PT_preview_engine, PCV_OT_preview_engine_generate,
+    PCV_PT_preview_engine, PCV_OT_preview_engine_generate, PCV_OT_preview_engine_generate_psys,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
