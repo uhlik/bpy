@@ -4193,6 +4193,7 @@ class PCVPreviewEngineDraftPercentageNumpySampler():
 class PCVPreviewEngineDraftFixedCountNumpySampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
+        log("target: {}, count: {}".format(target, count, ), 1)
         
         if(colorize is None):
             colorize = 'CONSTANT'
@@ -7237,8 +7238,8 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
-class PCV_OT_preview_engine_generate(Operator):
-    bl_idname = "point_cloud_visualizer.preview_engine_generate"
+class PCV_OT_PE_generate(Operator):
+    bl_idname = "point_cloud_visualizer.pe_generate"
     bl_label = "Generate"
     bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
     
@@ -7274,7 +7275,7 @@ class PCV_OT_preview_engine_generate(Operator):
         o = context.object
         pcv = o.point_cloud_visualizer
         
-        target = bpy.data.objects.get(pcv.preview_engine_generate_target)
+        target = bpy.data.objects.get(pcv.pe_generate_target)
         if(target is None):
             self.report({'ERROR'}, "Target object is missing.")
             return {'CANCELLED'}
@@ -7283,8 +7284,8 @@ class PCV_OT_preview_engine_generate(Operator):
             self.report({'ERROR'}, "Object does not have geometry data.")
             return {'CANCELLED'}
         
-        if(pcv.preview_engine_generate_generator == 'DRAFT'):
-            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+        if(pcv.pe_generate_generator == 'DRAFT'):
+            if(pcv.pe_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
                 pass
             else:
                 self.report({'ERROR'}, "Color generation not implemented.")
@@ -7292,16 +7293,16 @@ class PCV_OT_preview_engine_generate(Operator):
             
             try:
                 sampler = PCVPreviewEngineDraftSampler(context, target,
-                                                       percentage=pcv.preview_engine_generate_percentage,
-                                                       seed=pcv.preview_engine_generate_seed,
-                                                       colorize=pcv.preview_engine_generate_colors_draft,
-                                                       constant_color=pcv.preview_engine_generate_constant_color, )
+                                                       percentage=pcv.pe_generate_percentage,
+                                                       seed=pcv.pe_generate_seed,
+                                                       colorize=pcv.pe_generate_colors_draft,
+                                                       constant_color=pcv.pe_generate_constant_color, )
             except Exception as e:
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
             
-        elif(pcv.preview_engine_generate_generator == 'DRAFT_NUMPY'):
-            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+        elif(pcv.pe_generate_generator == 'DRAFT_NUMPY'):
+            if(pcv.pe_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
                 pass
             else:
                 self.report({'ERROR'}, "Color generation not implemented.")
@@ -7316,10 +7317,10 @@ class PCV_OT_preview_engine_generate(Operator):
                 #     pr.enable()
                 
                 sampler = PCVPreviewEngineDraftPercentageNumpySampler(context, target,
-                                                                      percentage=pcv.preview_engine_generate_percentage,
-                                                                      seed=pcv.preview_engine_generate_seed,
-                                                                      colorize=pcv.preview_engine_generate_colors_draft,
-                                                                      constant_color=pcv.preview_engine_generate_constant_color, )
+                                                                      percentage=pcv.pe_generate_percentage,
+                                                                      seed=pcv.pe_generate_seed,
+                                                                      colorize=pcv.pe_generate_colors_draft,
+                                                                      constant_color=pcv.pe_generate_constant_color, )
                 
                 # if(debug_mode()):
                 #     pr.disable()
@@ -7338,8 +7339,8 @@ class PCV_OT_preview_engine_generate(Operator):
                 self.report({'ERROR'}, str(e), )
                 return {'CANCELLED'}
         
-        elif(pcv.preview_engine_generate_generator == 'DRAFT_NUMPY_FIXED'):
-            if(pcv.preview_engine_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
+        elif(pcv.pe_generate_generator == 'DRAFT_NUMPY_FIXED'):
+            if(pcv.pe_generate_colors_draft in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', )):
                 pass
             else:
                 self.report({'ERROR'}, "Color generation not implemented.")
@@ -7347,10 +7348,10 @@ class PCV_OT_preview_engine_generate(Operator):
             
             try:
                 sampler = PCVPreviewEngineDraftFixedCountNumpySampler(context, target,
-                                                                      count=pcv.preview_engine_generate_fixed_count,
-                                                                      seed=pcv.preview_engine_generate_seed,
-                                                                      colorize=pcv.preview_engine_generate_colors_draft,
-                                                                      constant_color=pcv.preview_engine_generate_constant_color, )
+                                                                      count=pcv.pe_generate_fixed_count,
+                                                                      seed=pcv.pe_generate_seed,
+                                                                      colorize=pcv.pe_generate_colors_draft,
+                                                                      constant_color=pcv.pe_generate_constant_color, )
             except Exception as e:
                 
                 # import traceback
@@ -7361,12 +7362,12 @@ class PCV_OT_preview_engine_generate(Operator):
                 return {'CANCELLED'}
         
         else:
-            if(pcv.preview_engine_generate_source not in ('VERTICES', 'FACES', )):
+            if(pcv.pe_generate_source not in ('VERTICES', 'FACES', )):
                 self.report({'ERROR'}, "Source not implemented.")
                 return {'CANCELLED'}
             
-            if(pcv.preview_engine_generate_colors in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', 'UVTEX', 'VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
-                if(target.type in ('CURVE', 'SURFACE', 'FONT', ) and pcv.preview_engine_generate_colors != 'CONSTANT'):
+            if(pcv.pe_generate_colors in ('CONSTANT', 'VIEWPORT_DISPLAY_COLOR', 'UVTEX', 'VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+                if(target.type in ('CURVE', 'SURFACE', 'FONT', ) and pcv.pe_generate_colors != 'CONSTANT'):
                     self.report({'ERROR'}, "Object type does not support UV textures, vertex colors or vertex groups.")
                     return {'CANCELLED'}
             else:
@@ -7383,16 +7384,16 @@ class PCV_OT_preview_engine_generate(Operator):
                 uvtex = target.data.uv_layers.active
                 vgroup = target.vertex_groups.active
             
-            r = random.Random(pcv.preview_engine_generate_seed)
+            r = random.Random(pcv.pe_generate_seed)
             
             try:
                 sampler = PCVPreviewEngineSampler(context, o, target, r,
-                                                  percentage=pcv.preview_engine_generate_percentage,
-                                                  triangulate=pcv.preview_engine_generate_triangulate,
-                                                  use_modifiers=pcv.preview_engine_generate_use_modifiers,
-                                                  source=pcv.preview_engine_generate_source,
-                                                  colorize=pcv.preview_engine_generate_colors,
-                                                  constant_color=pcv.preview_engine_generate_constant_color,
+                                                  percentage=pcv.pe_generate_percentage,
+                                                  triangulate=pcv.pe_generate_triangulate,
+                                                  use_modifiers=pcv.pe_generate_use_modifiers,
+                                                  source=pcv.pe_generate_source,
+                                                  colorize=pcv.pe_generate_colors,
+                                                  constant_color=pcv.pe_generate_constant_color,
                                                   vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
             except Exception as e:
                 self.report({'ERROR'}, str(e), )
@@ -7438,13 +7439,13 @@ class PCV_OT_preview_engine_generate(Operator):
         #     ps.print_stats()
         #     print(s.getvalue())
         
-        pcv.preview_engine_generate_benchmark = "Completed in {}.".format(_d)
+        pcv.pe_generate_benchmark = "Completed in {}.".format(_d)
         
         return {'FINISHED'}
 
 
-class PCV_OT_preview_engine_generate_psys(Operator):
-    bl_idname = "point_cloud_visualizer.preview_engine_generate_psys"
+class PCV_OT_PE_generate_psys(Operator):
+    bl_idname = "point_cloud_visualizer.pe_generate_psys"
     bl_label = "Generate"
     bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
     
@@ -7461,7 +7462,7 @@ class PCV_OT_preview_engine_generate_psys(Operator):
         pcv = o.point_cloud_visualizer
         depsgraph = context.evaluated_depsgraph_get()
         o = o.evaluated_get(depsgraph)
-        psys = o.particle_systems[pcv.preview_engine_generate_target_psys]
+        psys = o.particle_systems[pcv.pe_generate_target_psys]
         
         if(psys is None):
             self.report({'ERROR'}, "Target particle system is missing.")
@@ -7515,8 +7516,13 @@ class PCV_OT_preview_engine_generate_psys(Operator):
                         all_frags.append((fvs, fcs, ))
             
             # join all frags
-            vs = np.concatenate([i[0] for i in all_frags], axis=0, )
-            cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            if(len(all_frags) == 0):
+                vs = []
+                cs = []
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
         elif(settings.render_type == 'OBJECT'):
             co = settings.instance_object
             if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
@@ -7541,8 +7547,12 @@ class PCV_OT_preview_engine_generate_psys(Operator):
                         fvs.shape = (-1, 3)
                         all_frags.append((fvs, ofcs, ))
             
-            vs = np.concatenate([i[0] for i in all_frags], axis=0, )
-            cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            if(len(all_frags) == 0):
+                vs = []
+                cs = []
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
             
         else:
             self.report({'ERROR'}, "Only Object or Collection supported.")
@@ -7558,7 +7568,192 @@ class PCV_OT_preview_engine_generate_psys(Operator):
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
         
-        pcv.preview_engine_generate_psys_benchmark = "Completed in {}.".format(_d)
+        pcv.pe_generate_psys_benchmark = "Completed in {}.".format(_d)
+        
+        return {'FINISHED'}
+
+
+def _pcv_pe_manager_update():
+    PCVPEManager.update()
+    return None
+
+
+class PCVPEManager():
+    initialized = False
+    # delay = 0.1
+    delay = 0.2
+    scene = None
+    registry = {}
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        bpy.app.handlers.depsgraph_update_post.append(cls.handler)
+        cls.initialized = True
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        
+        if(bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+            bpy.app.timers.unregister(_pcv_pe_manager_update)
+        
+        cls.initialized = False
+    
+    @classmethod
+    def handler(cls, scene, ):
+        if(not cls.initialized):
+            return
+        
+        cls.scene = scene
+        
+        if(not bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+        else:
+            if(bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+                # i've seen some 'ValueError: Error: function is not registered' here, how is that possible? no idea. so, lets check once more
+                bpy.app.timers.unregister(_pcv_pe_manager_update)
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+    
+    @classmethod
+    def update(cls):
+        # print(cls.scene)
+        
+        for k, reg_item in cls.registry.items():
+            is_dirty = False
+            o = reg_item['object']
+            psys = reg_item['psys']
+            settings = psys.settings
+            regsettings = reg_item['settings']
+            if(settings.count != regsettings['count']):
+                is_dirty = True
+                regsettings['count'] = settings.count
+            
+            if(is_dirty):
+                window = None
+                screen = None
+                area = None
+                for window in bpy.context.window_manager.windows:
+                    screen = window.screen
+                    for area in screen.areas:
+                        if(area.type == 'VIEW_3D'):
+                            break
+                override = {
+                    'window': window,
+                    'screen': screen,
+                    'area': area,
+                    'active_object': o,
+                    'object': o,
+                }
+                print('updating..')
+                
+                if(settings.render_type == 'COLLECTION'):
+                    psys_collection = settings.instance_collection
+                    dts = []
+                    for co in psys_collection.objects:
+                        dts.append((co, co.display_type, ))
+                        co.display_type = 'BOUNDS'
+                elif(settings.render_type == 'OBJECT'):
+                    psys_object = settings.instance_object
+                    dt = psys_object.display_type
+                    psys_object.display_type = 'BOUNDS'
+                
+                settings.display_method = 'RENDER'
+                bpy.ops.point_cloud_visualizer.pe_generate_psys(override)
+                settings.display_method = 'NONE'
+                
+                if(settings.render_type == 'COLLECTION'):
+                    for co, dt in dts:
+                        co.display_type = dt
+                elif(settings.render_type == 'OBJECT'):
+                    psys_object.display_type = dt
+    
+    @classmethod
+    def register(cls, o, psys, k=None, ):
+        # if(not cls.initialized):
+        #     return
+        if(not k):
+            k = uuid.uuid1()
+        if(k in cls.registry.keys()):
+            return False
+        else:
+            for k, v in cls.registry.items():
+                if(v['object'] == o and v['psys'] == psys):
+                    return False
+            
+            settings = psys.settings
+            cls.registry[k] = {
+                'uuid': k,
+                'object': o,
+                'psys': psys,
+                'properties': {
+                    # 'matrix_world': o.matrix_world.copy(),
+                },
+                'settings': {
+                    'count': settings.count,
+                },
+            }
+            return True
+
+
+class PCV_OT_PE_psys_watcher_start(Operator):
+    bl_idname = "point_cloud_visualizer.pe_psys_watcher_start"
+    bl_label = "Start"
+    bl_description = "Start watching particle system for changes"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVPEManager.init()
+        return {'FINISHED'}
+
+
+class PCV_OT_PE_psys_watcher_stop(Operator):
+    bl_idname = "point_cloud_visualizer.pe_psys_watcher_stop"
+    bl_label = "Stop"
+    bl_description = "Stop watching particle system for changes"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVPEManager.deinit()
+        return {'FINISHED'}
+
+
+class PCV_OT_PE_psys_register_selected(Operator):
+    bl_idname = "point_cloud_visualizer.pe_psys_register_selected"
+    bl_label = "Register Selected"
+    bl_description = "Register selected particle system to be watched for changes"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        try:
+            psys = o.particle_systems[pcv.pe_generate_target_psys]
+        except KeyError:
+            self.report({'ERROR'}, "No such particle system dound on object.")
+            return {'CANCELLED'}
+        
+        ok = PCVPEManager.register(o, psys, None, )
+        if(not ok):
+            return {'CANCELLED'}
         
         return {'FINISHED'}
 
@@ -8596,57 +8791,88 @@ class PCV_PT_preview_engine(Panel):
             r = s.row()
             r.prop_search(cls, prop, cls2, prop2, text='', )
         
-        # c.prop_search(pcv, 'preview_engine_generate_target', context.scene, 'objects')
-        third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target', context.scene, 'objects', c, )
+        def third_label_two_thirds_prop_search_aligned(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row(align=True)
+            s = r.split(factor=f, align=True)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0, align=True)
+            r = s.row(align=True)
+            r.prop_search(cls, prop, cls2, prop2, text='', )
         
-        third_label_two_thirds_prop(pcv, 'preview_engine_generate_generator', c, )
+        # c.prop_search(pcv, 'pe_generate_target', context.scene, 'objects')
+        third_label_two_thirds_prop_search(pcv, 'pe_generate_target', context.scene, 'objects', c, )
         
-        if(pcv.preview_engine_generate_generator in ('DRAFT', 'DRAFT_NUMPY', 'DRAFT_NUMPY_FIXED', )):
-            if(pcv.preview_engine_generate_generator in ('DRAFT_NUMPY_FIXED', )):
-                c.prop(pcv, 'preview_engine_generate_fixed_count')
+        third_label_two_thirds_prop(pcv, 'pe_generate_generator', c, )
+        
+        if(pcv.pe_generate_generator in ('DRAFT', 'DRAFT_NUMPY', 'DRAFT_NUMPY_FIXED', )):
+            if(pcv.pe_generate_generator in ('DRAFT_NUMPY_FIXED', )):
+                c.prop(pcv, 'pe_generate_fixed_count')
             else:
-                c.prop(pcv, 'preview_engine_generate_percentage')
-            c.prop(pcv, 'preview_engine_generate_seed')
-            third_label_two_thirds_prop(pcv, 'preview_engine_generate_colors_draft', c, )
-            if(pcv.preview_engine_generate_colors_draft == 'CONSTANT'):
+                c.prop(pcv, 'pe_generate_percentage')
+            c.prop(pcv, 'pe_generate_seed')
+            third_label_two_thirds_prop(pcv, 'pe_generate_colors_draft', c, )
+            if(pcv.pe_generate_colors_draft == 'CONSTANT'):
                 r = c.row()
-                third_label_two_thirds_prop(pcv, 'preview_engine_generate_constant_color', c, )
+                third_label_two_thirds_prop(pcv, 'pe_generate_constant_color', c, )
             
         else:
-            third_label_two_thirds_prop(pcv, 'preview_engine_generate_source', c, )
-            c.prop(pcv, 'preview_engine_generate_percentage')
-            c.prop(pcv, 'preview_engine_generate_seed')
-            c.prop(pcv, 'preview_engine_generate_triangulate')
-            c.prop(pcv, 'preview_engine_generate_use_modifiers')
+            third_label_two_thirds_prop(pcv, 'pe_generate_source', c, )
+            c.prop(pcv, 'pe_generate_percentage')
+            c.prop(pcv, 'pe_generate_seed')
+            c.prop(pcv, 'pe_generate_triangulate')
+            c.prop(pcv, 'pe_generate_use_modifiers')
             
-            third_label_two_thirds_prop(pcv, 'preview_engine_generate_colors', c, )
-            if(pcv.preview_engine_generate_colors == 'CONSTANT'):
+            third_label_two_thirds_prop(pcv, 'pe_generate_colors', c, )
+            if(pcv.pe_generate_colors == 'CONSTANT'):
                 r = c.row()
-                third_label_two_thirds_prop(pcv, 'preview_engine_generate_constant_color', c, )
+                third_label_two_thirds_prop(pcv, 'pe_generate_constant_color', c, )
         
         r = c.row(align=True)
-        r.operator('point_cloud_visualizer.preview_engine_generate')
+        r.operator('point_cloud_visualizer.pe_generate')
         r.operator('point_cloud_visualizer.reset_runtime', text="", icon='X', )
         
-        c.enabled = PCV_OT_preview_engine_generate.poll(context)
+        c.enabled = PCV_OT_PE_generate.poll(context)
         
-        if(pcv.preview_engine_generate_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
-            c.label(text=pcv.preview_engine_generate_benchmark)
+        if(pcv.pe_generate_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
+            c.label(text=pcv.pe_generate_benchmark)
         
         l.separator()
         
         c = l.column()
         c.label(text="Generate point cloud from particle system instances", icon='EXPERIMENTAL', )
         
-        # third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target_object', context.scene, 'objects', c, )
-        third_label_two_thirds_prop_search(pcv, 'preview_engine_generate_target_psys', context.active_object, 'particle_systems', c, )
+        # third_label_two_thirds_prop_search(pcv, 'pe_generate_target_object', context.scene, 'objects', c, )
+        third_label_two_thirds_prop_search(pcv, 'pe_generate_target_psys', context.active_object, 'particle_systems', c, )
         
         r = c.row(align=True)
-        r.operator('point_cloud_visualizer.preview_engine_generate_psys')
+        r.operator('point_cloud_visualizer.pe_generate_psys')
         r.operator('point_cloud_visualizer.reset_runtime', text="", icon='X', )
         
-        if(pcv.preview_engine_generate_psys_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
-            c.label(text=pcv.preview_engine_generate_psys_benchmark)
+        if(pcv.pe_generate_psys_benchmark != '' and PCV_OT_reset_runtime.poll(context)):
+            c.label(text=pcv.pe_generate_psys_benchmark)
+        
+        l.separator()
+        
+        c = l.column()
+        c.label(text="Watch particle system for changes and update as needed", icon='EXPERIMENTAL', )
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.pe_psys_watcher_start')
+        r.operator('point_cloud_visualizer.pe_psys_watcher_stop')
+        cc = c.column(align=True)
+        third_label_two_thirds_prop_search_aligned(pcv, 'pe_generate_target_psys', context.active_object, 'particle_systems', cc, )
+        cc.operator('point_cloud_visualizer.pe_psys_register_selected')
+        c = l.column()
+        c.label(text="Registry:")
+        cc = c.column()
+        cc.scale_y = 0.5
+        for k, v in PCVPEManager.registry.items():
+            cc.label(text='uuid: {}'.format(k))
+            cc.label(text='object: {}'.format(v['object']))
+            cc.label(text='psys: {}'.format(v['psys']))
+            cc.label(text='properties: {} item(s)'.format(len(v['properties'].items())))
+            cc.label(text='settings: {} item(s)'.format(len(v['settings'].items())))
+            cc.label(text='')
 
 
 class PCV_PT_debug(Panel):
@@ -8995,35 +9221,34 @@ class PCV_properties(PropertyGroup):
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
-    preview_engine_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
-                                                                          ('DRAFT_NUMPY', "Draft Numpy Percentage", "Draft Numpy engine"),
-                                                                          ('DRAFT_NUMPY_FIXED', "Draft Numpy Fixed Count", "Draft Numpy engine"),
-                                                                          ('PRODUCTION', "Production", "Production engine"),
-                                                                         ], default='DRAFT', description="Generator type", )
-    preview_engine_generate_target: StringProperty(name="Target", default="", )
-    preview_engine_generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
-                                                                       ('FACES', "Faces", "Use mesh face centers"),
-                                                                      ], default='VERTICES', description="Points generation source", )
-    preview_engine_generate_percentage: FloatProperty(name="Percentage", description="Adjust number of points generated, 1.0 is maximum number of points from given source, 0.5 half, etc.", default=1.0, min=0.0, max=1.0, subtype='FACTOR', precision=5, )
-    preview_engine_generate_fixed_count: IntProperty(name="Count", default=10000, min=0, description="Fixed count of generated points", )
-    preview_engine_generate_seed: IntProperty(name="Seed", default=0, min=0, description="Percentage random number generator seed", )
-    preview_engine_generate_triangulate: BoolProperty(name="Triangulate", description="If False, try not to triangulate mesh if possible, depends on color generation type, if True, always triangulate", default=False, )
-    preview_engine_generate_use_modifiers: BoolProperty(name="Use Modifiers", description="Generate from mesh with applied modifiers or not", default=True, )
-    preview_engine_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
-                                                                       ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
-                                                                       ('VCOLS', "Vertex Colors", "Use active vertex colors"),
-                                                                       ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
-                                                                       ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group, result will be shades of grey"),
-                                                                       ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
-                                                                      ], default='CONSTANT', description="Color source for generated point cloud", )
-    preview_engine_generate_colors_draft: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
-                                                                             ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
-                                                                            ], default='CONSTANT', description="Color source for generated point cloud", )
-    preview_engine_generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
-    preview_engine_generate_benchmark: StringProperty(name="Benchmark", default="", )
-    # preview_engine_generate_target_object: StringProperty(name="Object", default="", )
-    preview_engine_generate_target_psys: StringProperty(name="Particle System", default="", )
-    preview_engine_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
+    pe_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
+                                                              ('DRAFT_NUMPY', "Draft Numpy Percentage", "Draft Numpy engine"),
+                                                              ('DRAFT_NUMPY_FIXED', "Draft Numpy Fixed Count", "Draft Numpy engine"),
+                                                              ('PRODUCTION', "Production", "Production engine"),
+                                                             ], default='DRAFT', description="Generator type", )
+    pe_generate_target: StringProperty(name="Target", default="", )
+    pe_generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
+                                                           ('FACES', "Faces", "Use mesh face centers"),
+                                                          ], default='VERTICES', description="Points generation source", )
+    pe_generate_percentage: FloatProperty(name="Percentage", description="Adjust number of points generated, 1.0 is maximum number of points from given source, 0.5 half, etc.", default=1.0, min=0.0, max=1.0, subtype='FACTOR', precision=5, )
+    pe_generate_fixed_count: IntProperty(name="Count", default=10000, min=0, description="Fixed count of generated points", )
+    pe_generate_seed: IntProperty(name="Seed", default=0, min=0, description="Percentage random number generator seed", )
+    pe_generate_triangulate: BoolProperty(name="Triangulate", description="If False, try not to triangulate mesh if possible, depends on color generation type, if True, always triangulate", default=False, )
+    pe_generate_use_modifiers: BoolProperty(name="Use Modifiers", description="Generate from mesh with applied modifiers or not", default=True, )
+    pe_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                           ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
+                                                           ('VCOLS', "Vertex Colors", "Use active vertex colors"),
+                                                           ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
+                                                           ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group, result will be shades of grey"),
+                                                           ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
+                                                          ], default='CONSTANT', description="Color source for generated point cloud", )
+    pe_generate_colors_draft: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                                 ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
+                                                                ], default='CONSTANT', description="Color source for generated point cloud", )
+    pe_generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    pe_generate_benchmark: StringProperty(name="Benchmark", default="", )
+    pe_generate_target_psys: StringProperty(name="Particle System", default="", )
+    pe_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
     
     @classmethod
     def register(cls):
@@ -9124,6 +9349,7 @@ class PCV_preferences(AddonPreferences):
 def watcher(scene):
     PCVSequence.deinit()
     PCVManager.deinit()
+    PCVPEManager.deinit()
 
 
 classes = (
@@ -9143,7 +9369,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCV_PT_preview_engine, PCV_OT_preview_engine_generate, PCV_OT_preview_engine_generate_psys,
+    PCV_PT_preview_engine, PCV_OT_PE_generate, PCV_OT_PE_generate_psys, PCV_OT_PE_psys_watcher_start, PCV_OT_PE_psys_watcher_stop, PCV_OT_PE_psys_register_selected,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
