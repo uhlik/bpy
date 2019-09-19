@@ -1871,6 +1871,33 @@ class PCVShaders():
             
         }
     '''
+    
+    vertex_shader_minimal = '''
+        in vec3 position;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float global_alpha;
+        out vec3 f_color;
+        out float f_alpha;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = color.rgb;
+            f_alpha = global_alpha;
+        }
+    '''
+    fragment_shader_minimal = '''
+        in vec3 f_color;
+        in float f_alpha;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vec4(f_color, f_alpha);
+        }
+    '''
 
 
 class PCVManager():
@@ -2511,6 +2538,42 @@ class PCVManager():
             mindim = abs(min(dimensions)) / 2 * pcv.dev_bbox_size
             shader.uniform_float("length", mindim)
             
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_minimal_shader_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'MINIMAL'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.vertex_shader_minimal, PCVShaders.fragment_shader_minimal, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['MINIMAL'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
         # and now back to some production stuff..
@@ -8714,6 +8777,10 @@ class PCV_PT_development(Panel):
                         e = True
         
         c = sub.column()
+        
+        c.prop(pcv, 'dev_minimal_shader_enabled', toggle=True, text="Minimal Shader", )
+        sub.separator()
+        
         c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
             r = c.row()
@@ -9217,6 +9284,19 @@ class PCV_properties(PropertyGroup):
     color_adjustment_shader_saturation: FloatProperty(name="Saturation", description="formula: color.s += value", default=0.0, min=-1.0, max=1.0, )
     color_adjustment_shader_value: FloatProperty(name="Value", description="formula: color.v += value", default=0.0, min=-1.0, max=1.0, )
     color_adjustment_shader_invert: BoolProperty(name="Invert", description="formula: color = 1.0 - color", default=False, )
+    
+    def _update_minimal_shader(self, context, ):
+        if(self.dev_minimal_shader_enabled):
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.illumination = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_minimal_shader_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader", update=_update_minimal_shader, )
     
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
