@@ -2809,9 +2809,16 @@ class PCVControl():
     
     def _redraw(self):
         # force redraw
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        
+        # for area in bpy.context.screen.areas:
+        #     if(area.type == 'VIEW_3D'):
+        #         area.tag_redraw()
+        
+        # seems like sometimes context is different, this should work..
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas: 
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
     
     def draw(self, vs=None, ns=None, cs=None, ):
         o = self.o
@@ -2950,10 +2957,11 @@ class PCVControl():
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = False
         
-        # force redraw
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        # # force redraw
+        # for area in bpy.context.screen.areas:
+        #     if(area.type == 'VIEW_3D'):
+        #         area.tag_redraw()
+        self._redraw()
     
     def reset(self):
         o = self.o
@@ -2977,6 +2985,8 @@ class PCVControl():
         pcv.has_normals = False
         pcv.has_vcols = False
         pcv.runtime = False
+        
+        self._redraw()
 
 
 class PCVSequence():
@@ -4255,8 +4265,8 @@ class PCVPreviewEngineDraftPercentageNumpySampler():
 
 class PCVPreviewEngineDraftFixedCountNumpySampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
-        log("{}:".format(self.__class__.__name__), 0)
-        log("target: {}, count: {}".format(target, count, ), 1)
+        # log("{}:".format(self.__class__.__name__), 0)
+        # log("target: {}, count: {}".format(target, count, ), 1)
         
         if(colorize is None):
             colorize = 'CONSTANT'
@@ -7301,6 +7311,7 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
+'''
 class PCV_OT_PE_generate(Operator):
     bl_idname = "point_cloud_visualizer.pe_generate"
     bl_label = "Generate"
@@ -7818,6 +7829,465 @@ class PCV_OT_PE_psys_register_selected(Operator):
         if(not ok):
             return {'CANCELLED'}
         
+        return {'FINISHED'}
+'''
+
+
+def _pcv_pe_manager_update():
+    PCVPEManager.update()
+    return None
+
+
+class PCVPEManager():
+    initialized = False
+    override = False
+    registry = {}
+    # delay = 0.1
+    delay = 0.2
+    flag = False
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        
+        log('PCVPEManager: init')
+        
+        bpy.app.handlers.depsgraph_update_post.append(cls.handler)
+        # bpy.app.handlers.depsgraph_update_pre.append(cls.handler)
+        cls.initialized = True
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        
+        log('PCVPEManager: deinit')
+        
+        bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        # bpy.app.handlers.depsgraph_update_pre.remove(cls.handler)
+        if(bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+            bpy.app.timers.unregister(_pcv_pe_manager_update)
+        
+        cls.initialized = False
+    
+    @classmethod
+    def handler(cls, scene, ):
+        if(not cls.initialized):
+            return
+        
+        if(cls.override):
+            return
+        
+        if(cls.flag):
+            # FIXME: this is hackish, very hackish indeed, how to solve it? persuade some blender dev that when particle instances are hidden in viewport, depsgraph should return them.. basically, now i ignore next depsgraph update event and maybe i can miss something i should not with that..
+            cls.flag = False
+            return
+        
+        if(not bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+        else:
+            if(bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+                # i've seen some 'ValueError: Error: function is not registered' here, how is that possible? no idea. so, lets check once more
+                # i think it was caused by some forgotten registered handler which was not removed, when finished PCVPEManager should correctly add and remove handlers..
+                # or meanwhile it run out?
+                try:
+                    bpy.app.timers.unregister(_pcv_pe_manager_update)
+                except ValueError as e:
+                    log("PCVPEManager: handler: {}".format(e))
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+    
+    @classmethod
+    def generate(cls, o, psys, mode, ):
+        log('PCVPEManager: generate')
+        
+        pcv = o.point_cloud_visualizer
+        pcvpe = pcv.preview_engine
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        o = o.evaluated_get(depsgraph)
+        psys = o.particle_systems[psys.name]
+        settings = psys.settings
+        if(settings.render_type not in ('OBJECT', 'COLLECTION', )):
+            raise Exception("PCVPEManager: generate: only Object or Collection supported")
+        
+        max_count = pcvpe.static_max_points
+        if(mode == 'INTERACTIVE'):
+            max_count = pcvpe.interactive_max_points
+        
+        if(settings.render_type == 'COLLECTION'):
+            collection = settings.instance_collection
+            cos = collection.objects
+            fragments = []
+            fragments_indices = {}
+            for i, co in enumerate(cos):
+                if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                    self.report({'ERROR'}, "Object does not have geometry data.")
+                    return {'CANCELLED'}
+                # extract points
+                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+                # store
+                fragments.append((sampler.vs, sampler.cs, ))
+                # FIXME: better not to access data by object name, find something different
+                fragments_indices[co.name] = (i, co, )
+            
+            # process all instances, transform fragment and store
+            all_frags = []
+            # loop over instances
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                # if it is from psys
+                if(object_instance.particle_system == psys):
+                    # and it is instance
+                    if(object_instance.is_instance):
+                        # get matrix
+                        m = object_instance.matrix_world
+                        # unapply emitter matrix
+                        m = o.matrix_world.inverted() @ m
+                        # get correct fragment
+                        i, _ = fragments_indices[obj.name]
+                        fvs, fcs = fragments[i]
+                        # transform
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        # store
+                        all_frags.append((fvs, fcs, ))
+            
+            # join all frags
+            if(len(all_frags) == 0):
+                vs = []
+                cs = []
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
+        elif(settings.render_type == 'OBJECT'):
+            co = settings.instance_object
+            if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                self.report({'ERROR'}, "Object does not have geometry data.")
+                return {'CANCELLED'}
+            # extract points
+            sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+            ofvs = sampler.vs
+            ofcs = sampler.cs
+            
+            all_frags = []
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                if(object_instance.particle_system == psys):
+                    if(object_instance.is_instance):
+                        m = object_instance.matrix_world
+                        m = o.matrix_world.inverted() @ m
+                        fvs = ofvs[:]
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        all_frags.append((fvs, ofcs, ))
+            
+            if(len(all_frags) == 0):
+                vs = []
+                cs = []
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+        
+        return vs, cs
+    
+    @classmethod
+    def render(cls, mode, o, psys, ):
+        if(not cls.initialized):
+            return
+        
+        log('PCVPEManager: render')
+        
+        pcv = o.point_cloud_visualizer
+        pcvpe = pcv.preview_engine
+        settings = psys.settings
+        
+        ok = False
+        for k, v in cls.registry.items():
+            if(k == pcvpe.uuid):
+                # if(o.name == v['object']):
+                #     if(psys.name == v['psys']):
+                if(o == v['object']):
+                    if(psys == v['psys']):
+                        ok = True
+                        break
+        if(not ok):
+            raise Exception('PCVPEManager: render: something is wrong..')
+        
+        _t = time.time()
+        
+        # if(mode == 'INTERACTIVE'):
+        #     if(settings.render_type == 'COLLECTION'):
+        #         psys_collection = settings.instance_collection
+        #         dts = []
+        #         for co in psys_collection.objects:
+        #             dts.append((co, co.display_type, ))
+        #             co.display_type = 'BOUNDS'
+        #     elif(settings.render_type == 'OBJECT'):
+        #         psys_object = settings.instance_object
+        #         dt = psys_object.display_type
+        #         psys_object.display_type = 'BOUNDS'
+        #     settings.display_method = 'RENDER'
+        #
+        #     vs, cs = cls.generate(o, psys, mode, )
+        #     c = PCVControl(o)
+        #     c.draw(vs, [], cs)
+        #
+        #     settings.display_method = 'NONE'
+        #     if(settings.render_type == 'COLLECTION'):
+        #         for co, dt in dts:
+        #             co.display_type = dt
+        #     elif(settings.render_type == 'OBJECT'):
+        #         psys_object.display_type = dt
+        # else:
+        #     pass
+        
+        if(settings.render_type == 'COLLECTION'):
+            psys_collection = settings.instance_collection
+            dts = []
+            for co in psys_collection.objects:
+                dts.append((co, co.display_type, ))
+                co.display_type = 'BOUNDS'
+        elif(settings.render_type == 'OBJECT'):
+            psys_object = settings.instance_object
+            dt = psys_object.display_type
+            psys_object.display_type = 'BOUNDS'
+        settings.display_method = 'RENDER'
+        
+        vs, cs = cls.generate(o, psys, mode, )
+        c = PCVControl(o)
+        c.draw(vs, [], cs)
+        
+        settings.display_method = 'NONE'
+        if(settings.render_type == 'COLLECTION'):
+            for co, dt in dts:
+                co.display_type = dt
+        elif(settings.render_type == 'OBJECT'):
+            psys_object.display_type = dt
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("PCVPEManager: render: completed in {}.".format(_d))
+    
+    @classmethod
+    def gc(cls):
+        # TODO: have a look at PCVManager and do the same.. i almost completely solved undo/redo and object deletion there..
+        log('PCVPEManager: gc (unimplemented)')
+        return False
+    
+    @classmethod
+    def update(cls):
+        if(not cls.initialized):
+            return
+        if(cls.override):
+            return
+        
+        log('PCVPEManager: update')
+        
+        cls.override = True
+        
+        for uuid, item in cls.registry.items():
+            # o = bpy.data.objects.get(item['object'])
+            # psys = None
+            # if(o):
+            #     psys = o.particle_systems.get(item['psys'])
+            # if(o is None or psys is None):
+            #     # unregister? try to recover somehow? we will see..
+            #     # this might happen when object is deleted
+            #     log('PCVPEManager: update: trying to update something missing: object: {}, psys: {}'.format(item['object'], item['psys']))
+            #     return
+            # if(o and psys):
+            #     pcv = o.point_cloud_visualizer
+            #     pcvpe = pcv.preview_engine
+            #     if(pcvpe.uuid != uuid):
+            #         log('PCVPEManager: update: uuid mismatch, key: {}, prop: {}'.format(uuid, item['uuid']))
+            #         return
+            #
+            #     if(pcvpe.mode == 'INTERACTIVE'):
+            #         log('PCVPEManager: interactive update: {}'.format(o.name))
+            #         cls.render(pcvpe.mode, o, psys)
+            
+            o = item['object']
+            psys = item['psys']
+            pcv = o.point_cloud_visualizer
+            pcvpe = pcv.preview_engine
+            if(pcvpe.mode == 'INTERACTIVE'):
+                log('PCVPEManager: interactive update: {}'.format(o.name))
+                cls.render(pcvpe.mode, o, psys)
+            else:
+                log('PCVPEManager: static update: {}'.format(o.name))
+                if(item['dirty']):
+                    cls.render(pcvpe.mode, o, psys)
+                    item['dirty'] = False
+        
+        cls.override = False
+        cls.flag = True
+        
+        log('PCVPEManager: update: done')
+    
+    @classmethod
+    def register(cls, o, psys, k=None, ):
+        if(not cls.initialized):
+            return False
+        if(not k):
+            # uuid.uuid1() returns uuid.UUID not a string
+            k = str(uuid.uuid1())
+        if(k in cls.registry.keys()):
+            return False
+        else:
+            # for k, v in cls.registry.items():
+            #     reg_o = bpy.data.objects.get(v['object'])
+            #     reg_psys = None
+            #     if(reg_o):
+            #         reg_psys = reg_o.particle_systems.get(v['psys'])
+            #     if(reg_o == o and reg_psys == psys):
+            #         return False
+            
+            for k, v in cls.registry.items():
+                reg_o = v['object']
+                reg_psys = v['psys']
+                if(reg_o == o and reg_psys == psys):
+                    return False
+            
+            log('PCVPEManager: register {}:{} as: {}'.format(o.name, psys.name, k, ))
+            
+            pcv = o.point_cloud_visualizer
+            pcvpe = pcv.preview_engine
+            pcvpe.uuid = str(k)
+            cls.registry[k] = {
+                'uuid': k,
+                # 'object': o.name,
+                'object': o,
+                # 'psys': psys.name,
+                'psys': psys,
+                # 'dirty': True,
+                'mode': pcvpe.mode,
+                'dirty': True,
+            }
+            
+            cls.update()
+            
+            return True
+    
+    @classmethod
+    def unregister(cls, k, ):
+        # TODO: PCVPEManager.unregister, is it needed anyway?
+        log('PCVPEManager: unregister (unimplemented)')
+        return False
+    
+    @classmethod
+    def reset(cls):
+        log('PCVPEManager: reset')
+        cls.deinit()
+        for k, v in cls.registry.items():
+            o = v['object']
+            c = PCVControl(o)
+            c.reset()
+        cls.registry = {}
+    
+    @classmethod
+    def mode(cls, uuid, mode, ):
+        if(not cls.initialized):
+            return
+        
+        o = None
+        for k, v in cls.registry.items():
+            if(k == uuid):
+                # o = bpy.data.objects.get(v['object'])
+                o = v['object']
+                break
+        if(o):
+            pcv = o.point_cloud_visualizer
+            pcvpe = pcv.preview_engine
+            item = cls.registry[pcvpe.uuid]
+            if(item['mode'] != mode):
+                item['dirty'] = True
+                item['mode'] = mode
+                cls.update()
+            log('PCVPEManager: mode: {} for: {}'.format(pcvpe.mode, o.name, ))
+        else:
+            # what to do with this? e.g. if initialized and not registered this will happen..
+            log('PCVPEManager: mode: object not found, uuid: {}'.format(uuid))
+
+
+class PCVPE_OT_init(Operator):
+    bl_idname = "point_cloud_visualizer.pcvpe_init"
+    bl_label = "init"
+    bl_description = "PCVPEManager.init"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVPEManager.init()
+        return {'FINISHED'}
+
+
+class PCVPE_OT_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.pcvpe_deinit"
+    bl_label = "deinit"
+    bl_description = "PCVPEManager.deinit"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVPEManager.deinit()
+        return {'FINISHED'}
+
+
+class PCVPE_OT_register(Operator):
+    bl_idname = "point_cloud_visualizer.pcvpe_register"
+    bl_label = "register"
+    bl_description = "PCVPEManager.register"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        pcvpe = pcv.preview_engine
+        
+        try:
+            psys = o.particle_systems[pcvpe.target_psys]
+        except KeyError:
+            self.report({'ERROR'}, "No such particle system dound on object.")
+            return {'CANCELLED'}
+        
+        PCVPEManager.init()
+        ok = PCVPEManager.register(o, psys, None, )
+        if(not ok):
+            return {'CANCELLED'}
+        
+        return {'FINISHED'}
+
+
+class PCVPE_OT_reset(Operator):
+    bl_idname = "point_cloud_visualizer.pcvpe_reset"
+    bl_label = "reset"
+    bl_description = "PCVPEManager.reset"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVPEManager.reset()
         return {'FINISHED'}
 
 
@@ -8795,6 +9265,7 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
 
 
+'''
 class PCV_PT_preview_engine(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -8940,6 +9411,145 @@ class PCV_PT_preview_engine(Panel):
             cc.label(text='properties: {} item(s)'.format(len(v['properties'].items())))
             cc.label(text='settings: {} item(s)'.format(len(v['settings'].items())))
             cc.label(text='')
+'''
+
+
+class PCVPE_PT_panel(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Preview Engine"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        if(not debug_mode()):
+            return False
+        
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        def third_label_two_thirds_prop(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, text='', )
+        
+        def third_label_two_thirds_prop_search(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_search_aligned(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row(align=True)
+            s = r.split(factor=f, align=True)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0, align=True)
+            r = s.row(align=True)
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_enum_expand(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, expand=True, )
+        
+        pcv = context.object.point_cloud_visualizer
+        pcvpe = pcv.preview_engine
+        l = self.layout
+        c = l.column()
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.pcvpe_init')
+        r.operator('point_cloud_visualizer.pcvpe_deinit')
+        
+        c.separator()
+        
+        third_label_two_thirds_prop_search_aligned(pcvpe, 'target_psys', context.active_object, 'particle_systems', c, )
+        c.operator('point_cloud_visualizer.pcvpe_register')
+        
+        c.separator()
+        
+        cc = c.column(align=True)
+        cc.prop(pcvpe, 'static_max_points')
+        cc.prop(pcvpe, 'interactive_max_points')
+        # r = c.row()
+        # r.prop(pcvpe, 'mode', expand=True, )
+        third_label_two_thirds_prop_enum_expand(pcvpe, 'mode', c, )
+        
+        c.separator()
+        
+        c.operator('point_cloud_visualizer.pcvpe_reset')
+        
+        c.separator()
+        
+        tab = '        '
+        
+        cc = c.column()
+        cc.label(text="Object.point_cloud_visualizer.preview_engine:")
+        cc.label(text="{}uuid: {}".format(tab, pcvpe.uuid))
+        cc.label(text="{}target_psys: {}".format(tab, pcvpe.target_psys))
+        cc.label(text="{}mode: {}".format(tab, pcvpe.mode))
+        # cc.label(text="{}static_max_points: {}".format(tab, pcvpe.static_max_points))
+        # cc.label(text="{}interactive_max_points: {}".format(tab, pcvpe.interactive_max_points))
+        cc.scale_y = 0.5
+        
+        c.separator()
+        
+        cc = c.column()
+        cc.label(text="PCVPEManager:")
+        cc.label(text="{}initialized: {}".format(tab, PCVPEManager.initialized))
+        cc.label(text="{}registry: {} item(s)".format(tab, len(PCVPEManager.registry.keys())))
+        cc.scale_y = 0.5
+        
+        c.separator()
+        tab = '    '
+        ci = 0
+        for k, v in PCVPEManager.registry.items():
+            b = c.box()
+            cc = b.column()
+            cc.scale_y = 0.5
+            cc.label(text='item: {}'.format(ci))
+            ci += 1
+            for l, w in v.items():
+                cc.label(text='{}{}: {}'.format(tab, l, w))
+        
+        c.separator()
+        c.operator('script.reload')
 
 
 class PCV_PT_debug(Panel):
@@ -9041,6 +9651,20 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format('uuid', v['uuid']))
                 c.label(text="{}: {}".format('pcv', v['pcv']))
                 c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
+
+
+class PCVPE_properties(PropertyGroup):
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
+    
+    def _mode_update(self, context, ):
+        PCVPEManager.mode(self.uuid, self.mode, )
+    
+    mode: EnumProperty(name="Mode", items=[('STATIC', "Static", ""),
+                                           ('INTERACTIVE', "Interactive", ""),
+                                          ], default='STATIC', description="Static mode for pretty preview, Interactive mode for real time updates", update=_mode_update, )
+    static_max_points: IntProperty(name="Static Max. Points", default=5000, min=1, max=1000000, description="Maximum number of points per instance in Static Mode", )
+    interactive_max_points: IntProperty(name="Interactive Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance in Interactive Mode", )
 
 
 class PCV_properties(PropertyGroup):
@@ -9301,6 +9925,7 @@ class PCV_properties(PropertyGroup):
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    '''
     pe_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
                                                               ('DRAFT_NUMPY', "Draft Numpy Percentage", "Draft Numpy engine"),
                                                               ('DRAFT_NUMPY_FIXED', "Draft Numpy Fixed Count", "Draft Numpy engine"),
@@ -9329,6 +9954,9 @@ class PCV_properties(PropertyGroup):
     pe_generate_benchmark: StringProperty(name="Benchmark", default="", )
     pe_generate_target_psys: StringProperty(name="Particle System", default="", )
     pe_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
+    '''
+    
+    preview_engine: PointerProperty(type=PCVPE_properties)
     
     @classmethod
     def register(cls):
@@ -9346,7 +9974,8 @@ def _update_panel_bl_category(self, context):
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
-        PCV_PT_preview_engine,
+        # PCV_PT_preview_engine,
+        PCVPE_PT_panel,
         PCV_PT_debug,
     )
     try:
@@ -9429,10 +10058,12 @@ class PCV_preferences(AddonPreferences):
 def watcher(scene):
     PCVSequence.deinit()
     PCVManager.deinit()
-    PCVPEManager.deinit()
+    # PCVPEManager.deinit()
+    PCVPEManager.reset()
 
 
 classes = (
+    PCVPE_properties,
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_edit,
@@ -9449,7 +10080,8 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCV_PT_preview_engine, PCV_OT_PE_generate, PCV_OT_PE_generate_psys, PCV_OT_PE_psys_watcher_start, PCV_OT_PE_psys_watcher_stop, PCV_OT_PE_psys_register_selected,
+    # PCV_PT_preview_engine, PCV_OT_PE_generate, PCV_OT_PE_generate_psys, PCV_OT_PE_psys_watcher_start, PCV_OT_PE_psys_watcher_stop, PCV_OT_PE_psys_register_selected,
+    PCVPE_PT_panel, PCVPE_OT_init, PCVPE_OT_deinit, PCVPE_OT_register, PCVPE_OT_reset,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
