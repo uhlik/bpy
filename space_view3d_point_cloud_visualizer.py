@@ -7465,8 +7465,10 @@ class PCVIVManager():
                         all_frags.append((fvs, ofcs, ))
             
             if(len(all_frags) == 0):
-                vs = []
-                cs = []
+                # vs = []
+                # cs = []
+                vs = np.zeros(0, dtype=np.float32, )
+                cs = np.zeros(0, dtype=np.float32, )
             else:
                 vs = np.concatenate([i[0] for i in all_frags], axis=0, )
                 cs = np.concatenate([i[1] for i in all_frags], axis=0, )
@@ -7479,7 +7481,7 @@ class PCVIVManager():
         return [], []
     
     @classmethod
-    def render(cls, datatype, mode, o, psys, ):
+    def render(cls, datatype, mode, o, ):
         if(not cls.initialized):
             return
         
@@ -7489,70 +7491,59 @@ class PCVIVManager():
             
             pcv = o.point_cloud_visualizer
             pcviv = pcv.instance_visualizer
-            settings = psys.settings
             
-            ok = False
-            for k, v in cls.registry.items():
-                if(k == pcviv.uuid):
-                    # if(o.name == v['object']):
-                    #     if(psys.name == v['psys']):
-                    if(o == v['object']):
-                        if(psys == v['psys']):
-                            ok = True
-                            break
-            if(not ok):
-                raise Exception('PCVIVManager: render: something is wrong..')
+            all_systems = []
             
-            # _t = time.time()
+            for psys in o.particle_systems:
+                settings = psys.settings
+                
+                # ok = False
+                # for k, v in cls.registry.items():
+                #     if(k == pcviv.uuid):
+                #         # if(o.name == v['object']):
+                #         #     if(psys.name == v['psys']):
+                #         if(o == v['object']):
+                #             if(psys == v['psys']):
+                #                 ok = True
+                #                 break
+                # if(not ok):
+                #     raise Exception('PCVIVManager: render: something is wrong..')
+                
+                if(settings.render_type == 'COLLECTION'):
+                    psys_collection = settings.instance_collection
+                    dts = []
+                    for co in psys_collection.objects:
+                        dts.append((co, co.display_type, ))
+                        co.display_type = 'BOUNDS'
+                elif(settings.render_type == 'OBJECT'):
+                    psys_object = settings.instance_object
+                    dt = psys_object.display_type
+                    psys_object.display_type = 'BOUNDS'
+                settings.display_method = 'RENDER'
+                
+                vs, cs = cls.generate_psys(o, psys, mode, )
+                all_systems.append((vs, cs, ))
+                
+                settings.display_method = 'NONE'
+                if(settings.render_type == 'COLLECTION'):
+                    for co, dt in dts:
+                        co.display_type = dt
+                elif(settings.render_type == 'OBJECT'):
+                    psys_object.display_type = dt
             
-            # if(mode == 'INTERACTIVE'):
-            #     if(settings.render_type == 'COLLECTION'):
-            #         psys_collection = settings.instance_collection
-            #         dts = []
-            #         for co in psys_collection.objects:
-            #             dts.append((co, co.display_type, ))
-            #             co.display_type = 'BOUNDS'
-            #     elif(settings.render_type == 'OBJECT'):
-            #         psys_object = settings.instance_object
-            #         dt = psys_object.display_type
-            #         psys_object.display_type = 'BOUNDS'
-            #     settings.display_method = 'RENDER'
-            #
-            #     vs, cs = cls.generate(o, psys, mode, )
-            #     c = PCVControl(o)
-            #     c.draw(vs, [], cs)
-            #
-            #     settings.display_method = 'NONE'
-            #     if(settings.render_type == 'COLLECTION'):
-            #         for co, dt in dts:
-            #             co.display_type = dt
-            #     elif(settings.render_type == 'OBJECT'):
-            #         psys_object.display_type = dt
-            # else:
-            #     pass
+            av = []
+            ac = []
+            for v, c in all_systems:
+                if(len(v) == 0):
+                    continue
+                av.append(v)
+                ac.append(c)
             
-            if(settings.render_type == 'COLLECTION'):
-                psys_collection = settings.instance_collection
-                dts = []
-                for co in psys_collection.objects:
-                    dts.append((co, co.display_type, ))
-                    co.display_type = 'BOUNDS'
-            elif(settings.render_type == 'OBJECT'):
-                psys_object = settings.instance_object
-                dt = psys_object.display_type
-                psys_object.display_type = 'BOUNDS'
-            settings.display_method = 'RENDER'
+            vs = np.concatenate(av, axis=0, )
+            cs = np.concatenate(ac, axis=0, )
             
-            vs, cs = cls.generate_psys(o, psys, mode, )
             c = PCVControl(o)
             c.draw(vs, [], cs)
-            
-            settings.display_method = 'NONE'
-            if(settings.render_type == 'COLLECTION'):
-                for co, dt in dts:
-                    co.display_type = dt
-            elif(settings.render_type == 'OBJECT'):
-                psys_object.display_type = dt
             
             # _d = datetime.timedelta(seconds=time.time() - _t)
             # log("PCVIVManager: render: completed in {}.".format(_d))
@@ -7605,16 +7596,23 @@ class PCVIVManager():
             datatype = item['datatype']
             if(datatype == 'PARTICLES'):
                 o = item['object']
-                psys = item['psys']
+                # psys = item['psys']
                 pcv = o.point_cloud_visualizer
                 pcviv = pcv.instance_visualizer
                 if(pcviv.mode == 'INTERACTIVE'):
                     # log('PCVIVManager: interactive update: {}'.format(o.name))
-                    cls.render(datatype, pcviv.mode, o, psys)
+                    # cls.render(datatype, pcviv.mode, o, psys)
+                    cls.render(datatype, pcviv.mode, o, )
                 else:
+                    if(item['static_max_points'] != pcviv.static_max_points):
+                        # redraw once if static is chabged
+                        item['static_max_points'] = pcviv.static_max_points
+                        item['dirty'] = True
+                    
                     # log('PCVIVManager: static update: {}'.format(o.name))
                     if(item['dirty']):
-                        cls.render(datatype, pcviv.mode, o, psys)
+                        # cls.render(datatype, pcviv.mode, o, psys)
+                        cls.render(datatype, pcviv.mode, o, )
                         item['dirty'] = False
             elif(datatype == 'INSTANCER'):
                 pass
@@ -7630,7 +7628,7 @@ class PCVIVManager():
         # log('PCVIVManager: update: done')
     
     @classmethod
-    def register(cls, o, datatype, psys=None, ):
+    def register(cls, o, datatype, ):
         if(not cls.initialized):
             return False
         # if(k is None):
@@ -7642,11 +7640,13 @@ class PCVIVManager():
         found = False
         for k, v in cls.registry.items():
             if(v['object'] == o):
-                if(v['datatype'] == 'PARTICLES'):
-                    if(v['datatype'] == datatype):
-                        if(v['psys'] == psys):
-                            found = True
-                else:
+                # if(v['datatype'] == 'PARTICLES'):
+                #     if(v['datatype'] == datatype):
+                #         if(v['psys'] == psys):
+                #             found = True
+                # else:
+                #     found = True
+                if(v['datatype'] == datatype):
                     found = True
         
         if(found):
@@ -7657,7 +7657,7 @@ class PCVIVManager():
             key = str(uuid.uuid1())
             
             if(datatype == 'PARTICLES'):
-                if(psys is None):
+                if(len(o.particle_systems) == 0):
                     return False
                 
                 # for k, v in cls.registry.items():
@@ -7670,8 +7670,10 @@ class PCVIVManager():
                 
                 for k, v in cls.registry.items():
                     reg_o = v['object']
-                    reg_psys = v['psys']
-                    if(reg_o == o and reg_psys == psys):
+                    # reg_psys = v['psys']
+                    # if(reg_o == o and reg_psys == psys):
+                    #     return False
+                    if(reg_o == o):
                         return False
                 
                 # log('PCVIVManager: register {}:{} as: {}'.format(o.name, psys.name, k, ))
@@ -7685,9 +7687,11 @@ class PCVIVManager():
                     'object': o,
                     'datatype': datatype,
                     # 'psys': psys.name,
-                    'psys': psys,
+                    # 'psys': psys,
                     # 'dirty': True,
                     'mode': pcviv.mode,
+                    'static_max_points': pcviv.static_max_points,
+                    # 'interactive': pcviv.mode,
                     'dirty': True,
                 }
                 
@@ -7778,7 +7782,7 @@ class PCVIV_OT_deinit(Operator):
 
 class PCVIV_OT_register(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_register"
-    bl_label = "register"
+    bl_label = "register all particle systems"
     bl_description = "PCVIVManager.register"
     
     @classmethod
@@ -7793,14 +7797,15 @@ class PCVIV_OT_register(Operator):
         pcviv = pcv.instance_visualizer
         
         if(pcviv.datatype == 'PARTICLES'):
-            try:
-                psys = o.particle_systems[pcviv.target_psys]
-            except KeyError:
-                self.report({'ERROR'}, "No such particle system dound on object.")
-                return {'CANCELLED'}
+            # try:
+            #     psys = o.particle_systems[pcviv.target_psys]
+            # except KeyError:
+            #     self.report({'ERROR'}, "No such particle system dound on object.")
+            #     return {'CANCELLED'}
             
             PCVIVManager.init()
-            ok = PCVIVManager.register(o, pcviv.datatype, psys, )
+            # ok = PCVIVManager.register(o, pcviv.datatype, psys, )
+            ok = PCVIVManager.register(o, pcviv.datatype, )
             if(not ok):
                 return {'CANCELLED'}
             
@@ -7814,7 +7819,7 @@ class PCVIV_OT_register(Operator):
 
 class PCVIV_OT_reset(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_reset"
-    bl_label = "reset"
+    bl_label = "reset all"
     bl_description = "PCVIVManager.reset"
     
     @classmethod
@@ -8891,14 +8896,21 @@ class PCVIV_PT_panel(Panel):
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_init')
         r.operator('point_cloud_visualizer.pcviv_deinit')
+        r.enabled = False
         
         c.separator()
+        r = c.row()
+        third_label_two_thirds_prop(pcviv, 'datatype', r, )
+        r.enabled = False
+        c.separator()
         
-        third_label_two_thirds_prop(pcviv, 'datatype', c, )
-        # third_label_two_thirds_prop_search_aligned(pcviv, 'target', context.scene, 'objects', c, )
-        if(pcviv.datatype == 'PARTICLES'):
-            third_label_two_thirds_prop_search_aligned(pcviv, 'target_psys', context.active_object, 'particle_systems', c, )
-        c.operator('point_cloud_visualizer.pcviv_register')
+        # # third_label_two_thirds_prop_search_aligned(pcviv, 'target', context.scene, 'objects', c, )
+        # if(pcviv.datatype == 'PARTICLES'):
+        #     third_label_two_thirds_prop_search_aligned(pcviv, 'target_psys', context.active_object, 'particle_systems', c, )
+        r = c.row()
+        r.alert = True
+        r.operator('point_cloud_visualizer.pcviv_register')
+        r.scale_y = 1.5
         
         c.separator()
         
@@ -8907,10 +8919,15 @@ class PCVIV_PT_panel(Panel):
         cc.prop(pcviv, 'interactive_max_points')
         # r = c.row()
         # r.prop(pcviv, 'mode', expand=True, )
-        third_label_two_thirds_prop_enum_expand(pcviv, 'mode', c, )
+        r = c.row()
+        third_label_two_thirds_prop_enum_expand(pcviv, 'mode', r, )
+        # r.scale_y = 1.5
         
         c.separator()
         
+        # r = c.row()
+        # r.operator('point_cloud_visualizer.pcviv_reset')
+        # r.enabled = PCVIVManager.initialized
         c.operator('point_cloud_visualizer.pcviv_reset')
         
         c.separator()
@@ -8922,17 +8939,21 @@ class PCVIV_PT_panel(Panel):
         cc = c.column()
         cc.label(text="Object.point_cloud_visualizer.instance_visualizer:")
         cc.label(text="{}uuid: {}".format(tab, pcviv.uuid))
-        cc.label(text="{}target: {}".format(tab, context.object.name))
-        cc.label(text="{}target_psys: {}".format(tab, pcviv.target_psys))
-        cc.label(text="{}mode: {}".format(tab, pcviv.mode))
+        # cc.label(text="{}target: {}".format(tab, context.object.name))
+        # cc.label(text="{}target_psys: {}".format(tab, pcviv.target_psys))
+        # cc.label(text="{}mode: {}".format(tab, pcviv.mode))
         cc.scale_y = 0.5
         
         c.separator()
         
         cc = c.column()
         cc.label(text="PCVIVManager:")
+        # cc.label(text="{}delay: {}".format(tab, PCVIVManager.delay))
         cc.label(text="{}initialized: {}".format(tab, PCVIVManager.initialized))
         cc.label(text="{}registry: {} item(s)".format(tab, len(PCVIVManager.registry.keys())))
+        # cc.label(text="{}override: {}".format(tab, PCVIVManager.override))
+        # cc.label(text="{}flag: {}".format(tab, PCVIVManager.flag))
+        
         cc.scale_y = 0.5
         
         c.separator()
@@ -9059,7 +9080,7 @@ class PCVIV_properties(PropertyGroup):
                                                # ('INSTANCER', "Instances", ""),
                                                ], default='PARTICLES', description="", )
     # target: StringProperty(name="Object", default="", description="", )
-    target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
+    # target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
     
     def _mode_update(self, context, ):
         PCVIVManager.mode(self.uuid, self.mode, )
