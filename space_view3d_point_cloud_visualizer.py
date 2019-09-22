@@ -1831,13 +1831,13 @@ class PCVShaders():
             //     discard;
             // }
             // // fragColor = f_color * a;
-            // 
+            //
             // vec4 col;
-            // 
+            //
             // // if(f_show_normals > 0.5){
             // //     col = vec4(f_normal, 1.0) * a;
             // // }else if(f_show_illumination > 0.5){
-            // 
+            //
             // // if(f_show_illumination > 0.5){
             // //     vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
             // //     vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
@@ -1845,11 +1845,11 @@ class PCVShaders():
             // // }else{
             // //     col = f_color * a;
             // // }
-            // 
+            //
             // vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
             // vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
             // col = (f_color + light - shadow) * a;
-            // 
+            //
             // fragColor = col;
             
             float r = 0.0f;
@@ -2816,7 +2816,7 @@ class PCVControl():
         
         # seems like sometimes context is different, this should work..
         for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas: 
+            for area in window.screen.areas:
                 if(area.type == 'VIEW_3D'):
                     area.tag_redraw()
     
@@ -9055,10 +9055,9 @@ class PCV_PT_debug(Panel):
 class PCVIV_properties(PropertyGroup):
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
-    datatype: EnumProperty(name="Type", items=[
-                                            # ('INSTANCER', "Instances", ""),
-                                            ('PARTICLES', "Particle Instances", ""),
-                                           ], default='PARTICLES', description="", )
+    datatype: EnumProperty(name="Type", items=[('PARTICLES', "Particle Instances", ""),
+                                               # ('INSTANCER', "Instances", ""),
+                                               ], default='PARTICLES', description="", )
     # target: StringProperty(name="Object", default="", description="", )
     target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
     
@@ -9067,7 +9066,7 @@ class PCVIV_properties(PropertyGroup):
     
     mode: EnumProperty(name="Mode", items=[('STATIC', "Static", ""),
                                            ('INTERACTIVE', "Interactive", ""),
-                                          ], default='STATIC', description="Static mode for pretty preview, Interactive mode for real time updates", update=_mode_update, )
+                                           ], default='STATIC', description="Static mode for pretty preview, Interactive mode for real time updates", update=_mode_update, )
     static_max_points: IntProperty(name="Static Max. Points", default=5000, min=1, max=1000000, description="Maximum number of points per instance in Static Mode", )
     interactive_max_points: IntProperty(name="Interactive Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance in Interactive Mode", )
 
