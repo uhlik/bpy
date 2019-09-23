@@ -7861,6 +7861,9 @@ class PCVIVManager():
                 # for t in ts:
                 #     pass
                 
+                _d = datetime.timedelta(seconds=time.time() - _t)
+                pcviv.debug_update = "last update completed in {}".format(_d)
+                
             elif(datatype == 'INSTANCER'):
                 pass
             else:
@@ -9319,6 +9322,12 @@ class PCVIV_PT_panel(Panel):
         # # r.scale_y = 1.5
         
         c.separator()
+        if(pcviv.debug_update == ""):
+            c.label(text='n/a')
+        else:
+            c.label(text=pcviv.debug_update)
+        
+        c.separator()
         
         # r = c.row()
         # r.operator('point_cloud_visualizer.pcviv_reset')
@@ -9520,6 +9529,8 @@ class PCVIV_properties(PropertyGroup):
         pass
     
     targets_index: IntProperty(name="Index", default=0, description="", update=_targets_index_update, )
+    
+    debug_update: StringProperty(default="", )
 
 
 class PCV_properties(PropertyGroup):
