@@ -4348,6 +4348,101 @@ class PCVPreviewEngineDraftFixedCountNumpySampler():
         self.cs = cs[:]
 
 
+class PCVPreviewEngineDraftWeightedFixedCountNumpySampler():
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
+        # log("{}:".format(self.__class__.__name__), 0)
+        # log("target: {}, count: {}".format(target, count, ), 1)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed)
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        # indices = np.random.randint(0, l, count, dtype=np.int, )
+        
+        choices = np.indices((l, ), dtype=np.int, )
+        choices.shape = (l, )
+        weights = np.zeros(l, dtype=np.float32, )
+        me.polygons.foreach_get('area', weights, )
+        # # normalize
+        # weights *= (1.0 / np.max(weights))
+        # make it all sum to 1.0
+        weights *= 1.0 / np.sum(weights)
+        indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+        
+        material_indices = np.zeros(l, dtype=np.int, )
+        me.polygons.foreach_get('material_index', material_indices, )
+        material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+        for i, m in enumerate(materials):
+            mc = m.diffuse_color[:3]
+            material_colors[i][0] = mc[0] ** (1 / 2.2)
+            material_colors[i][1] = mc[1] ** (1 / 2.2)
+            material_colors[i][2] = mc[2] ** (1 / 2.2)
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
+                                      np.full(li, constant_color[1], dtype=np.float32, ),
+                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            colors = np.take(material_colors, material_indices, axis=0,)
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = np.take(colors, indices, axis=0, )
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -7409,7 +7504,8 @@ class PCVIVManager():
                     self.report({'ERROR'}, "Object does not have geometry data.")
                     return {'CANCELLED'}
                 # extract points
-                sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+                # sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+                sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
                 # store
                 fragments.append((sampler.vs, sampler.cs, ))
                 # FIXME: better not to access data by object name, find something different
@@ -7453,7 +7549,8 @@ class PCVIVManager():
                 self.report({'ERROR'}, "Object does not have geometry data.")
                 return {'CANCELLED'}
             # extract points
-            sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+            # sampler = PCVPreviewEngineDraftFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
+            sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_count, colorize='VIEWPORT_DISPLAY_COLOR', )
             ofvs = sampler.vs
             ofcs = sampler.cs
             
