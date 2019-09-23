@@ -43,8 +43,8 @@ import statistics
 
 import bpy
 import bmesh
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
-from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
+from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences, UIList
 import gpu
 from gpu.types import GPUOffScreen, GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
@@ -7376,21 +7376,28 @@ class PCVIVManager():
             bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
     
     @classmethod
-    def generate_psys(cls, o, psys, mode, ):
+    def generate_psys(cls, o, psys, psys_slot, max_count, ):
         # log('PCVIVManager: generate')
         
-        pcv = o.point_cloud_visualizer
-        pcviv = pcv.instance_visualizer
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        o = o.evaluated_get(depsgraph)
-        psys = o.particle_systems[psys.name]
-        settings = psys.settings
-        if(settings.render_type not in ('OBJECT', 'COLLECTION', )):
-            raise Exception("PCVIVManager: generate: only Object or Collection supported")
+        # pcv = o.point_cloud_visualizer
+        # pcviv = pcv.instance_visualizer
         
-        max_count = pcviv.static_max_points
-        if(mode == 'INTERACTIVE'):
-            max_count = pcviv.interactive_max_points
+        # FIXME: this should be created just once and passed to next call in the same update.. possible optimization?
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        o = o.evaluated_get(depsgraph)
+        # why can particle systems have the same name? WHY? NOTHING else works like that in blender
+        # psys = o.particle_systems[psys.name]
+        psys = o.particle_systems[psys_slot]
+        settings = psys.settings
+        
+        # NOTE: don't throw error, do some place holder instead
+        # if(settings.render_type not in ('OBJECT', 'COLLECTION', )):
+        #     raise Exception("PCVIVManager: generate: only Object or Collection supported")
+        
+        # max_count = pcviv.static_max_points
+        # if(mode == 'INTERACTIVE'):
+        #     max_count = pcviv.interactive_max_points
         
         if(settings.render_type == 'COLLECTION'):
             collection = settings.instance_collection
@@ -7472,6 +7479,23 @@ class PCVIVManager():
             else:
                 vs = np.concatenate([i[0] for i in all_frags], axis=0, )
                 cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
+        else:
+            # just generate pink points
+            l = len(psys.particles)
+            vs = np.zeros((l * 3), dtype=np.float32, )
+            psys.particles.foreach_get('location', vs, )
+            vs.shape = (l, 3)
+            
+            m = o.matrix_world.inverted()
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            
+            cs = np.column_stack((np.full(l, 1.0, dtype=np.float32, ),
+                                  np.full(l, 0.0, dtype=np.float32, ),
+                                  np.full(l, 1.0, dtype=np.float32, ), ))
         
         return vs, cs
     
@@ -7480,6 +7504,7 @@ class PCVIVManager():
         log('PCVIVManager: generate_inst (unimplemented)')
         return [], []
     
+    '''
     @classmethod
     def render(cls, datatype, mode, o, ):
         if(not cls.initialized):
@@ -7552,6 +7577,7 @@ class PCVIVManager():
             pass
         else:
             pass
+    '''
     
     @classmethod
     def gc(cls):
@@ -7572,52 +7598,176 @@ class PCVIVManager():
         
         cls.override = True
         
-        for uuid, item in cls.registry.items():
-            # o = bpy.data.objects.get(item['object'])
-            # psys = None
-            # if(o):
-            #     psys = o.particle_systems.get(item['psys'])
-            # if(o is None or psys is None):
-            #     # unregister? try to recover somehow? we will see..
-            #     # this might happen when object is deleted
-            #     log('PCVIVManager: update: trying to update something missing: object: {}, psys: {}'.format(item['object'], item['psys']))
-            #     return
-            # if(o and psys):
-            #     pcv = o.point_cloud_visualizer
-            #     pcviv = pcv.instance_visualizer
-            #     if(pcviv.uuid != uuid):
-            #         log('PCVIVManager: update: uuid mismatch, key: {}, prop: {}'.format(uuid, item['uuid']))
-            #         return
-            #
-            #     if(pcviv.mode == 'INTERACTIVE'):
-            #         log('PCVIVManager: interactive update: {}'.format(o.name))
-            #         cls.render(pcviv.mode, o, psys)
-            
+        for _uuid, item in cls.registry.items():
             datatype = item['datatype']
+            
             if(datatype == 'PARTICLES'):
                 o = item['object']
                 # psys = item['psys']
                 pcv = o.point_cloud_visualizer
                 pcviv = pcv.instance_visualizer
+                
+                if(item['dirty']):
+                    # if whole item is dirty, recreate from scratch, this should be set dirty only when registered, or psys is added or removed
+                    # so, better kill all and do it from scratch..
+                    cache = {}
+                    pcviv.targets.clear()
+                    
+                    for i, ps in enumerate(o.particle_systems):
+                        ti = pcviv.targets.add()
+                        ti.name = ps.settings.name
+                        ti.uuid = str(uuid.uuid1())
+                        cache[ti.uuid] = {
+                            'mode': ti.mode,
+                            'dirty': True,
+                            'vs': None,
+                            'cs': None,
+                            'slot': i,
+                        }
+                    
+                    item['cache'] = cache
+                    item['dirty'] = False
+                else:
+                    
+                    def check():
+                        if(item['dirty']):
+                            return False
+                        if(len(o.particle_systems) != len(pcviv.targets)):
+                            return False
+                        for i, ps in enumerate(o.particle_systems):
+                            if(len(pcviv.targets) >= i):
+                                if(ps.settings.name != pcviv.targets[i].name):
+                                    return False
+                            else:
+                                return False
+                        cache = item['cache']
+                        if(len(cache) != len(pcviv.targets)):
+                            return False
+                        for i, ti in enumerate(pcviv.targets):
+                            if(ti.uuid not in cache.keys()):
+                                return False
+                        return True
+                    
+                    ok = check()
+                    if(not ok):
+                        item['dirty'] = True
+                        cls.override = False
+                        cls.flag = False
+                        cls.update()
+                        
+                        depsgraph = bpy.context.evaluated_depsgraph_get()
+                        depsgraph.update()
+                        
+                        # cls._redraw()
+                        return
+                
+                def pre_generate(psys, ):
+                    dts = None
+                    dt = None
+                    psys_collection = None
+                    psys_object = None
+                    settings = psys.settings
+                    if(settings.render_type == 'COLLECTION'):
+                        psys_collection = settings.instance_collection
+                        dts = []
+                        for co in psys_collection.objects:
+                            dts.append((co, co.display_type, ))
+                            co.display_type = 'BOUNDS'
+                    elif(settings.render_type == 'OBJECT'):
+                        psys_object = settings.instance_object
+                        dt = psys_object.display_type
+                        psys_object.display_type = 'BOUNDS'
+                    settings.display_method = 'RENDER'
+                    return dts, dt, psys_collection, psys_object
+                
+                def post_generate(psys, dts=None, dt=None, psys_collection=None, psys_object=None, ):
+                    settings = psys.settings
+                    settings.display_method = 'NONE'
+                    if(settings.render_type == 'COLLECTION'):
+                        for co, dt in dts:
+                            co.display_type = dt
+                    elif(settings.render_type == 'OBJECT'):
+                        psys_object.display_type = dt
+                
+                # FIXME: i have data in three places, particle systems, targets and cache, which should be the main one? should i reduce it to just two, particle systems and my internal data of some kind, maybe.. but, lets see how it goes..
+                all_points = []
+                for i, psys in enumerate(o.particle_systems):
+                    ti = pcviv.targets[i]
+                    ci = item['cache'][ti.uuid]
+                    if(ti.mode == 'INTERACTIVE'):
+                        ci['mode'] = 'INTERACTIVE'
+                        dts, dt, psys_collection, psys_object = pre_generate(psys, )
+                        vs, cs = cls.generate_psys(o, psys, i, ti.interactive_max_points, )
+                        all_points.append((vs, cs, ))
+                        post_generate(psys, dts, dt, psys_collection, psys_object, )
+                        ci['vs'] = vs
+                        ci['cs'] = cs
+                        # interactive is always dirty, yeah baby..
+                        ci['dirty'] = True
+                    else:
+                        if(ci['dirty']):
+                            ci['mode'] = 'STATIC'
+                            dts, dt, psys_collection, psys_object = pre_generate(psys, )
+                            vs, cs = cls.generate_psys(o, psys, i, ti.static_max_points, )
+                            all_points.append((vs, cs, ))
+                            post_generate(psys, dts, dt, psys_collection, psys_object, )
+                            ci['vs'] = vs
+                            ci['cs'] = cs
+                            ci['dirty'] = False
+                        else:
+                            # is static and is not dirty, don't generate, only append from cache
+                            all_points.append((ci['vs'], ci['cs'], ))
+                
+                # join points
+                vs = []
+                cs = []
+                av = []
+                ac = []
+                for v, c in all_points:
+                    if(len(v) == 0):
+                        # skip systems with zero particles
+                        continue
+                    av.append(v)
+                    ac.append(c)
+                if(len(av) > 0):
+                    vs = np.concatenate(av, axis=0, )
+                    cs = np.concatenate(ac, axis=0, )
+                
+                # and finally, draw
+                c = PCVControl(o)
+                c.draw(vs, [], cs)
+                
+                
+                
+                
+                
+                '''
                 if(pcviv.mode == 'INTERACTIVE'):
                     # log('PCVIVManager: interactive update: {}'.format(o.name))
                     # cls.render(datatype, pcviv.mode, o, psys)
                     cls.render(datatype, pcviv.mode, o, )
                 else:
-                    if(item['static_max_points'] != pcviv.static_max_points):
-                        # redraw once if static is chabged
-                        item['static_max_points'] = pcviv.static_max_points
-                        item['dirty'] = True
+                    # # FIXME adjust static max points
+                    # if(item['static_max_points'] != pcviv.static_max_points):
+                    #     # redraw once if static is chabged
+                    #     item['static_max_points'] = pcviv.static_max_points
+                    #     item['dirty'] = True
                     
                     # log('PCVIVManager: static update: {}'.format(o.name))
                     if(item['dirty']):
                         # cls.render(datatype, pcviv.mode, o, psys)
                         cls.render(datatype, pcviv.mode, o, )
                         item['dirty'] = False
+                # '''
+                
+                # ts = pcviv.targets
+                # for t in ts:
+                #     pass
+                
             elif(datatype == 'INSTANCER'):
                 pass
-            # else:
-            #     pass
+            else:
+                pass
         
         cls.override = False
         cls.flag = True
@@ -7681,6 +7831,19 @@ class PCVIVManager():
                 pcv = o.point_cloud_visualizer
                 pcviv = pcv.instance_visualizer
                 pcviv.uuid = key
+                
+                cache = {}
+                # for i, ps in enumerate(o.particle_systems):
+                #     # FIXME: this has to be updated when new pasys is added or removed
+                #     item = pcviv.targets.add()
+                #     item.name = ps.settings.name
+                #     item.uuid = str(uuid.uuid1())
+                #     cache[item.uuid] = {
+                #         'dirty': True,
+                #         'vs': None,
+                #         'cs': None,
+                #     }
+                
                 cls.registry[key] = {
                     'uuid': key,
                     # 'object': o.name,
@@ -7689,13 +7852,15 @@ class PCVIVManager():
                     # 'psys': psys.name,
                     # 'psys': psys,
                     # 'dirty': True,
-                    'mode': pcviv.mode,
-                    'static_max_points': pcviv.static_max_points,
+                    # 'mode': pcviv.mode,
+                    # 'static_max_points': pcviv.static_max_points,
                     # 'interactive': pcviv.mode,
                     'dirty': True,
+                    'cache': cache,
                 }
                 
                 cls.update()
+                
                 return True
                 
             elif(datatype == 'INSTANCER'):
@@ -7721,6 +7886,11 @@ class PCVIVManager():
             o = v['object']
             c = PCVControl(o)
             c.reset()
+            
+            pcv = o.point_cloud_visualizer
+            pcviv = pcv.instance_visualizer
+            pcviv.targets.clear()
+            
         cls.registry = {}
     
     @classmethod
@@ -7728,24 +7898,49 @@ class PCVIVManager():
         if(not cls.initialized):
             return
         
-        o = None
-        for k, v in cls.registry.items():
-            if(k == uuid):
-                # o = bpy.data.objects.get(v['object'])
-                o = v['object']
-                break
-        if(o):
+        found = False
+        for key, regitem in cls.registry.items():
+            o = regitem['object']
             pcv = o.point_cloud_visualizer
             pcviv = pcv.instance_visualizer
-            item = cls.registry[pcviv.uuid]
-            if(item['mode'] != mode):
-                item['dirty'] = True
-                item['mode'] = mode
+            for ti in pcviv.targets:
+                if(ti.uuid == uuid):
+                    found = True
+                    break
+        if(found):
+            ci = regitem['cache'][uuid]
+            if(ci['mode'] != mode):
+                ci['mode'] = mode
+                ci['dirty'] = True
                 cls.update()
-            # log('PCVIVManager: mode: {} for: {}'.format(pcviv.mode, o.name, ))
         else:
-            # what to do with this? e.g. if initialized and not registered this will happen..
-            log('PCVIVManager: mode: object not found, uuid: {}'.format(uuid))
+            log('PCVIVManager: mode: target not found, uuid: {}'.format(uuid))
+        
+        # o = None
+        # for k, v in cls.registry.items():
+        #     if(k == uuid):
+        #         # o = bpy.data.objects.get(v['object'])
+        #         o = v['object']
+        #         break
+        # if(o):
+        #     pcv = o.point_cloud_visualizer
+        #     pcviv = pcv.instance_visualizer
+        #     item = cls.registry[pcviv.uuid]
+        #     if(item['mode'] != mode):
+        #         item['dirty'] = True
+        #         item['mode'] = mode
+        #         cls.update()
+        #     # log('PCVIVManager: mode: {} for: {}'.format(pcviv.mode, o.name, ))
+        # else:
+        #     # what to do with this? e.g. if initialized and not registered this will happen..
+        #     log('PCVIVManager: mode: object not found, uuid: {}'.format(uuid))
+    
+    @classmethod
+    def _redraw(cls):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
 
 
 class PCVIV_OT_init(Operator):
@@ -7836,6 +8031,75 @@ class PCVIV_OT_reset(Operator):
             if(o.particle_systems.active is not None):
                 for ps in o.particle_systems:
                     ps.settings.display_method = 'RENDER'
+        
+        return {'FINISHED'}
+
+
+class PCVIV_OT_list_actions(Operator):
+    bl_idname = "point_cloud_visualizer.list_actions"
+    bl_label = "List Actions"
+    bl_description = "Move items up and down, add and remove"
+    
+    action: EnumProperty(items=(('UP', "Up", "", ), ('DOWN', "Down", "", ), ('REMOVE', "Remove", "", ), ('ADD', "Add", "", ), ), )
+    
+    @classmethod
+    def poll(cls, context, ):
+        if(context.object is None):
+            return False
+        return True
+    
+    def invoke(self, context, event, ):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        pcviv = pcv.instance_visualizer
+        
+        i = pcviv.targets_index
+        
+        if(self.action == 'DOWN' and i < len(pcviv.targets) - 1):
+            pcviv.targets.move(i, i + 1)
+            pcviv.targets_index += 1
+        elif(self.action == 'UP' and i >= 1):
+            pcviv.targets.move(i, i - 1)
+            pcviv.targets_index -= 1
+        elif(self.action == 'REMOVE'):
+            pcviv.targets_index -= 1
+            pcviv.targets.remove(i)
+        elif(self.action == 'ADD'):
+            item = pcviv.targets.add()
+            pcviv.targets_index = len(pcviv.targets) - 1
+            
+            # item.name
+            # item.uuid
+            # item.mode
+            # item.static_max_points
+            # item.interactive_max_points
+            
+        return {"FINISHED"}
+
+
+class PCVIV_OT_static_refresh(Operator):
+    bl_idname = "point_cloud_visualizer.static_refresh"
+    bl_label = "Refresh"
+    bl_description = "Refresh instance visualization in static mode"
+    
+    index: IntProperty(name="Index", default=0, description="", )
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        pcviv = pcv.instance_visualizer
+        reg = PCVIVManager.registry[pcviv.uuid]
+        ti = pcviv.targets[self.index]
+        ci = reg['cache'][ti.uuid]
+        ci['dirty'] = True
+        
+        PCVIVManager.update()
         
         return {'FINISHED'}
 
@@ -8814,6 +9078,21 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
 
 
+class PCVIV_UL_targets(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        c = layout.column()
+        f = 0.5
+        r = c.row()
+        s = r.split(factor=f)
+        s.label(text=item.name)
+        s = s.split(factor=1.0)
+        r = s.row(align=True)
+        cc = r.column(align=True)
+        cc.operator('point_cloud_visualizer.static_refresh', text="", icon='FILE_REFRESH', ).index = index
+        cc.enabled = (item.mode == 'STATIC')
+        r.prop(item, 'mode', expand=True, )
+
+
 class PCVIV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -8914,14 +9193,33 @@ class PCVIV_PT_panel(Panel):
         
         c.separator()
         
-        cc = c.column(align=True)
-        cc.prop(pcviv, 'static_max_points')
-        cc.prop(pcviv, 'interactive_max_points')
-        # r = c.row()
-        # r.prop(pcviv, 'mode', expand=True, )
         r = c.row()
-        third_label_two_thirds_prop_enum_expand(pcviv, 'mode', r, )
-        # r.scale_y = 1.5
+        r.template_list('PCVIV_UL_targets', "", pcviv, 'targets', pcviv, 'targets_index', rows=3, maxrows=6, )
+        if(len(pcviv.targets) > 0):
+            ti = pcviv.targets[pcviv.targets_index]
+            b = c.box()
+            cc = b.column(align=True)
+            cc.label(text='Selected item properties:')
+            cc.prop(ti, 'static_max_points')
+            cc.prop(ti, 'interactive_max_points')
+        
+        # cc = r.column(align=True)
+        # cc.operator("object.particle_system_add", icon='ADD', text="")
+        # cc.operator("object.particle_system_remove", icon='REMOVE', text="")
+        # cc.separator()
+        # cc.operator("custom.list_action", icon='TRIA_UP', text="").action = 'UP'
+        # cc.operator("custom.list_action", icon='TRIA_DOWN', text="").action = 'DOWN'
+        
+        # c.separator()
+        #
+        # cc = c.column(align=True)
+        # cc.prop(pcviv, 'static_max_points')
+        # cc.prop(pcviv, 'interactive_max_points')
+        # # r = c.row()
+        # # r.prop(pcviv, 'mode', expand=True, )
+        # r = c.row()
+        # third_label_two_thirds_prop_enum_expand(pcviv, 'mode', r, )
+        # # r.scale_y = 1.5
         
         c.separator()
         
@@ -8966,7 +9264,17 @@ class PCVIV_PT_panel(Panel):
             cc.label(text='item: {}'.format(ci))
             ci += 1
             for l, w in v.items():
-                cc.label(text='{}{}: {}'.format(tab, l, w))
+                if(type(w) == dict):
+                    cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
+                    for m, x in w.items():
+                        cc.label(text='{}{}: {}'.format(tab * 2, 'key', m))
+                        for n, y in x.items():
+                            if(type(y) == np.ndarray or type(y) == list):
+                                cc.label(text='{}{}: {} item(s)'.format(tab * 3, n, len(y)))
+                            else:
+                                cc.label(text='{}{}: {}'.format(tab * 3, n, y))
+                else:
+                    cc.label(text='{}{}: {}'.format(tab, l, w))
         
         c.separator()
         c.operator('script.reload')
@@ -9073,14 +9381,10 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
-class PCVIV_properties(PropertyGroup):
+class PCVIV_target_item(PropertyGroup):
+    name: StringProperty(name="Name", default="", )
+    # this is going to be used as key in static draw cache, to skip regenerating when one of systems are in interactive mode..
     uuid: StringProperty(default="", options={'HIDDEN', }, )
-    
-    datatype: EnumProperty(name="Type", items=[('PARTICLES', "Particle Instances", ""),
-                                               # ('INSTANCER', "Instances", ""),
-                                               ], default='PARTICLES', description="", )
-    # target: StringProperty(name="Object", default="", description="", )
-    # target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
     
     def _mode_update(self, context, ):
         PCVIVManager.mode(self.uuid, self.mode, )
@@ -9090,6 +9394,35 @@ class PCVIV_properties(PropertyGroup):
                                            ], default='STATIC', description="Static mode for pretty preview, Interactive mode for real time updates", update=_mode_update, )
     static_max_points: IntProperty(name="Static Max. Points", default=5000, min=1, max=1000000, description="Maximum number of points per instance in Static Mode", )
     interactive_max_points: IntProperty(name="Interactive Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance in Interactive Mode", )
+
+
+class PCVIV_properties(PropertyGroup):
+    # uuid: StringProperty(default="", options={'HIDDEN', }, )
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    
+    datatype: EnumProperty(name="Type", items=[('PARTICLES', "Particle Instances", ""),
+                                               # ('INSTANCER', "Instances", ""),
+                                               ], default='PARTICLES', description="", )
+    # target: StringProperty(name="Object", default="", description="", )
+    # target_psys: StringProperty(name="Particle System", default="", description="Particle System to visualize", )
+    
+    # def _mode_update(self, context, ):
+    #     PCVIVManager.mode(self.uuid, self.mode, )
+    #
+    # mode: EnumProperty(name="Mode", items=[('STATIC', "Static", ""),
+    #                                        ('INTERACTIVE', "Interactive", ""),
+    #                                        ], default='STATIC', description="Static mode for pretty preview, Interactive mode for real time updates", update=_mode_update, )
+    # static_max_points: IntProperty(name="Static Max. Points", default=5000, min=1, max=1000000, description="Maximum number of points per instance in Static Mode", )
+    # interactive_max_points: IntProperty(name="Interactive Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance in Interactive Mode", )
+    
+    targets: CollectionProperty(type=PCVIV_target_item, name="Targets", description="", )
+    
+    def _targets_index_update(self, context, ):
+        # FIXME: make it somehow error proof..
+        # context.object.particle_systems.active_index = self.targets_index
+        pass
+    
+    targets_index: IntProperty(name="Index", default=0, description="", update=_targets_index_update, )
 
 
 class PCV_properties(PropertyGroup):
@@ -9487,7 +9820,7 @@ def watcher(scene):
 
 
 classes = (
-    PCVIV_properties,
+    PCVIV_target_item, PCVIV_UL_targets, PCVIV_properties,
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_edit,
@@ -9504,7 +9837,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset,
+    PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset, PCVIV_OT_list_actions, PCVIV_OT_static_refresh,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
