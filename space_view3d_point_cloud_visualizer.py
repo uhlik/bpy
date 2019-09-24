@@ -8206,6 +8206,158 @@ class PCVIV_OT_static_refresh(Operator):
 """
 
 
+class PCVIV2_OT_init(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_init"
+    bl_label = "init"
+    bl_description = "PCVIV2Manager.init"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.init()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_deinit"
+    bl_label = "deinit"
+    bl_description = "PCVIV2Manager.deinit"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.deinit()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_reset(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_reset"
+    bl_label = "reset"
+    bl_description = "PCVIV2Manager.reset"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.reset()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_update(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_update"
+    bl_label = "update"
+    bl_description = "PCVIV2Manager.update"
+    
+    uuid: StringProperty(name="UUID", default='', )
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.update(self.uuid)
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_draw_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_draw_all"
+    bl_label = "draw_all"
+    bl_description = "PCVIV2Manager.draw_all"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.draw_all()
+        return {'FINISHED'}
+
+
+class PCVIV2Manager():
+    initialized = False
+    cache = {}
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
+        bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
+        cls.initialized = True
+        cls.uuid_handler(None)
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        # bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
+        cls.initialized = False
+    
+    @classmethod
+    def uuid_handler(cls, scene, ):
+        if(not cls.initialized):
+            return
+        dps = bpy.data.particles
+        for ps in dps:
+            pcviv = ps.pcv_instance_visualizer
+            if(pcviv.uuid == ""):
+                pcviv.uuid = str(uuid.uuid1())
+                # cls._redraw_view_3d()
+    
+    @classmethod
+    def reset(cls):
+        cls.deinit()
+        
+        # for k, v in cls.registry.items():
+        #     o = v['object']
+        #     c = PCVControl(o)
+        #     c.reset()
+        #
+        #     pcv = o.point_cloud_visualizer
+        #     pcviv = pcv.instance_visualizer
+        #     pcviv.targets.clear()
+        
+        cls.cache = {}
+    
+    @classmethod
+    def update(cls, uuid, ):
+        print('update: {}'.format(uuid))
+        # mark for update and call render
+    
+    @classmethod
+    def draw_all(cls):
+        print('draw_all')
+        # loop over all, and if draw, render
+    
+    @classmethod
+    def render(cls):
+        print('render')
+        # loop over all dirty and generate cloud, join with alredy generated that are not dirty from cache and draw, store generated clouds and mark not dirty
+    
+    @classmethod
+    def _redraw_view_3d(cls):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -9390,6 +9542,130 @@ class PCVIV_PT_panel(Panel):
 """
 
 
+class PCVIV2_PT_panel(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCV Instance Visualizer"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        if(not debug_mode()):
+            return False
+        
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        def third_label_two_thirds_prop(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, text='', )
+        
+        def third_label_two_thirds_prop_search(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_search_aligned(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row(align=True)
+            s = r.split(factor=f, align=True)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0, align=True)
+            r = s.row(align=True)
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_enum_expand(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, expand=True, )
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.pcviv_init')
+        r.operator('point_cloud_visualizer.pcviv_deinit')
+        c.separator()
+        
+        if(not PCVIV2Manager.initialized):
+            c.label(text='not initialized..', icon='ERROR', )
+        else:
+            
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_draw_all')
+            c.separator()
+            
+            for psys in o.particle_systems:
+                pcviv = psys.settings.pcv_instance_visualizer
+                b = c.box()
+                cc = b.column()
+                cc.prop(psys.settings, 'name', emboss=False, text='name', )
+                cc.prop(pcviv, 'uuid', emboss=False, )
+                # cc.label(text='(dirty: {}, debug_update: {})'.format(pcviv.dirty, pcviv.debug_update, ))
+                cc.scale_y = 0.5
+                cc = b.column()
+                r = cc.row()
+                r.prop(pcviv, 'max_points')
+                r = cc.row(align=True)
+                r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                ccc = r.column(align=True)
+                if(pcviv.draw):
+                    # and if dirty, if not dirty, don't alert?
+                    ccc.alert = True
+                else:
+                    ccc.enabled = False
+                ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                if(pcviv.debug_update != ''):
+                    cc.label(text='(debug_update: {})'.format(pcviv.debug_update, ))
+        
+        c.separator()
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.pcviv_reset')
+        
+        c.separator()
+        c.operator('script.reload')
+
+
 class PCV_PT_debug(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -9537,6 +9813,37 @@ class PCVIV_properties(PropertyGroup):
     
     debug_update: StringProperty(default="", )
 """
+
+
+class PCVIV2_properties(PropertyGroup):
+    # to identify object, key for storing cloud in cache, etc.
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    # NOTE: dirty should be runtime only, i am not interested in saved value on next scene load
+    # # mark for cloud generation
+    # dirty: BoolProperty(default=True, options={'HIDDEN', }, )
+    
+    def _draw_update(self, context, ):
+        if(self.draw):
+            # self.dirty = True
+            PCVIV2Manager.update(self.uuid)
+        else:
+            # self.dirty = False
+            pass
+    
+    # use pcv for drawing, make auto update when set to True
+    draw: BoolProperty(name="Draw", description="Draw as point cloud", default=False, update=_draw_update, )
+    # user can set maximum number of points drawn per instance
+    max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
+    # store info how long was last update
+    debug_update: StringProperty(default="", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.ParticleSettings.pcv_instance_visualizer = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.ParticleSettings.pcv_instance_visualizer
 
 
 class PCV_properties(PropertyGroup):
@@ -9847,6 +10154,7 @@ def _update_panel_bl_category(self, context):
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
         # PCVIV_PT_panel,
+        PCVIV2_PT_panel,
         PCV_PT_debug,
     )
     try:
@@ -9931,10 +10239,12 @@ def watcher(scene):
     PCVManager.deinit()
     # # PCVIVManager.deinit()
     # PCVIVManager.reset()
+    PCVIV2Manager.deinit()
 
 
 classes = (
     # PCVIV_target_item, PCVIV_UL_targets, PCVIV_properties,
+    PCVIV2_properties,
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_edit,
@@ -9952,6 +10262,7 @@ classes = (
     PCV_OT_generate_volume_point_cloud,
     
     # PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset, PCVIV_OT_list_actions, PCVIV_OT_static_refresh,
+    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_update, PCVIV2_OT_draw_all,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
@@ -9967,6 +10278,7 @@ def register():
 def unregister():
     PCVSequence.deinit()
     PCVManager.deinit()
+    PCVIV2Manager.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
