@@ -7406,6 +7406,7 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
+"""
 def _pcv_pe_manager_update():
     PCVIVManager.update()
     return None
@@ -8202,6 +8203,7 @@ class PCVIV_OT_static_refresh(Operator):
         PCVIVManager.update()
         
         return {'FINISHED'}
+"""
 
 
 class PCV_PT_panel(Panel):
@@ -9178,6 +9180,7 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
 
 
+"""
 class PCVIV_UL_targets(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         c = layout.column()
@@ -9384,6 +9387,7 @@ class PCVIV_PT_panel(Panel):
         
         c.separator()
         c.operator('script.reload')
+"""
 
 
 class PCV_PT_debug(Panel):
@@ -9487,6 +9491,7 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
+"""
 class PCVIV_target_item(PropertyGroup):
     name: StringProperty(name="Name", default="", )
     # this is going to be used as key in static draw cache, to skip regenerating when one of systems are in interactive mode..
@@ -9531,6 +9536,7 @@ class PCVIV_properties(PropertyGroup):
     targets_index: IntProperty(name="Index", default=0, description="", update=_targets_index_update, )
     
     debug_update: StringProperty(default="", )
+"""
 
 
 class PCV_properties(PropertyGroup):
@@ -9822,7 +9828,7 @@ class PCV_properties(PropertyGroup):
     pe_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
     '''
     
-    instance_visualizer: PointerProperty(type=PCVIV_properties)
+    # instance_visualizer: PointerProperty(type=PCVIV_properties)
     
     @classmethod
     def register(cls):
@@ -9840,7 +9846,7 @@ def _update_panel_bl_category(self, context):
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
-        PCVIV_PT_panel,
+        # PCVIV_PT_panel,
         PCV_PT_debug,
     )
     try:
@@ -9923,12 +9929,12 @@ class PCV_preferences(AddonPreferences):
 def watcher(scene):
     PCVSequence.deinit()
     PCVManager.deinit()
-    # PCVIVManager.deinit()
-    PCVIVManager.reset()
+    # # PCVIVManager.deinit()
+    # PCVIVManager.reset()
 
 
 classes = (
-    PCVIV_target_item, PCVIV_UL_targets, PCVIV_properties,
+    # PCVIV_target_item, PCVIV_UL_targets, PCVIV_properties,
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_edit,
@@ -9945,7 +9951,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset, PCVIV_OT_list_actions, PCVIV_OT_static_refresh,
+    # PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset, PCVIV_OT_list_actions, PCVIV_OT_static_refresh,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
