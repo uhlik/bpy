@@ -8256,7 +8256,7 @@ class PCVIV2_OT_reset(Operator):
 
 class PCVIV2_OT_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_update"
-    bl_label = "update"
+    bl_label = "Update"
     bl_description = "PCVIV2Manager.update"
     
     uuid: StringProperty(name="UUID", default='', )
@@ -8274,7 +8274,7 @@ class PCVIV2_OT_update(Operator):
 
 class PCVIV2_OT_update_all(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_update_all"
-    bl_label = "update_all"
+    bl_label = "Update All"
     bl_description = "PCVIV2Manager.update_all"
     
     @classmethod
@@ -8327,8 +8327,8 @@ class PCVIV2Manager():
     
     @classmethod
     def reset(cls):
-        if(not cls.initialized):
-            return
+        # if(not cls.initialized):
+        #     return
         
         log("reset", prefix='>>>', )
         cls.deinit()
@@ -8337,10 +8337,19 @@ class PCVIV2Manager():
             pcv = o.point_cloud_visualizer
             pcv.pcviv_debug_draw = ''
             for i, psys in enumerate(o.particle_systems):
-                pcviv = psys.settings.pcv_instance_visualizer
+                pset = psys.settings
+                pcviv = pset.pcv_instance_visualizer
                 pcviv.uuid = ""
-                pcviv.draw = False
+                pcviv.draw = True
                 pcviv.debug_update = ""
+                
+                # NOTE: maybe store these somewhere, but these are defaults, so makes sense too
+                if(pset.render_type == 'COLLECTION'):
+                    for co in pset.instance_collection.objects:
+                        co.display_type = 'TEXTURED'
+                elif(pset.render_type == 'OBJECT'):
+                    settings.instance_object.display_type = 'TEXTURED'
+                pset.display_method = 'RENDER'
             
             c = PCVControl(o)
             c.reset()
@@ -8368,8 +8377,9 @@ class PCVIV2Manager():
                 raise Exception('PCVIV2Manager.update, uuid {} not found in particle systems on object: {}'.format(uuid, o.name))
             
             log("update: psys not in cache, adding..", 1, prefix='>>>', )
-            # not yet in cache
+            # not yet in cache, we should fix that
             ci = {'uuid': uuid,
+                  # we just started, so it's always dirty, yeah baby..
                   'dirty': True,
                   'draw': pcviv.draw,
                   # 'draw': True,
@@ -9915,71 +9925,106 @@ class PCVIV2_PT_panel(Panel):
                 pcviv = psys.settings.pcv_instance_visualizer
                 b = c.box()
                 cc = b.column()
-                cc.prop(psys.settings, 'name', emboss=False, text='name', )
-                cc.prop(pcviv, 'uuid', emboss=False, )
+                # cc.prop(psys.settings, 'name', emboss=False, text='name', )
+                # cc.prop(pcviv, 'uuid', emboss=False, )
                 # cc.label(text='(dirty: {}, debug_update: {})'.format(pcviv.dirty, pcviv.debug_update, ))
-                cc.scale_y = 0.5
+                # cc.scale_y = 0.5
+                # cc.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
+                
+                r = cc.row()
+                # r.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
+                r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', emboss=False, )
+                
+                # r = cc.row(align=True)
+                # r.prop(pcviv, 'max_points')
+                # if(pcviv.draw):
+                #     r.alert = True
+                # else:
+                #     r.enabled = False
+                # r.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                
                 cc = b.column()
                 r = cc.row()
                 r.prop(pcviv, 'max_points')
                 r = cc.row(align=True)
                 r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
                 ccc = r.column(align=True)
                 if(pcviv.draw):
-                    # and if dirty, if not dirty, don't alert?
-                    ccc.alert = True
+                    # TODO: if not dirty, don't alert? it would be better for it if it have some meaning behind it, if not yet drawn draw button in red
+                    alert = False
+                    if(pcviv.uuid in PCVIV2Manager.cache.keys()):
+                        if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
+                            # if in cache and is dirty
+                            alert = True
+                    else:
+                        # or not in cache at all, ie. not processed yet
+                        alert = True
+                    ccc.alert = alert
+                    
                 else:
                     ccc.enabled = False
                 ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
-                if(pcviv.debug_update != ''):
-                    cc.label(text='(debug_update: {})'.format(pcviv.debug_update, ))
+                if(pcviv.debug_update == ''):
+                    cc.label(text='(debug: {})'.format('n/a', ))
+                else:
+                    cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
         
         c.separator()
         if(pcv.pcviv_debug_draw != ''):
-            c.label(text='(debug_draw: {})'.format(pcv.pcviv_debug_draw, ))
+            c.label(text='(debug: {})'.format(pcv.pcviv_debug_draw, ))
             c.separator()
         
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_reset')
         c.separator()
         
+        # -----------------------------------------------------------------------
+        
         # debug stuff ----------------->
-        cc = c.column()
-        cc.label(text="object: '{}'".format(o.name))
-        cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
-        cc.scale_y = 0.5
         
-        c.separator()
-        
-        tab = '        '
-        
-        cc = c.column()
-        cc.label(text="PCVIV2Manager:")
-        cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
-        cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
-        cc.scale_y = 0.5
-        
-        c.separator()
-        tab = '    '
-        ci = 0
-        for k, v in PCVIV2Manager.cache.items():
-            b = c.box()
-            cc = b.column()
+        r = c.row()
+        r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Debug Info")
+        if(pcv.pcviv_debug_panel_show_info):
+            cc = c.column()
+            cc.label(text="object: '{}'".format(o.name))
+            cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
             cc.scale_y = 0.5
-            cc.label(text='item: {}'.format(ci))
-            ci += 1
-            for l, w in v.items():
-                if(type(w) == dict):
-                    cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
-                elif(type(w) == np.ndarray or type(w) == list):
-                    cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
-                else:
-                    cc.label(text='{}{}: {}'.format(tab, l, w))
+            
+            c.separator()
+            
+            tab = '        '
+            
+            cc = c.column()
+            cc.label(text="PCVIV2Manager:")
+            cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
+            cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
+            cc.scale_y = 0.5
+            
+            c.separator()
+            tab = '    '
+            ci = 0
+            for k, v in PCVIV2Manager.cache.items():
+                b = c.box()
+                cc = b.column()
+                cc.scale_y = 0.5
+                cc.label(text='item: {}'.format(ci))
+                ci += 1
+                for l, w in v.items():
+                    if(type(w) == dict):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
+                    elif(type(w) == np.ndarray or type(w) == list):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
+                    else:
+                        cc.label(text='{}{}: {}'.format(tab, l, w))
         
         # <----------------- debug stuff
         
+        # and some development shortcuts..
         c.separator()
-        c.operator('script.reload')
+        c.operator('script.reload', text='debug: reload scripts', )
 
 
 class PCV_PT_debug(Panel):
@@ -10460,6 +10505,7 @@ class PCV_properties(PropertyGroup):
     
     # store info how long was last draw call, ie get points from cache, join, draw
     pcviv_debug_draw: StringProperty(default="", )
+    pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
     
     @classmethod
     def register(cls):
