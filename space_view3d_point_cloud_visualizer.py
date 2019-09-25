@@ -8419,7 +8419,7 @@ class PCVIV2Manager():
                     for co in pset.instance_collection.objects:
                         co.display_type = 'TEXTURED'
                 elif(pset.render_type == 'OBJECT'):
-                    settings.instance_object.display_type = 'TEXTURED'
+                    pset.instance_object.display_type = 'TEXTURED'
                 pset.display_method = 'RENDER'
             
             c = PCVControl(o)
