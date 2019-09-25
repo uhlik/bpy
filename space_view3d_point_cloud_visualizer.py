@@ -62,8 +62,8 @@ from mathutils.bvhtree import BVHTree
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
 
-def log(msg, indent=0, ):
-    m = "{0}> {1}".format("    " * indent, msg)
+def log(msg, indent=0, prefix='>', ):
+    m = "{}{} {}".format("    " * indent, prefix, msg)
     if(debug_mode()):
         print(m)
 
@@ -8208,7 +8208,7 @@ class PCVIV_OT_static_refresh(Operator):
 
 class PCVIV2_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_init"
-    bl_label = "init"
+    bl_label = "debug: init"
     bl_description = "PCVIV2Manager.init"
     
     @classmethod
@@ -8224,7 +8224,7 @@ class PCVIV2_OT_init(Operator):
 
 class PCVIV2_OT_deinit(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_deinit"
-    bl_label = "deinit"
+    bl_label = "debug: deinit"
     bl_description = "PCVIV2Manager.deinit"
     
     @classmethod
@@ -8240,7 +8240,7 @@ class PCVIV2_OT_deinit(Operator):
 
 class PCVIV2_OT_reset(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_reset"
-    bl_label = "reset"
+    bl_label = "debug: reset all"
     bl_description = "PCVIV2Manager.reset"
     
     @classmethod
@@ -8268,14 +8268,14 @@ class PCVIV2_OT_update(Operator):
         return True
     
     def execute(self, context):
-        PCVIV2Manager.update(self.uuid)
+        PCVIV2Manager.update(context.object, self.uuid, )
         return {'FINISHED'}
 
 
-class PCVIV2_OT_draw_all(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_draw_all"
-    bl_label = "draw_all"
-    bl_description = "PCVIV2Manager.draw_all"
+class PCVIV2_OT_update_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_update_all"
+    bl_label = "update_all"
+    bl_description = "PCVIV2Manager.update_all"
     
     @classmethod
     def poll(cls, context):
@@ -8284,18 +8284,20 @@ class PCVIV2_OT_draw_all(Operator):
         return True
     
     def execute(self, context):
-        PCVIV2Manager.draw_all()
+        PCVIV2Manager.update_all(context.object, )
         return {'FINISHED'}
 
 
 class PCVIV2Manager():
     initialized = False
     cache = {}
+    # override_draw_update = False
     
     @classmethod
     def init(cls):
         if(cls.initialized):
             return
+        log("init", prefix='>>>', )
         # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
         bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
         cls.initialized = True
@@ -8305,6 +8307,7 @@ class PCVIV2Manager():
     def deinit(cls):
         if(not cls.initialized):
             return
+        log("deinit", prefix='>>>', )
         # bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
         bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
         cls.initialized = False
@@ -8313,42 +8316,315 @@ class PCVIV2Manager():
     def uuid_handler(cls, scene, ):
         if(not cls.initialized):
             return
+        # log("uuid_handler", prefix='>>>', )
         dps = bpy.data.particles
         for ps in dps:
             pcviv = ps.pcv_instance_visualizer
             if(pcviv.uuid == ""):
+                log("uuid_handler: found psys without uuid", 1, prefix='>>>', )
                 pcviv.uuid = str(uuid.uuid1())
                 # cls._redraw_view_3d()
     
     @classmethod
     def reset(cls):
+        if(not cls.initialized):
+            return
+        
+        log("reset", prefix='>>>', )
         cls.deinit()
         
-        # for k, v in cls.registry.items():
-        #     o = v['object']
-        #     c = PCVControl(o)
-        #     c.reset()
-        #
-        #     pcv = o.point_cloud_visualizer
-        #     pcviv = pcv.instance_visualizer
-        #     pcviv.targets.clear()
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            pcv.pcviv_debug_draw = ''
+            for i, psys in enumerate(o.particle_systems):
+                pcviv = psys.settings.pcv_instance_visualizer
+                pcviv.uuid = ""
+                pcviv.draw = False
+                pcviv.debug_update = ""
+            
+            c = PCVControl(o)
+            c.reset()
         
         cls.cache = {}
     
     @classmethod
-    def update(cls, uuid, ):
-        print('update: {}'.format(uuid))
-        # mark for update and call render
+    def update(cls, o, uuid, skip_render=False, ):
+        if(not cls.initialized):
+            return
+        
+        log("update", prefix='>>>', )
+        
+        if(uuid in cls.cache.keys()):
+            log("update: is cached, setting dirty..", 1, prefix='>>>', )
+            cls.cache[uuid]['dirty'] = True
+        else:
+            found = False
+            for i, psys in enumerate(o.particle_systems):
+                pcviv = psys.settings.pcv_instance_visualizer
+                if(pcviv.uuid == uuid):
+                    found = True
+                    break
+            if(not found):
+                raise Exception('PCVIV2Manager.update, uuid {} not found in particle systems on object: {}'.format(uuid, o.name))
+            
+            log("update: psys not in cache, adding..", 1, prefix='>>>', )
+            # not yet in cache
+            ci = {'uuid': uuid,
+                  'dirty': True,
+                  'draw': pcviv.draw,
+                  # 'draw': True,
+                  'vs': None,
+                  'cs': None, }
+            cls.cache[uuid] = ci
+            
+            # cls.override_draw_update = True
+            # pcviv.draw = True
+            # cls.override_draw_update = False
+        
+        if(not skip_render):
+            cls.render(o)
     
     @classmethod
-    def draw_all(cls):
-        print('draw_all')
-        # loop over all, and if draw, render
+    def update_all(cls, o, ):
+        if(not cls.initialized):
+            return
+        
+        log("update_all", prefix='>>>', )
+        
+        ls = []
+        for i, psys in enumerate(o.particle_systems):
+            pcviv = psys.settings.pcv_instance_visualizer
+            ls.append(pcviv.uuid)
+        for u in ls:
+            cls.update(o, u, True, )
+        
+        cls.render(o)
     
     @classmethod
-    def render(cls):
-        print('render')
-        # loop over all dirty and generate cloud, join with alredy generated that are not dirty from cache and draw, store generated clouds and mark not dirty
+    def draw_update(cls, o, uuid, do_draw, ):
+        if(not cls.initialized):
+            return
+        
+        # # FIXME: is this the best i can do? it's simple, but not elegant solution..
+        # if(cls.override_draw_update):
+        #     return
+        
+        log("draw_update", prefix='>>>', )
+        
+        found = False
+        for k, v in cls.cache.items():
+            if(k == uuid):
+                found = True
+                break
+        
+        if(not found):
+            # if not found, it should be first time called..
+            log("draw_update: uuid not found in cache, updating..", 1, prefix='>>>', )
+            # return
+            cls.update(o, uuid, )
+            return
+        
+        ci = cls.cache[uuid]['draw'] = do_draw
+        # cls.update(uuid)
+        cls.render(o)
+    
+    @classmethod
+    def generate_psys(cls, o, psys_slot, max_points, ):
+        log("generate_psys", prefix='>>>', )
+        
+        # FIXME: this should be created just once and passed to next call in the same update.. possible optimization?
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        o = o.evaluated_get(depsgraph)
+        # why can particle systems have the same name? WHY? NOTHING else works like that in blender
+        # psys = o.particle_systems[psys.name]
+        psys = o.particle_systems[psys_slot]
+        settings = psys.settings
+        
+        if(settings.render_type == 'COLLECTION'):
+            collection = settings.instance_collection
+            cos = collection.objects
+            fragments = []
+            fragments_indices = {}
+            for i, co in enumerate(cos):
+                if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                    self.report({'ERROR'}, "Object does not have geometry data.")
+                    return {'CANCELLED'}
+                # extract points
+                sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                # store
+                fragments.append((sampler.vs, sampler.cs, ))
+                # FIXME: better not to access data by object name, find something different
+                fragments_indices[co.name] = (i, co, )
+            
+            # process all instances, transform fragment and store
+            all_frags = []
+            # loop over instances
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                # if it is from psys
+                if(object_instance.particle_system == psys):
+                    # and it is instance
+                    if(object_instance.is_instance):
+                        # get matrix
+                        m = object_instance.matrix_world
+                        # unapply emitter matrix
+                        m = o.matrix_world.inverted() @ m
+                        # get correct fragment
+                        i, _ = fragments_indices[obj.name]
+                        fvs, fcs = fragments[i]
+                        # transform
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        # store
+                        all_frags.append((fvs, fcs, ))
+            
+            # join all frags
+            if(len(all_frags) == 0):
+                vs = []
+                cs = []
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
+        elif(settings.render_type == 'OBJECT'):
+            co = settings.instance_object
+            if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                self.report({'ERROR'}, "Object does not have geometry data.")
+                return {'CANCELLED'}
+            # extract points
+            sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+            ofvs = sampler.vs
+            ofcs = sampler.cs
+            
+            all_frags = []
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                if(object_instance.particle_system == psys):
+                    if(object_instance.is_instance):
+                        m = object_instance.matrix_world
+                        m = o.matrix_world.inverted() @ m
+                        fvs = ofvs[:]
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        all_frags.append((fvs, ofcs, ))
+            
+            if(len(all_frags) == 0):
+                # vs = []
+                # cs = []
+                vs = np.zeros(0, dtype=np.float32, )
+                cs = np.zeros(0, dtype=np.float32, )
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+            
+        else:
+            # just generate pink points
+            l = len(psys.particles)
+            vs = np.zeros((l * 3), dtype=np.float32, )
+            psys.particles.foreach_get('location', vs, )
+            vs.shape = (l, 3)
+            
+            m = o.matrix_world.inverted()
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            
+            cs = np.column_stack((np.full(l, 1.0, dtype=np.float32, ),
+                                  np.full(l, 0.0, dtype=np.float32, ),
+                                  np.full(l, 1.0, dtype=np.float32, ), ))
+        
+        return vs, cs
+    
+    @classmethod
+    def render(cls, o, ):
+        # if(not cls.initialized):
+        #     return
+        
+        log("render", prefix='>>>', )
+        
+        def pre_generate(psys, ):
+            dts = None
+            dt = None
+            psys_collection = None
+            psys_object = None
+            settings = psys.settings
+            if(settings.render_type == 'COLLECTION'):
+                psys_collection = settings.instance_collection
+                dts = []
+                for co in psys_collection.objects:
+                    dts.append((co, co.display_type, ))
+                    co.display_type = 'BOUNDS'
+            elif(settings.render_type == 'OBJECT'):
+                psys_object = settings.instance_object
+                dt = psys_object.display_type
+                psys_object.display_type = 'BOUNDS'
+            settings.display_method = 'RENDER'
+            return dts, dt, psys_collection, psys_object
+        
+        def post_generate(psys, dts=None, dt=None, psys_collection=None, psys_object=None, ):
+            settings = psys.settings
+            settings.display_method = 'NONE'
+            if(settings.render_type == 'COLLECTION'):
+                for co, dt in dts:
+                    co.display_type = dt
+            elif(settings.render_type == 'OBJECT'):
+                psys_object.display_type = dt
+        
+        a = []
+        for i, psys in enumerate(o.particle_systems):
+            _t = time.time()
+            
+            pcviv = psys.settings.pcv_instance_visualizer
+            if(pcviv.uuid not in cls.cache.keys()):
+                continue
+            
+            ci = cls.cache[pcviv.uuid]
+            if(ci['dirty']):
+                log("render: psys is dirty", 1, prefix='>>>', )
+                
+                dts, dt, psys_collection, psys_object = pre_generate(psys, )
+                vs, cs = cls.generate_psys(o, i, pcviv.max_points, )
+                post_generate(psys, dts, dt, psys_collection, psys_object, )
+                ci['vs'] = vs
+                ci['cs'] = cs
+                ci['dirty'] = False
+            
+            if(ci['draw']):
+                log("render: psys is marked to draw", 1, prefix='>>>', )
+                
+                a.append((ci['vs'], ci['cs'], ))
+            
+            _d = datetime.timedelta(seconds=time.time() - _t)
+            pcviv.debug_update = "last update completed in {}".format(_d)
+        
+        _t = time.time()
+        vs = []
+        cs = []
+        av = []
+        ac = []
+        for v, c in a:
+            if(len(v) == 0):
+                # skip systems with zero particles
+                continue
+            av.append(v)
+            ac.append(c)
+        if(len(av) > 0):
+            vs = np.concatenate(av, axis=0, )
+            cs = np.concatenate(ac, axis=0, )
+        
+        log("render: drawing..", 1, prefix='>>>', )
+        c = PCVControl(o)
+        c.draw(vs, [], cs)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        pcv = o.point_cloud_visualizer
+        pcv.pcviv_debug_draw = "last draw completed in {}".format(_d)
     
     @classmethod
     def _redraw_view_3d(cls):
@@ -9632,7 +9908,7 @@ class PCVIV2_PT_panel(Panel):
         else:
             
             r = c.row(align=True)
-            r.operator('point_cloud_visualizer.pcviv_draw_all')
+            r.operator('point_cloud_visualizer.pcviv_update_all')
             c.separator()
             
             for psys in o.particle_systems:
@@ -9659,8 +9935,48 @@ class PCVIV2_PT_panel(Panel):
                     cc.label(text='(debug_update: {})'.format(pcviv.debug_update, ))
         
         c.separator()
+        if(pcv.pcviv_debug_draw != ''):
+            c.label(text='(debug_draw: {})'.format(pcv.pcviv_debug_draw, ))
+            c.separator()
+        
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_reset')
+        c.separator()
+        
+        # debug stuff ----------------->
+        cc = c.column()
+        cc.label(text="object: '{}'".format(o.name))
+        cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
+        cc.scale_y = 0.5
+        
+        c.separator()
+        
+        tab = '        '
+        
+        cc = c.column()
+        cc.label(text="PCVIV2Manager:")
+        cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
+        cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
+        cc.scale_y = 0.5
+        
+        c.separator()
+        tab = '    '
+        ci = 0
+        for k, v in PCVIV2Manager.cache.items():
+            b = c.box()
+            cc = b.column()
+            cc.scale_y = 0.5
+            cc.label(text='item: {}'.format(ci))
+            ci += 1
+            for l, w in v.items():
+                if(type(w) == dict):
+                    cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
+                elif(type(w) == np.ndarray or type(w) == list):
+                    cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
+                else:
+                    cc.label(text='{}{}: {}'.format(tab, l, w))
+        
+        # <----------------- debug stuff
         
         c.separator()
         c.operator('script.reload')
@@ -9823,19 +10139,24 @@ class PCVIV2_properties(PropertyGroup):
     # dirty: BoolProperty(default=True, options={'HIDDEN', }, )
     
     def _draw_update(self, context, ):
-        if(self.draw):
-            # self.dirty = True
-            PCVIV2Manager.update(self.uuid)
-        else:
-            # self.dirty = False
-            pass
+        # if(self.draw):
+        #     # self.dirty = True
+        #     PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
+        # else:
+        #     # self.dirty = False
+        #     pass
+        PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
     
-    # use pcv for drawing, make auto update when set to True
-    draw: BoolProperty(name="Draw", description="Draw as point cloud", default=False, update=_draw_update, )
+    # draw cloud enabled/disabled
+    # draw: BoolProperty(name="Draw", description="Draw as point cloud", default=False, update=_draw_update, )
+    draw: BoolProperty(name="Draw", description="Draw as point cloud", default=True, update=_draw_update, )
     # user can set maximum number of points drawn per instance
     max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
-    # store info how long was last update
+    
+    # store info how long was last update, generate and store to cache
     debug_update: StringProperty(default="", )
+    # # store info how long was last draw call, ie get points from cache, join, draw
+    # debug_draw: StringProperty(default="", )
     
     @classmethod
     def register(cls):
@@ -10137,6 +10458,9 @@ class PCV_properties(PropertyGroup):
     
     # instance_visualizer: PointerProperty(type=PCVIV_properties)
     
+    # store info how long was last draw call, ie get points from cache, join, draw
+    pcviv_debug_draw: StringProperty(default="", )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.point_cloud_visualizer = PointerProperty(type=cls)
@@ -10146,7 +10470,7 @@ class PCV_properties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
-def _update_panel_bl_category(self, context):
+def _update_panel_bl_category(self, context, ):
     _main_panel = PCV_PT_panel
     # NOTE: maybe generate those from 'classes' tuple, or, just don't forget to append new panel also here..
     _sub_panels = (
@@ -10262,7 +10586,7 @@ classes = (
     PCV_OT_generate_volume_point_cloud,
     
     # PCVIV_PT_panel, PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_reset, PCVIV_OT_list_actions, PCVIV_OT_static_refresh,
-    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_update, PCVIV2_OT_draw_all,
+    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_update, PCVIV2_OT_update_all,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
