@@ -2623,8 +2623,16 @@ class PCVManager():
                             break
             
             if(not use_stored):
-                # generate something to test it, later implement how to set it
-                sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                # # generate something to test it, later implement how to set it
+                # sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    if('MINIMAL_VARIABLE_SIZE' in ci['extra'].keys()):
+                        sizes = ci['extra']['MINIMAL_VARIABLE_SIZE']['sizes']
+                    else:
+                        sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                else:
+                    sizes = np.random.randint(low=1, high=10, size=len(vs), )
                 
                 shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
@@ -6176,6 +6184,8 @@ class PCV_OT_edit_start(Operator):
         view_layer.objects.active = o
         # and set edit mode
         bpy.ops.object.mode_set(mode='EDIT')
+        # set vertex select mode..
+        bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT', )
         
         o.point_cloud_visualizer.edit_is_edit_uuid = pcv.uuid
         o.point_cloud_visualizer.edit_is_edit_mesh = True
@@ -8371,6 +8381,15 @@ class PCVIV2Manager():
         log("init", prefix='>>>', )
         # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
         bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
+        
+        # NOTE: use these to fix undo/redo if needed
+        # bpy.app.handlers.redo_pre
+        # bpy.app.handlers.redo_post
+        # bpy.app.handlers.undo_pre
+        # bpy.app.handlers.undo_post
+        # bpy.app.handlers.depsgraph_update_pre
+        # bpy.app.handlers.depsgraph_update_post
+        
         cls.initialized = True
         cls.uuid_handler(None)
     
@@ -8422,7 +8441,7 @@ class PCVIV2Manager():
                     pset.instance_object.display_type = 'TEXTURED'
                 pset.display_method = 'RENDER'
             
-            c = PCVControl(o)
+            c = PCVIV2Control(o)
             c.reset()
         
         cls.cache = {}
@@ -8455,7 +8474,8 @@ class PCVIV2Manager():
                   'draw': pcviv.draw,
                   # 'draw': True,
                   'vs': None,
-                  'cs': None, }
+                  'cs': None,
+                  'sz': None, }
             cls.cache[uuid] = ci
             
             # cls.override_draw_update = True
@@ -8674,12 +8694,18 @@ class PCVIV2Manager():
                 post_generate(psys, dts, dt, psys_collection, psys_object, )
                 ci['vs'] = vs
                 ci['cs'] = cs
+                
+                # FIXME: PCV handles different shaders in a kinda messy way, would be nice to rewrite PCVManager.render to be more flexible, get rid of basic shader auto-creation, store extra shaders in the same way as default one, get rid of booleans for enabling extra shaders and make it to enum, etc.. big task, but it will make next customization much easier and simpler..
+                # sz = np.full(len(vs), pcviv.point_size, dtype=np.int8, )
+                sz = np.full(len(vs), pcviv.point_size, dtype=np.int, )
+                ci['sz'] = sz
+                
                 ci['dirty'] = False
             
             if(ci['draw']):
                 log("render: psys is marked to draw", 1, prefix='>>>', )
                 
-                a.append((ci['vs'], ci['cs'], ))
+                a.append((ci['vs'], ci['cs'], ci['sz'], ))
             
             _d = datetime.timedelta(seconds=time.time() - _t)
             pcviv.debug_update = "last update completed in {}".format(_d)
@@ -8687,21 +8713,25 @@ class PCVIV2Manager():
         _t = time.time()
         vs = []
         cs = []
+        sz = []
         av = []
         ac = []
-        for v, c in a:
+        az = []
+        for v, c, s in a:
             if(len(v) == 0):
                 # skip systems with zero particles
                 continue
             av.append(v)
             ac.append(c)
+            az.append(s)
         if(len(av) > 0):
             vs = np.concatenate(av, axis=0, )
             cs = np.concatenate(ac, axis=0, )
+            sz = np.concatenate(az, axis=0, )
         
         log("render: drawing..", 1, prefix='>>>', )
-        c = PCVControl(o)
-        c.draw(vs, [], cs)
+        c = PCVIV2Control(o)
+        c.draw(vs, [], cs, sz, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         pcv = o.point_cloud_visualizer
@@ -8713,6 +8743,168 @@ class PCVIV2Manager():
             for area in window.screen.areas:
                 if(area.type == 'VIEW_3D'):
                     area.tag_redraw()
+
+
+class PCVIV2Control(PCVControl):
+    def __init__(self, o, ):
+        super(PCVIV2Control, self, ).__init__(o, )
+        pcv = o.point_cloud_visualizer
+        pcv.dev_minimal_shader_variable_size_enabled = True
+    
+    def draw(self, vs=None, ns=None, cs=None, sz=None, ):
+        o = self.o
+        pcv = o.point_cloud_visualizer
+        
+        # check if object has been used before, i.e. has uuid and uuid item is in cache
+        if(pcv.uuid != "" and pcv.runtime):
+            # was used or blend was saved after it was used and uuid is saved from last time, check cache
+            if(pcv.uuid in PCVManager.cache):
+                # cache item is found, object has been used before
+                self._update(vs, ns, cs, sz, )
+                return
+        # otherwise setup as new
+        
+        u = str(uuid.uuid1())
+        # use that as path, some checks wants this not empty
+        filepath = u
+        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
+        n = len(vs)
+        
+        # TODO: validate also sz array
+        
+        # build cache dict
+        d = {}
+        d['uuid'] = u
+        d['filepath'] = filepath
+        d['points'] = points
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        d['colors_original'] = cs_orig
+        
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_length'] = l
+        d['current_display_length'] = l
+        # d['illumination'] = pcv.illumination
+        d['illumination'] = False
+        
+        # if(pcv.dev_minimal_shader_variable_size_enabled):
+        #     shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        d['ready'] = True
+        d['draw'] = False
+        d['kill'] = False
+        d['object'] = o
+        d['name'] = o.name
+        
+        # store sizes
+        d['extra'] = {}
+        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        extra = {
+            'shader': e_shader,
+            'batch': e_batch,
+            'sizes': sz,
+            'length': l,
+        }
+        d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        
+        # set properties
+        pcv.uuid = u
+        pcv.filepath = filepath
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        pcv.runtime = True
+        
+        PCVManager.add(d)
+        
+        # mark to draw
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        self._redraw()
+    
+    def _update(self, vs, ns, cs, sz, ):
+        o = self.o
+        pcv = o.point_cloud_visualizer
+        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
+        n = len(vs)
+        
+        d = PCVManager.cache[pcv.uuid]
+        d['points'] = points
+        
+        # kill normals, might not be no longer valid, it will be recreated later
+        if('vertex_normals' in d.keys()):
+            del d['vertex_normals']
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        d['colors_original'] = cs_orig
+        
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_length'] = l
+        d['current_display_length'] = l
+        # d['illumination'] = pcv.illumination
+        d['illumination'] = False
+        # if(pcv.illumination):
+        #     shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        
+        # store sizes
+        d['extra'] = {}
+        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        extra = {
+            'shader': e_shader,
+            'batch': e_batch,
+            'sizes': sz,
+            'length': l,
+        }
+        d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        self._redraw()
 
 
 class PCV_PT_panel(Panel):
@@ -10019,8 +10211,10 @@ class PCVIV2_PT_panel(Panel):
                 # r.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
                 
                 # cc = b.column()
-                r = cc.row()
-                r.prop(pcviv, 'max_points')
+                # r = cc.row()
+                cc.prop(pcviv, 'max_points')
+                # r = cc.row()
+                cc.prop(pcviv, 'point_size')
                 r = cc.row(align=True)
                 r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
                 # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
@@ -10271,6 +10465,8 @@ class PCVIV2_properties(PropertyGroup):
     draw: BoolProperty(name="Draw", description="Draw as point cloud", default=True, update=_draw_update, )
     # user can set maximum number of points drawn per instance
     max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
+    # user can set size of points, but it will be only used when minimal shader is active
+    point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
     
     # store info how long was last update, generate and store to cache
     debug_update: StringProperty(default="", )
@@ -10464,6 +10660,10 @@ class PCV_properties(PropertyGroup):
         if(self.dev_depth_enabled):
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -10472,6 +10672,10 @@ class PCV_properties(PropertyGroup):
         if(self.dev_normal_colors_enabled):
             self.dev_depth_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -10480,6 +10684,10 @@ class PCV_properties(PropertyGroup):
         if(self.dev_position_colors_enabled):
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -10513,6 +10721,10 @@ class PCV_properties(PropertyGroup):
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            
             self.illumination = False
             self.override_default_shader = True
         else:
