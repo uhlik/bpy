@@ -9192,6 +9192,65 @@ class PCV_PT_development(Panel):
         c.prop(pcv, 'generate_number_of_points')
         c.prop(pcv, 'generate_seed')
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
+        
+        c.separator()
+        c.separator()
+        
+        c.label(text="new ui for shaders")
+        c.separator()
+        
+        r = c.row(align=True)
+        s = r.split(factor=0.25, align=True, )
+        s.label(text='Shader:')
+        s = s.split(factor=0.75, align=True, )
+        r = s.row(align=True)
+        r.prop(pcv, 'shader', text='', )
+        s = s.split(factor=0.25, align=True, )
+        
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
+            cc.enabled = False
+
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEPTH', )):
+            cc.enabled = False
+
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
+        
+        c.separator()
+        c.separator()
+        
+        r = c.row(align=True)
+        r.prop(pcv, 'shader', expand=True, )
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
+            cc.enabled = False
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEPTH', )):
+            cc.enabled = False
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
+        
+        if(pcv.shader_illumination):
+            if(pcv.shader in ('DEFAULT', 'DEPTH', )):
+                c.label(text='shader illumination options..')
+        
+        if(pcv.shader_options_show):
+            if(pcv.shader in ('DEPTH', )):
+                c.label(text='shader options..')
+        
+        if(pcv.shader_normal_lines):
+            c.label(text='shader normal lines options..')
+        
+        c.separator()
 
 
 class PCVIV2_PT_panel(Panel):
@@ -9538,8 +9597,66 @@ class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY File", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
+    """
+    def _shader_items():
+        # closure - keep a reference to the list
+        items = None
+        
+        def func(self, context, ):
+            items = [
+                # # user selectable shaders
+                
+                # basic shader, round shape, unaltered colors
+                ('DEFAULT', 'Default', "", '', 2 ** 0, ),
+                # # default with illumination on top
+                # ('ILLUMINATION', 'Illumination', "", '', 2 ** 1, ),
+                # color by depth
+                ('DEPTH', 'Depth', "", '', 2 ** 2, ),
+                # # depth with illumination on top, maybe join illuminated and non-illuminated variants somehow together
+                # ('DEPTH_ILLUMINATION', 'Depth With Illumination', "", '', 2 ** 3, ),
+                # color by normal
+                ('NORMAL', 'Normal', "", '', 2 ** 4, ),
+                # color by position
+                ('POSITION', 'Position', "", '', 2 ** 5, ),
+                
+                # # internal shaders, used only under certain conditions or development shaders
+                
+                # # this is internal shader active only when color adjustment filter is active
+                # ('COLOR_ADJUSTMENT', 'Color Adjustment', "", '', 2 ** 6, ),
+                # # basically this is the same as Default, only without point shape rounding, there is not much use for it apart from that it is slightly faster to draw
+                # ('MINIMAL', 'Minimal', "", '', 2 ** 7, ),
+                # # this is meant to be used only with instance visualizer, there is not much to do in regular ply files
+                # ('MINIMAL_VARIABLE', 'Minimal With Variable Size', "", '', 2 ** 8, ),
+                # # not ready for production yet
+                # ('BOUNDING_BOX', 'Bounding Box', "", '', 2 ** 9, ),
+                # # this is extra drawn on top while using remove color filter
+                # ('SELECTION', 'Selection', "", '', 2 ** 10, ),
+            ]
+            return items
+        
+        return func
+    
+    def _shader_update(self, context, ):
+        pass
+    """
+    shader_items = [
+        ('DEFAULT', 'Default', "", ),
+        ('DEPTH', 'Depth', "", ),
+        ('NORMAL', 'Normal', "", ),
+        ('POSITION', 'Position', "", ),
+    ]
+    # FIXMENOT: would be nice to have this initialized at least to 'DEFAULT' if '' and PCVManager is initialized, so i don't need to handle situations if(shader == ''): do like it's 'DEFAULT'
+    # NOTTODO: split illumination to its own BoolProperty, and enable only when possible
+    # FIXMENOT: it looks like i don't need dynamic enum, items that might be dynamic are not user selectable anyway.
+    # shader: EnumProperty(name="Shader", items=_shader_items(), update=_shader_update, description="Shader to draw points with", )
+    shader: EnumProperty(name="Shader", items=shader_items, default='DEFAULT', description="Shader to draw points with", )
+    shader_illumination: BoolProperty(name="Illumination", default=False, description="Enable extra illumination on point cloud", )
+    shader_options_show: BoolProperty(name="Shader Options", default=False, description="Show shader options", )
+    shader_normal_lines: BoolProperty(name="Normals", default=False, description="Show normals as lines", )
+    
     runtime: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    # TODO: add some prefix to global props, like global_size, global_display_percent, .. leave unprefixed only essentials, like uuid, runtime, ..
     point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
     alpha_radius: FloatProperty(name="Radius", default=1.0, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
     
@@ -9581,6 +9698,7 @@ class PCV_properties(PropertyGroup):
     render_resolution_linked: BoolProperty(name="Resolution Linked", description="Link resolution settings to scene", default=True, update=_render_resolution_linked_update, )
     
     has_normals: BoolProperty(default=False, options={'HIDDEN', }, )
+    # TODO: rename to 'has_colors'
     has_vcols: BoolProperty(default=False, options={'HIDDEN', }, )
     illumination: BoolProperty(name="Illumination", description="Enable extra illumination on point cloud", default=False, )
     illumination_edit: BoolProperty(name="Edit", description="Edit illumination properties", default=False, )
@@ -9757,6 +9875,7 @@ class PCV_properties(PropertyGroup):
     # dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", update=_update_override_default_shader, )
     dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="Enable position debug shader", update=_update_dev_position, )
     
+    # NOTE: icon for bounding box 'SHADING_BBOX' ?
     dev_bbox_enabled: BoolProperty(name="Bounding Box", default=False, description="", )
     dev_bbox_color: FloatVectorProperty(name="Color", description="", default=(0.7, 0.7, 0.7), min=0, max=1, subtype='COLOR', size=3, )
     dev_bbox_size: FloatProperty(name="Size", description="", default=0.3, min=0.1, max=0.9, subtype='FACTOR', )
