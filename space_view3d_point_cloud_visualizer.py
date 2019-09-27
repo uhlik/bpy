@@ -7572,7 +7572,10 @@ class PCVIV2_OT_update_all(Operator):
 class PCVIV2Manager():
     initialized = False
     cache = {}
-    # override_draw_update = False
+    
+    use_extra_handlers = True
+    undo_redo_catalogue = {}
+    psys_existence = {}
     
     @classmethod
     def init(cls):
@@ -7582,13 +7585,14 @@ class PCVIV2Manager():
         # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
         bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
         
-        # NOTE: use these to fix undo/redo if needed
-        # bpy.app.handlers.redo_pre
-        # bpy.app.handlers.redo_post
-        # bpy.app.handlers.undo_pre
-        # bpy.app.handlers.undo_post
-        # bpy.app.handlers.depsgraph_update_pre
-        # bpy.app.handlers.depsgraph_update_post
+        if(cls.use_extra_handlers):
+            # undo/redo handling
+            bpy.app.handlers.redo_pre.append(cls.redo_pre)
+            bpy.app.handlers.redo_post.append(cls.redo_post)
+            bpy.app.handlers.undo_pre.append(cls.undo_pre)
+            bpy.app.handlers.undo_post.append(cls.undo_post)
+            # psys removal handling
+            bpy.app.handlers.depsgraph_update_post.append(cls.psys_existence_post)
         
         cls.initialized = True
         cls.uuid_handler(None)
@@ -7600,6 +7604,16 @@ class PCVIV2Manager():
         log("deinit", prefix='>>>', )
         # bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
         bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
+        
+        if(cls.use_extra_handlers):
+            # undo/redo handling
+            bpy.app.handlers.redo_pre.remove(cls.redo_pre)
+            bpy.app.handlers.redo_post.remove(cls.redo_post)
+            bpy.app.handlers.undo_pre.remove(cls.undo_pre)
+            bpy.app.handlers.undo_post.remove(cls.undo_post)
+            # psys removal handling
+            bpy.app.handlers.depsgraph_update_post.remove(cls.psys_existence_post)
+        
         cls.initialized = False
     
     @classmethod
@@ -7613,7 +7627,107 @@ class PCVIV2Manager():
             if(pcviv.uuid == ""):
                 log("uuid_handler: found psys without uuid", 1, prefix='>>>', )
                 pcviv.uuid = str(uuid.uuid1())
-                # cls._redraw_view_3d()
+                # if psys is added outside of 3dview
+                cls._redraw_view_3d()
+    
+    @classmethod
+    def psys_existence_post(cls, scene, ):
+        log("existence post", prefix='>>>', )
+        
+        # NOTE: this is run on every update that happen in blender, even on something completely unrelated to pcv, pcviv or particles, this might slow down everything
+        
+        ls = []
+        for pset in bpy.data.particles:
+            pcviv = pset.pcv_instance_visualizer
+            if(pcviv.uuid != ""):
+                ls.append((pcviv.uuid, pset, ))
+        
+        for u, pset in ls:
+            if(u in cls.cache.keys()):
+                # was in cache, so it should draw, unless psys was removed, or its object
+                # so check for objects with psys with that pset
+                ok = False
+                for o in bpy.data.objects:
+                    for psys in o.particle_systems:
+                        if(psys.settings == pset):
+                            ok = True
+                if(not ok):
+                    del cls.cache[u]
+                    # now i should run update on object, but how to find which one was it?
+                    if(u in cls.psys_existence.keys()):
+                        onm = cls.psys_existence[u]
+                        o = bpy.data.objects.get(onm)
+                        if(o is not None):
+                            # object still exist
+                            cls.update_all(o)
+        
+        cls.psys_existence = {}
+        for o in bpy.data.objects:
+            for i, psys in enumerate(o.particle_systems):
+                u = psys.settings.pcv_instance_visualizer.uuid
+                if(u in cls.cache.keys()):
+                    cls.psys_existence[u] = o.name
+    
+    @classmethod
+    def undo_pre(cls, scene, ):
+        log("undo/redo pre", prefix='>>>', )
+        
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            for i, psys in enumerate(o.particle_systems):
+                pset = psys.settings
+                pcviv = pset.pcv_instance_visualizer
+                u = pcviv.uuid
+                if(u in cls.cache.keys()):
+                    if(o.name not in cls.undo_redo_catalogue.keys()):
+                        cls.undo_redo_catalogue[o.name] = {}
+                    cls.undo_redo_catalogue[o.name][pset.name] = u
+    
+    @classmethod
+    def undo_post(cls, scene, ):
+        log("undo/redo post", prefix='>>>', )
+        
+        for onm, psnms in cls.undo_redo_catalogue.items():
+            o = bpy.data.objects.get(onm)
+            if(o is not None):
+                dirty = False
+                # ok, object still exists, unless it was object rename that was undone.. huh? now what?
+                for psnm, u in psnms.items():
+                    pset = bpy.data.particles.get(psnm)
+                    if(pset is not None):
+                        found = False
+                        for psys in o.particle_systems:
+                            if(psys.settings == pset):
+                                found = True
+                                break
+                        if(found):
+                            # all is ok
+                            pass
+                        else:
+                            # psys is gone, we should remove it
+                            dirty = True
+                    else:
+                        # pset is there, but psys is gone, we should remove it
+                        dirty = True
+                
+                if(dirty):
+                    cls.update_all(o)
+            else:
+                # object is gone, we should remove it
+                # this is handled by PCV, no object - no draw
+                pass
+        
+        cls.undo_redo_catalogue = {}
+    
+    @classmethod
+    def redo_pre(cls, scene, ):
+        log("undo/redo pre", prefix='>>>', )
+        cls.undo_pre(scene)
+    
+    @classmethod
+    def redo_post(cls, scene, ):
+        log("undo/redo post", prefix='>>>', )
+        cls.undo_post(scene)
     
     @classmethod
     def reset(cls):
@@ -7677,10 +7791,6 @@ class PCVIV2Manager():
                   'cs': None,
                   'sz': None, }
             cls.cache[uuid] = ci
-            
-            # cls.override_draw_update = True
-            # pcviv.draw = True
-            # cls.override_draw_update = False
         
         if(not skip_render):
             cls.render(o)
