@@ -7577,6 +7577,8 @@ class PCVIV2Manager():
     undo_redo_catalogue = {}
     psys_existence = {}
     
+    pre_save_state = {}
+    
     @classmethod
     def init(cls):
         if(cls.initialized):
@@ -7593,6 +7595,9 @@ class PCVIV2Manager():
             bpy.app.handlers.undo_post.append(cls.undo_post)
             # psys removal handling
             bpy.app.handlers.depsgraph_update_post.append(cls.psys_existence_post)
+        
+        bpy.app.handlers.save_pre.append(cls.save_handler_pre)
+        bpy.app.handlers.save_post.append(cls.save_handler_post)
         
         cls.initialized = True
         cls.uuid_handler(None)
@@ -7667,6 +7672,24 @@ class PCVIV2Manager():
                 u = psys.settings.pcv_instance_visualizer.uuid
                 if(u in cls.cache.keys()):
                     cls.psys_existence[u] = o.name
+    
+    @classmethod
+    def save_handler_pre(cls, scene, ):
+        # store by object name which is used as instance visualizer
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            if(pcv.instance_visualizer_active_hidden_value):
+                cls.pre_save_state[o.name] = True
+                pcv.instance_visualizer_active_hidden_value = False
+    
+    @classmethod
+    def save_handler_post(cls, scene, ):
+        # revert pre save changes..
+        for n, v in cls.pre_save_state.items():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                pcv = o.point_cloud_visualizer
+                pcv.instance_visualizer_active_hidden_value = v
     
     @classmethod
     def undo_pre(cls, scene, ):
@@ -7765,6 +7788,9 @@ class PCVIV2Manager():
         if(not cls.initialized):
             return
         
+        pcv = o.point_cloud_visualizer
+        pcv.instance_visualizer_active_hidden_value = True
+        
         log("update", prefix='>>>', )
         
         if(uuid in cls.cache.keys()):
@@ -7815,10 +7841,6 @@ class PCVIV2Manager():
     def draw_update(cls, o, uuid, do_draw, ):
         if(not cls.initialized):
             return
-        
-        # # FIXME: is this the best i can do? it's simple, but not elegant solution..
-        # if(cls.override_draw_update):
-        #     return
         
         log("draw_update", prefix='>>>', )
         
@@ -8242,6 +8264,12 @@ class PCV_PT_panel(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
+        
+        if(pcv.instance_visualizer_active_hidden_value):
+            r = sub.row()
+            r.alert = True
+            r.prop(pcv, 'instance_visualizer_active', toggle=True, icon='ERROR', )
+            sub.separator()
         
         # edit mode, main pcv object panel
         if(pcv.edit_initialized):
@@ -9596,6 +9624,17 @@ class PCVIV2_properties(PropertyGroup):
 class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY File", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
+    
+    def _instance_visualizer_active_get(self, ):
+        return self.instance_visualizer_active_hidden_value
+    
+    def _instance_visualizer_active_set(self, value, ):
+        pass
+    
+    # for setting value, there are handlers for save, pre which sets to False, and post which sets back to True if it was True before, instance visualizer have to be activated at runtime and this value should not be saved, this way it works ok.. if only there was a way to specify which properties should not save, and/or save only as default value..
+    instance_visualizer_active_hidden_value: BoolProperty(default=False, options={'HIDDEN', }, )
+    # for display, read-only
+    instance_visualizer_active: BoolProperty(name="Instance Visualizer Active", default=False, get=_instance_visualizer_active_get, set=_instance_visualizer_active_set, )
     
     """
     def _shader_items():
