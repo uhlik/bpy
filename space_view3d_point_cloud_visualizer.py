@@ -3943,7 +3943,7 @@ class PCVRandomVolumeSampler():
         self.cs = cs[:]
 
 
-class PCVPreviewEngineSampler():
+class PCVIVSampler():
     def __init__(self, context, o, target, rnd, percentage=1.0, triangulate=True, use_modifiers=True, source=None, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
@@ -4201,7 +4201,7 @@ class PCVPreviewEngineSampler():
         owner.to_mesh_clear()
 
 
-class PCVPreviewEngineDraftSampler():
+class PCVIVDraftSampler():
     def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
@@ -4263,7 +4263,7 @@ class PCVPreviewEngineDraftSampler():
         self.cs = cs[:]
 
 
-class PCVPreviewEngineDraftPercentageNumpySampler():
+class PCVIVDraftPercentageNumpySampler():
     def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
         log("{}:".format(self.__class__.__name__), 0)
         
@@ -4342,7 +4342,7 @@ class PCVPreviewEngineDraftPercentageNumpySampler():
         self.cs = cs[:]
 
 
-class PCVPreviewEngineDraftFixedCountNumpySampler():
+class PCVIVDraftFixedCountNumpySampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
         # log("{}:".format(self.__class__.__name__), 0)
         # log("target: {}, count: {}".format(target, count, ), 1)
@@ -4427,7 +4427,7 @@ class PCVPreviewEngineDraftFixedCountNumpySampler():
         self.cs = cs[:]
 
 
-class PCVPreviewEngineDraftWeightedFixedCountNumpySampler():
+class PCVIVDraftWeightedFixedCountNumpySampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
         # log("{}:".format(self.__class__.__name__), 0)
         # log("target: {}, count: {}".format(target, count, ), 1)
@@ -7762,6 +7762,8 @@ class PCVIV2Manager():
         
         for o in bpy.data.objects:
             pcv = o.point_cloud_visualizer
+            pcv.instance_visualizer_active_hidden_value = False
+            pcv.dev_minimal_shader_variable_size_enabled = False
             pcv.pcviv_debug_draw = ''
             for i, psys in enumerate(o.particle_systems):
                 pset = psys.settings
@@ -7884,7 +7886,7 @@ class PCVIV2Manager():
                     self.report({'ERROR'}, "Object does not have geometry data.")
                     return {'CANCELLED'}
                 # extract points
-                sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
                 # store
                 fragments.append((sampler.vs, sampler.cs, ))
                 # FIXME: better not to access data by object name, find something different
@@ -7928,7 +7930,7 @@ class PCVIV2Manager():
                 self.report({'ERROR'}, "Object does not have geometry data.")
                 return {'CANCELLED'}
             # extract points
-            sampler = PCVPreviewEngineDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+            sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
             ofvs = sampler.vs
             ofcs = sampler.cs
             
@@ -8080,12 +8082,14 @@ class PCVIV2Manager():
 class PCVIV2Control(PCVControl):
     def __init__(self, o, ):
         super(PCVIV2Control, self, ).__init__(o, )
-        pcv = o.point_cloud_visualizer
-        pcv.dev_minimal_shader_variable_size_enabled = True
+        # pcv = o.point_cloud_visualizer
+        # pcv.dev_minimal_shader_variable_size_enabled = True
     
     def draw(self, vs=None, ns=None, cs=None, sz=None, ):
         o = self.o
         pcv = o.point_cloud_visualizer
+        
+        pcv.dev_minimal_shader_variable_size_enabled = True
         
         # check if object has been used before, i.e. has uuid and uuid item is in cache
         if(pcv.uuid != "" and pcv.runtime):
@@ -8419,6 +8423,10 @@ class PCV_PT_panel(Panel):
                     if(v['draw']):
                         ok = True
         
+        if(ok):
+            if(not pcv.has_normals):
+                sub.label(text="Missing vertex normals.", icon='ERROR', )
+        
         c = sub.column()
         r = c.row(align=True)
         r.prop(pcv, 'illumination', toggle=True, )
@@ -8426,7 +8434,7 @@ class PCV_PT_panel(Panel):
         # r.prop(pcv, 'illumination_edit', toggle=True, icon_only=True, icon='SETTINGS', )
         if(ok):
             if(not pcv.has_normals):
-                c.label(text="Missing vertex normals.", icon='ERROR', )
+                # c.label(text="Missing vertex normals.", icon='ERROR', )
                 c.enabled = False
         else:
             c.enabled = False
@@ -8473,7 +8481,12 @@ class PCV_PT_panel(Panel):
         c.enabled = ok
         r = c.row(align=True)
         r.prop(pcv, 'dev_depth_enabled', toggle=True, )
-        r.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        # r.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        cc = r.column(align=True)
+        cc.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        if(ok):
+            if(not pcv.has_normals):
+                cc.enabled = False
         r.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
         
         # r = c.row(align=True)
@@ -9377,54 +9390,82 @@ class PCVIV2_PT_panel(Panel):
             for psys in o.particle_systems:
                 pcviv = psys.settings.pcv_instance_visualizer
                 b = c.box()
-                cc = b.column()
                 # cc.prop(psys.settings, 'name', emboss=False, text='name', )
                 # cc.prop(pcviv, 'uuid', emboss=False, )
                 # cc.label(text='(dirty: {}, debug_update: {})'.format(pcviv.dirty, pcviv.debug_update, ))
                 # cc.scale_y = 0.5
                 # cc.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
                 
-                r = cc.row()
-                # r.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
-                r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
-                # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', emboss=False, )
-                
-                # r = cc.row(align=True)
-                # r.prop(pcviv, 'max_points')
-                # if(pcviv.draw):
-                #     r.alert = True
-                # else:
-                #     r.enabled = False
-                # r.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
-                
-                # cc = b.column()
-                # r = cc.row()
-                cc.prop(pcviv, 'max_points')
-                # r = cc.row()
-                cc.prop(pcviv, 'point_size')
-                r = cc.row(align=True)
-                r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
-                # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
-                ccc = r.column(align=True)
-                if(pcviv.draw):
-                    # TODO: if not dirty, don't alert? it would be better for it if it have some meaning behind it, if not yet drawn draw button in red
-                    alert = False
-                    if(pcviv.uuid in PCVIV2Manager.cache.keys()):
-                        if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
-                            # if in cache and is dirty
+                if(pcviv.subpanel_closed):
+                    r = b.row(align=True)
+                    r.prop(pcviv, 'subpanel_closed', icon='TRIA_RIGHT' if pcviv.subpanel_closed else 'TRIA_DOWN', icon_only=True, emboss=False, )
+                    r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    # r.prop(psys.settings, 'name', emboss=False, text='', )
+                    
+                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    
+                    ccc = r.column(align=True)
+                    if(pcviv.draw):
+                        # TODO: if not dirty, don't alert? it would be better for it if it have some meaning behind it, if not yet drawn draw button in red
+                        alert = False
+                        if(pcviv.uuid in PCVIV2Manager.cache.keys()):
+                            if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
+                                # if in cache and is dirty
+                                alert = True
+                        else:
+                            # or not in cache at all, ie. not processed yet
                             alert = True
+                        ccc.alert = alert
                     else:
-                        # or not in cache at all, ie. not processed yet
-                        alert = True
-                    ccc.alert = alert
+                        ccc.enabled = False
+                    ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
                     
                 else:
-                    ccc.enabled = False
-                ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
-                if(pcviv.debug_update == ''):
-                    cc.label(text='(debug: {})'.format('n/a', ))
-                else:
-                    cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
+                    # cc = b.column()
+                    # r = cc.row()
+                    r = b.row(align=True)
+                    # r.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
+                    r.prop(pcviv, 'subpanel_closed', icon='TRIA_RIGHT' if pcviv.subpanel_closed else 'TRIA_DOWN', icon_only=True, emboss=False, )
+                    r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', emboss=False, )
+                    
+                    # r = cc.row(align=True)
+                    # r.prop(pcviv, 'max_points')
+                    # if(pcviv.draw):
+                    #     r.alert = True
+                    # else:
+                    #     r.enabled = False
+                    # r.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    
+                    cc = b.column()
+                    # cc = b.column()
+                    # r = cc.row()
+                    cc.prop(pcviv, 'max_points')
+                    # r = cc.row()
+                    cc.prop(pcviv, 'point_size')
+                    r = cc.row(align=True)
+                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
+                    ccc = r.column(align=True)
+                    if(pcviv.draw):
+                        # TODO: if not dirty, don't alert? it would be better for it if it have some meaning behind it, if not yet drawn draw button in red
+                        alert = False
+                        if(pcviv.uuid in PCVIV2Manager.cache.keys()):
+                            if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
+                                # if in cache and is dirty
+                                alert = True
+                        else:
+                            # or not in cache at all, ie. not processed yet
+                            alert = True
+                        ccc.alert = alert
+                    
+                    else:
+                        ccc.enabled = False
+                    ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    if(pcviv.debug_update == ''):
+                        cc.label(text='(debug: {})'.format('n/a', ))
+                    else:
+                        cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
         
         c.separator()
         if(pcv.pcviv_debug_draw != ''):
@@ -9606,6 +9647,8 @@ class PCVIV2_properties(PropertyGroup):
     max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
     # user can set size of points, but it will be only used when minimal shader is active
     point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
+    # helper property, draw minimal ui or draw all props
+    subpanel_closed: BoolProperty(default=True, options={'HIDDEN', }, )
     
     # store info how long was last update, generate and store to cache
     debug_update: StringProperty(default="", )
@@ -9979,39 +10022,6 @@ class PCV_properties(PropertyGroup):
     
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
-    
-    '''
-    pe_generate_generator: EnumProperty(name="Engine", items=[('DRAFT', "Draft", "Draft engine"),
-                                                              ('DRAFT_NUMPY', "Draft Numpy Percentage", "Draft Numpy engine"),
-                                                              ('DRAFT_NUMPY_FIXED', "Draft Numpy Fixed Count", "Draft Numpy engine"),
-                                                              ('PRODUCTION', "Production", "Production engine"),
-                                                             ], default='DRAFT', description="Generator type", )
-    pe_generate_target: StringProperty(name="Target", default="", )
-    pe_generate_source: EnumProperty(name="Source", items=[('VERTICES', "Vertices", "Use mesh vertices"),
-                                                           ('FACES', "Faces", "Use mesh face centers"),
-                                                          ], default='VERTICES', description="Points generation source", )
-    pe_generate_percentage: FloatProperty(name="Percentage", description="Adjust number of points generated, 1.0 is maximum number of points from given source, 0.5 half, etc.", default=1.0, min=0.0, max=1.0, subtype='FACTOR', precision=5, )
-    pe_generate_fixed_count: IntProperty(name="Count", default=10000, min=0, description="Fixed count of generated points", )
-    pe_generate_seed: IntProperty(name="Seed", default=0, min=0, description="Percentage random number generator seed", )
-    pe_generate_triangulate: BoolProperty(name="Triangulate", description="If False, try not to triangulate mesh if possible, depends on color generation type, if True, always triangulate", default=False, )
-    pe_generate_use_modifiers: BoolProperty(name="Use Modifiers", description="Generate from mesh with applied modifiers or not", default=True, )
-    pe_generate_colors: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
-                                                           ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
-                                                           ('VCOLS', "Vertex Colors", "Use active vertex colors"),
-                                                           ('UVTEX', "UV Texture", "Generate colors from active image texture node in active material using active UV layout"),
-                                                           ('GROUP_MONO', "Vertex Group Monochromatic", "Use active vertex group, result will be shades of grey"),
-                                                           ('GROUP_COLOR', "Vertex Group Colorized", "Use active vertex group, result will be colored from red (1.0) to blue (0.0) like in weight paint viewport"),
-                                                          ], default='CONSTANT', description="Color source for generated point cloud", )
-    pe_generate_colors_draft: EnumProperty(name="Colors", items=[('CONSTANT', "Constant Color", "Use constant color value"),
-                                                                 ('VIEWPORT_DISPLAY_COLOR', "Viewport Display Color", "Use material viewport display color property"),
-                                                                ], default='CONSTANT', description="Color source for generated point cloud", )
-    pe_generate_constant_color: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
-    pe_generate_benchmark: StringProperty(name="Benchmark", default="", )
-    pe_generate_target_psys: StringProperty(name="Particle System", default="", )
-    pe_generate_psys_benchmark: StringProperty(name="Benchmark", default="", )
-    '''
-    
-    # instance_visualizer: PointerProperty(type=PCVIV_properties)
     
     # store info how long was last draw call, ie get points from cache, join, draw
     pcviv_debug_draw: StringProperty(default="", )
