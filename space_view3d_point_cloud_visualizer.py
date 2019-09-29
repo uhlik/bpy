@@ -4481,20 +4481,21 @@ class PCVIVDraftWeightedFixedCountNumpySampler():
         weights *= 1.0 / np.sum(weights)
         indices = np.random.choice(choices, size=count, replace=False, p=weights, )
         
-        material_indices = np.zeros(l, dtype=np.int, )
-        me.polygons.foreach_get('material_index', material_indices, )
-        material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
-        for i, m in enumerate(materials):
-            mc = m.diffuse_color[:3]
-            material_colors[i][0] = mc[0] ** (1 / 2.2)
-            material_colors[i][1] = mc[1] ** (1 / 2.2)
-            material_colors[i][2] = mc[2] ** (1 / 2.2)
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            material_indices = np.zeros(l, dtype=np.int, )
+            me.polygons.foreach_get('material_index', material_indices, )
+            material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+            for i, m in enumerate(materials):
+                mc = m.diffuse_color[:3]
+                material_colors[i][0] = mc[0] ** (1 / 2.2)
+                material_colors[i][1] = mc[1] ** (1 / 2.2)
+                material_colors[i][2] = mc[2] ** (1 / 2.2)
         
         li = len(indices)
         if(colorize == 'CONSTANT'):
-            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
-                                      np.full(li, constant_color[1], dtype=np.float32, ),
-                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+            colors = np.column_stack((np.full(li, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(li, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(li, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
         elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             colors = np.zeros((li, 3), dtype=np.float32, )
             colors = np.take(material_colors, material_indices, axis=0,)
@@ -7569,6 +7570,43 @@ class PCVIV2_OT_update_all(Operator):
         return {'FINISHED'}
 
 
+class PCVIV2_OT_ui_helper_toggle_psys(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_ui_helper_toggle_psys"
+    bl_label = "UI Helper - Toggle Particle System Panel"
+    bl_description = ""
+    
+    uuid: StringProperty(name="UUID", default='', )
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        
+        found = False
+        for i, psys in enumerate(o.particle_systems):
+            pset = psys.settings
+            pcviv = pset.pcv_instance_visualizer
+            if(pcviv.uuid == self.uuid):
+                found = True
+                break
+        
+        if(not found):
+            return {'CANCELLED'}
+        
+        pcviv = pset.pcv_instance_visualizer
+        if(pcviv.subpanel_closed):
+            pcviv.subpanel_closed = False
+        else:
+            pcviv.subpanel_closed = True
+        
+        return {'FINISHED'}
+
+
 class PCVIV2Manager():
     initialized = False
     cache = {}
@@ -7864,7 +7902,7 @@ class PCVIV2Manager():
         cls.render(o)
     
     @classmethod
-    def generate_psys(cls, o, psys_slot, max_points, ):
+    def generate_psys(cls, o, psys_slot, max_points, color_source, color_constant, ):
         log("generate_psys", prefix='>>>', )
         
         # FIXME: this should be created just once and passed to next call in the same update.. possible optimization?
@@ -7886,7 +7924,8 @@ class PCVIV2Manager():
                     self.report({'ERROR'}, "Object does not have geometry data.")
                     return {'CANCELLED'}
                 # extract points
-                sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
                 # store
                 fragments.append((sampler.vs, sampler.cs, ))
                 # FIXME: better not to access data by object name, find something different
@@ -7930,7 +7969,8 @@ class PCVIV2Manager():
                 self.report({'ERROR'}, "Object does not have geometry data.")
                 return {'CANCELLED'}
             # extract points
-            sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+            # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+            sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
             ofvs = sampler.vs
             ofcs = sampler.cs
             
@@ -8024,7 +8064,7 @@ class PCVIV2Manager():
                 log("render: psys is dirty", 1, prefix='>>>', )
                 
                 dts, dt, psys_collection, psys_object = pre_generate(psys, )
-                vs, cs = cls.generate_psys(o, i, pcviv.max_points, )
+                vs, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, )
                 post_generate(psys, dts, dt, psys_collection, psys_object, )
                 ci['vs'] = vs
                 ci['cs'] = cs
@@ -9397,14 +9437,20 @@ class PCVIV2_PT_panel(Panel):
                 # cc.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
                 
                 if(pcviv.subpanel_closed):
-                    r = b.row(align=True)
-                    r.prop(pcviv, 'subpanel_closed', icon='TRIA_RIGHT' if pcviv.subpanel_closed else 'TRIA_DOWN', icon_only=True, emboss=False, )
-                    r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    # r = b.row(align=True)
+                    r = b.row()
+                    rr = r.row(align=True)
+                    rr.prop(pcviv, 'subpanel_closed', icon='TRIA_RIGHT' if pcviv.subpanel_closed else 'TRIA_DOWN', icon_only=True, emboss=False, )
+                    
+                    # r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    rr.operator('point_cloud_visualizer.pcviv_ui_helper_toggle_psys', text=psys.settings.name, emboss=False, icon='PARTICLES', ).uuid = pcviv.uuid
+                    
                     # r.prop(psys.settings, 'name', emboss=False, text='', )
                     
-                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    rr = r.row(align=True)
+                    rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
                     
-                    ccc = r.column(align=True)
+                    ccc = rr.column(align=True)
                     if(pcviv.draw):
                         # TODO: if not dirty, don't alert? it would be better for it if it have some meaning behind it, if not yet drawn draw button in red
                         alert = False
@@ -9426,7 +9472,10 @@ class PCVIV2_PT_panel(Panel):
                     r = b.row(align=True)
                     # r.label(text="{}".format(psys.settings.name), icon='PARTICLES', )
                     r.prop(pcviv, 'subpanel_closed', icon='TRIA_RIGHT' if pcviv.subpanel_closed else 'TRIA_DOWN', icon_only=True, emboss=False, )
-                    r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    
+                    # r.prop(psys.settings, 'name', emboss=False, text='', icon='PARTICLES', )
+                    r.operator('point_cloud_visualizer.pcviv_ui_helper_toggle_psys', text=psys.settings.name, emboss=False, icon='PARTICLES', ).uuid = pcviv.uuid
+                    
                     # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', emboss=False, )
                     
                     # r = cc.row(align=True)
@@ -9437,12 +9486,48 @@ class PCVIV2_PT_panel(Panel):
                     #     r.enabled = False
                     # r.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
                     
-                    cc = b.column()
+                    cc = b.column(align=True)
                     # cc = b.column()
                     # r = cc.row()
                     cc.prop(pcviv, 'max_points')
                     # r = cc.row()
                     cc.prop(pcviv, 'point_size')
+                    
+                    # rr = cc.row(align=True)
+                    # rr.prop(pcviv, 'color_source', text='', )
+                    # ccc = rr.column(align=True)
+                    # rrr = ccc.row(align=True)
+                    # rrr.prop(pcviv, 'color_constant', text='', )
+                    # if(pcviv.color_source != 'CONSTANT'):
+                    #     rrr.enabled = False
+                    
+                    # f = 0.25
+                    # _r = cc.row(align=True)
+                    # _s = _r.split(factor=f, align=True)
+                    # _s.label(text=prop_name(pcviv, 'color_source', True, ))
+                    # f = 0.75
+                    # _s = _s.split(factor=f, align=True)
+                    # _r = _s.row(align=True)
+                    # _r.prop(pcviv, 'color_source', text='', )
+                    # _s = _s.split(factor=1.0, align=True)
+                    # _r = _s.row(align=True)
+                    # _r.prop(pcviv, 'color_constant', text='', )
+                    # if(pcviv.color_source != 'CONSTANT'):
+                    #     _r.enabled = False
+                    
+                    _r = cc.row(align=True)
+                    if(pcviv.color_source == 'CONSTANT'):
+                        _s = _r.split(factor=0.75, align=True, )
+                        # _s.prop(pcviv, 'color_source', text='', )
+                        _s.prop(pcviv, 'color_source', )
+                        _s = _s.split(factor=1.0, align=True, )
+                        _s.prop(pcviv, 'color_constant', text='', )
+                        
+                    else:
+                        # _r.prop(pcviv, 'color_source', text='', )
+                        _r.prop(pcviv, 'color_source', )
+                    
+                    cc = b.column()
                     r = cc.row(align=True)
                     r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
                     # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
@@ -9627,33 +9712,27 @@ class PCV_PT_debug(Panel):
 class PCVIV2_properties(PropertyGroup):
     # to identify object, key for storing cloud in cache, etc.
     uuid: StringProperty(default="", options={'HIDDEN', }, )
-    # NOTE: dirty should be runtime only, i am not interested in saved value on next scene load
-    # # mark for cloud generation
-    # dirty: BoolProperty(default=True, options={'HIDDEN', }, )
     
     def _draw_update(self, context, ):
-        # if(self.draw):
-        #     # self.dirty = True
-        #     PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
-        # else:
-        #     # self.dirty = False
-        #     pass
         PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
     
     # draw cloud enabled/disabled
-    # draw: BoolProperty(name="Draw", description="Draw as point cloud", default=False, update=_draw_update, )
-    draw: BoolProperty(name="Draw", description="Draw as point cloud", default=True, update=_draw_update, )
+    draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
     # user can set maximum number of points drawn per instance
     max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
     # user can set size of points, but it will be only used when minimal shader is active
     point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
+    
+    color_source: EnumProperty(name="Color", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                    ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
+                                                    ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", )
+    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    
     # helper property, draw minimal ui or draw all props
     subpanel_closed: BoolProperty(default=True, options={'HIDDEN', }, )
     
     # store info how long was last update, generate and store to cache
     debug_update: StringProperty(default="", )
-    # # store info how long was last draw call, ie get points from cache, join, draw
-    # debug_draw: StringProperty(default="", )
     
     @classmethod
     def register(cls):
@@ -10149,7 +10228,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_update, PCVIV2_OT_update_all, PCVIV2_OT_ui_helper_toggle_psys,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
