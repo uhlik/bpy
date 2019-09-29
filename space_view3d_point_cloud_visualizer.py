@@ -4493,9 +4493,9 @@ class PCVIVDraftWeightedFixedCountNumpySampler():
         
         li = len(indices)
         if(colorize == 'CONSTANT'):
-            colors = np.column_stack((np.full(li, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
-                                      np.full(li, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
-                                      np.full(li, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
+            colors = np.column_stack((np.full(l, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
         elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             colors = np.zeros((li, 3), dtype=np.float32, )
             colors = np.take(material_colors, material_indices, axis=0,)
