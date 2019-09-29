@@ -7491,7 +7491,7 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
 class PCVIV2_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_init"
     bl_label = "debug: init"
-    bl_description = "PCVIV2Manager.init"
+    bl_description = ""
     
     @classmethod
     def poll(cls, context):
@@ -7507,7 +7507,7 @@ class PCVIV2_OT_init(Operator):
 class PCVIV2_OT_deinit(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_deinit"
     bl_label = "debug: deinit"
-    bl_description = "PCVIV2Manager.deinit"
+    bl_description = ""
     
     @classmethod
     def poll(cls, context):
@@ -7523,7 +7523,7 @@ class PCVIV2_OT_deinit(Operator):
 class PCVIV2_OT_reset(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_reset"
     bl_label = "debug: reset all"
-    bl_description = "PCVIV2Manager.reset"
+    bl_description = ""
     
     @classmethod
     def poll(cls, context):
@@ -7539,7 +7539,7 @@ class PCVIV2_OT_reset(Operator):
 class PCVIV2_OT_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_update"
     bl_label = "Update"
-    bl_description = "PCVIV2Manager.update"
+    bl_description = "Update point cloud visualization by particle system UUID"
     
     uuid: StringProperty(name="UUID", default='', )
     
@@ -7557,7 +7557,7 @@ class PCVIV2_OT_update(Operator):
 class PCVIV2_OT_update_all(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_update_all"
     bl_label = "Update All"
-    bl_description = "PCVIV2Manager.update_all"
+    bl_description = "Update all point cloud visualizations for active object"
     
     @classmethod
     def poll(cls, context):
@@ -9414,7 +9414,9 @@ class PCVIV2_PT_panel(Panel):
         l = self.layout
         c = l.column()
         
-        r = c.row(align=True)
+        c.label(text="private - initialization")
+        b = c.box()
+        r = b.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_init')
         r.operator('point_cloud_visualizer.pcviv_deinit')
         c.separator()
@@ -9423,9 +9425,7 @@ class PCVIV2_PT_panel(Panel):
             c.label(text='not initialized..', icon='ERROR', )
         else:
             
-            r = c.row(align=True)
-            r.operator('point_cloud_visualizer.pcviv_update_all')
-            c.separator()
+            c.label(text="public - user controls")
             
             for psys in o.particle_systems:
                 pcviv = psys.settings.pcv_instance_visualizer
@@ -9551,13 +9551,23 @@ class PCVIV2_PT_panel(Panel):
                         cc.label(text='(debug: {})'.format('n/a', ))
                     else:
                         cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
+            
+            c.separator()
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_update_all')
         
         c.separator()
         if(pcv.pcviv_debug_draw != ''):
             c.label(text='(debug: {})'.format(pcv.pcviv_debug_draw, ))
             c.separator()
         
-        r = c.row(align=True)
+        # r = c.row(align=True)
+        # r.operator('point_cloud_visualizer.pcviv_reset')
+        # c.separator()
+        
+        c.label(text="private - testing")
+        b = c.box()
+        r = b.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_reset')
         c.separator()
         
@@ -9565,6 +9575,7 @@ class PCVIV2_PT_panel(Panel):
         
         # debug stuff ----------------->
         
+        c.label(text="private - debug")
         r = c.row()
         r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
         r.label(text="Debug Info")
