@@ -8045,7 +8045,7 @@ class PCVIV2Manager():
         
         log("render", prefix='>>>', )
         
-        def pre_generate(psys, ):
+        def pre_generate(o, psys, ):
             dts = None
             dt = None
             psys_collection = None
@@ -8062,9 +8062,20 @@ class PCVIV2Manager():
                 dt = psys_object.display_type
                 psys_object.display_type = 'BOUNDS'
             settings.display_method = 'RENDER'
-            return dts, dt, psys_collection, psys_object
+            
+            mod = None
+            mview = None
+            for m in o.modifiers:
+                if(m.type == 'PARTICLE_SYSTEM'):
+                    if(m.particle_system == psys):
+                        mod = m
+                        mview = m.show_viewport
+                        m.show_viewport = True
+                        break
+            
+            return dts, dt, psys_collection, psys_object, mod, mview
         
-        def post_generate(psys, dts=None, dt=None, psys_collection=None, psys_object=None, ):
+        def post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, ):
             settings = psys.settings
             settings.display_method = 'NONE'
             if(settings.render_type == 'COLLECTION'):
@@ -8072,6 +8083,7 @@ class PCVIV2Manager():
                     co.display_type = dt
             elif(settings.render_type == 'OBJECT'):
                 psys_object.display_type = dt
+            mod.show_viewport = mview
         
         a = []
         for i, psys in enumerate(o.particle_systems):
@@ -8085,9 +8097,9 @@ class PCVIV2Manager():
             if(ci['dirty']):
                 log("render: psys is dirty", 1, prefix='>>>', )
                 
-                dts, dt, psys_collection, psys_object = pre_generate(psys, )
+                dts, dt, psys_collection, psys_object, mod, mview = pre_generate(o, psys, )
                 vs, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, )
-                post_generate(psys, dts, dt, psys_collection, psys_object, )
+                post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, )
                 ci['vs'] = vs
                 ci['cs'] = cs
                 
