@@ -7790,11 +7790,14 @@ class PCVIV2Manager():
                 pcviv.debug_update = ""
                 
                 # NOTE: maybe store these somewhere, but these are defaults, so makes sense too
+                # NOTE: switch to BOUNDS to keep viewport alive
                 if(pset.render_type == 'COLLECTION'):
                     for co in pset.instance_collection.objects:
-                        co.display_type = 'TEXTURED'
+                        # co.display_type = 'TEXTURED'
+                        co.display_type = 'BOUNDS'
                 elif(pset.render_type == 'OBJECT'):
-                    pset.instance_object.display_type = 'TEXTURED'
+                    # pset.instance_object.display_type = 'TEXTURED'
+                    pset.instance_object.display_type = 'BOUNDS'
                 pset.display_method = 'RENDER'
             
             c = PCVIV2Control(o)
@@ -7824,11 +7827,14 @@ class PCVIV2Manager():
             pcviv.debug_update = ""
             
             # NOTE: maybe store these somewhere, but these are defaults, so makes sense too
+            # NOTE: switch to BOUNDS to keep viewport alive
             if(pset.render_type == 'COLLECTION'):
                 for co in pset.instance_collection.objects:
-                    co.display_type = 'TEXTURED'
+                    # co.display_type = 'TEXTURED'
+                    co.display_type = 'BOUNDS'
             elif(pset.render_type == 'OBJECT'):
-                pset.instance_object.display_type = 'TEXTURED'
+                # pset.instance_object.display_type = 'TEXTURED'
+                pset.instance_object.display_type = 'BOUNDS'
             pset.display_method = 'RENDER'
         
         c = PCVIV2Control(o)
