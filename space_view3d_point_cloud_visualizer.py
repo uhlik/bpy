@@ -69,8 +69,8 @@ def log(msg, indent=0, prefix='>', ):
 
 
 def debug_mode():
-    # return True
-    return (bpy.app.debug_value != 0)
+    return True
+    # return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -7586,6 +7586,60 @@ class PCVIV2_OT_update_all(Operator):
         return {'FINISHED'}
 
 
+class PCVIV2_OT_dev_transform_normals(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_dev_transform_normals"
+    bl_label = "dev_transform_normals"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        
+        # sample target object
+        to = bpy.data.objects.get(pcv.dev_transform_normals_target_object)
+        sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, to, count=1000, colorize='CONSTANT', constant_color=(1.0, 0.0, 0.0), )
+        vs = sampler.vs
+        ns = sampler.ns
+        cs = sampler.cs
+        
+        # target and emitter matrices
+        m = to.matrix_world
+        m = o.matrix_world.inverted() @ m
+        
+        # transform vertices
+        vs.shape = (-1, 3)
+        vs = np.c_[vs, np.ones(vs.shape[0])]
+        vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+        vs.shape = (-1, 3)
+        
+        # transform normals
+        _, r, _ = m.decompose()
+        m = r.to_matrix().to_4x4()
+        
+        ns.shape = (-1, 3)
+        ns = np.c_[ns, np.ones(ns.shape[0])]
+        ns = np.dot(m, ns.T)[0:3].T.reshape((-1))
+        ns.shape = (-1, 3)
+        
+        # for n in ns:
+        #     print(sum(n ** 2) ** 0.5)
+        
+        # fixed sizes
+        sz = np.full(len(vs), 3, dtype=np.int, )
+        
+        # draw
+        c = PCVIV2Control(o)
+        c.draw(vs, ns, cs, sz, )
+        
+        return {'FINISHED'}
+
+
 class PCVIV2Manager():
     initialized = False
     cache = {}
@@ -7882,6 +7936,7 @@ class PCVIV2Manager():
                   'draw': pcviv.draw,
                   # 'draw': True,
                   'vs': None,
+                  'ns': None,
                   'cs': None,
                   'sz': None, }
             cls.cache[uuid] = ci
@@ -7955,7 +8010,7 @@ class PCVIV2Manager():
                 # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
                 sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
                 # store
-                fragments.append((sampler.vs, sampler.cs, ))
+                fragments.append((sampler.vs, sampler.ns, sampler.cs, ))
                 # FIXME: better not to access data by object name, find something different
                 fragments_indices[co.name] = (i, co, )
             
@@ -7974,22 +8029,34 @@ class PCVIV2Manager():
                         m = o.matrix_world.inverted() @ m
                         # get correct fragment
                         i, _ = fragments_indices[obj.name]
-                        fvs, fcs = fragments[i]
+                        fvs, fns, fcs = fragments[i]
                         # transform
                         fvs.shape = (-1, 3)
                         fvs = np.c_[fvs, np.ones(fvs.shape[0])]
                         fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
                         fvs.shape = (-1, 3)
+                        # transform also normals
+                        _, rot, _ = m.decompose()
+                        rmat = rot.to_matrix().to_4x4()
+                        fns.shape = (-1, 3)
+                        fns = np.c_[fns, np.ones(fns.shape[0])]
+                        fns = np.dot(rmat, fns.T)[0:3].T.reshape((-1))
+                        fns.shape = (-1, 3)
                         # store
-                        all_frags.append((fvs, fcs, ))
+                        all_frags.append((fvs, fns, fcs, ))
             
             # join all frags
             if(len(all_frags) == 0):
-                vs = []
-                cs = []
+                # vs = []
+                # ns = []
+                # cs = []
+                vs = np.zeros(0, dtype=np.float32, )
+                ns = np.zeros(0, dtype=np.float32, )
+                cs = np.zeros(0, dtype=np.float32, )
             else:
                 vs = np.concatenate([i[0] for i in all_frags], axis=0, )
-                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+                ns = np.concatenate([i[1] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[2] for i in all_frags], axis=0, )
             
         elif(settings.render_type == 'OBJECT'):
             co = settings.instance_object
@@ -8000,6 +8067,7 @@ class PCVIV2Manager():
             # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
             sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
             ofvs = sampler.vs
+            ofns = sampler.ns
             ofcs = sampler.cs
             
             all_frags = []
@@ -8014,16 +8082,23 @@ class PCVIV2Manager():
                         fvs = np.c_[fvs, np.ones(fvs.shape[0])]
                         fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
                         fvs.shape = (-1, 3)
-                        all_frags.append((fvs, ofcs, ))
+                        _, rot, _ = m.decompose()
+                        rmat = rot.to_matrix().to_4x4()
+                        fns = ofns[:]
+                        fns.shape = (-1, 3)
+                        fns = np.c_[fns, np.ones(fns.shape[0])]
+                        fns = np.dot(rmat, fns.T)[0:3].T.reshape((-1))
+                        fns.shape = (-1, 3)
+                        all_frags.append((fvs, fns, ofcs, ))
             
             if(len(all_frags) == 0):
-                # vs = []
-                # cs = []
                 vs = np.zeros(0, dtype=np.float32, )
+                ns = np.zeros(0, dtype=np.float32, )
                 cs = np.zeros(0, dtype=np.float32, )
             else:
                 vs = np.concatenate([i[0] for i in all_frags], axis=0, )
-                cs = np.concatenate([i[1] for i in all_frags], axis=0, )
+                ns = np.concatenate([i[1] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[2] for i in all_frags], axis=0, )
             
         else:
             # just generate pink points
@@ -8038,11 +8113,21 @@ class PCVIV2Manager():
             vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
             vs.shape = (-1, 3)
             
+            ns = np.zeros((l * 3), dtype=np.float32, )
+            # NOTE: what should i consider as normal in particles? rotation? velocity? sometimes is rotation just identity quaternion, do i know nothing about basics? or just too tired? maybe both..
+            psys.particles.foreach_get('velocity', ns, )
+            _, rot, _ = m.decompose()
+            rmat = rot.to_matrix().to_4x4()
+            ns.shape = (-1, 3)
+            ns = np.c_[ns, np.ones(ns.shape[0])]
+            ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+            ns.shape = (-1, 3)
+            
             cs = np.column_stack((np.full(l, 1.0, dtype=np.float32, ),
                                   np.full(l, 0.0, dtype=np.float32, ),
                                   np.full(l, 1.0, dtype=np.float32, ), ))
         
-        return vs, cs
+        return vs, ns, cs
     
     @classmethod
     def render(cls, o, ):
@@ -8104,9 +8189,10 @@ class PCVIV2Manager():
                 log("render: psys is dirty", 1, prefix='>>>', )
                 
                 dts, dt, psys_collection, psys_object, mod, mview = pre_generate(o, psys, )
-                vs, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, )
+                vs, ns, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, )
                 post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, )
                 ci['vs'] = vs
+                ci['ns'] = ns
                 ci['cs'] = cs
                 
                 # FIXME: PCV handles different shaders in a kinda messy way, would be nice to rewrite PCVManager.render to be more flexible, get rid of basic shader auto-creation, store extra shaders in the same way as default one, get rid of booleans for enabling extra shaders and make it to enum, etc.. big task, but it will make next customization much easier and simpler..
@@ -8119,33 +8205,37 @@ class PCVIV2Manager():
             if(ci['draw']):
                 log("render: psys is marked to draw", 1, prefix='>>>', )
                 
-                a.append((ci['vs'], ci['cs'], ci['sz'], ))
+                a.append((ci['vs'], ci['ns'], ci['cs'], ci['sz'], ))
             
             _d = datetime.timedelta(seconds=time.time() - _t)
             pcviv.debug_update = "last update completed in {}".format(_d)
         
         _t = time.time()
         vs = []
+        ns = []
         cs = []
         sz = []
         av = []
+        an = []
         ac = []
         az = []
-        for v, c, s in a:
+        for v, n, c, s in a:
             if(len(v) == 0):
                 # skip systems with zero particles
                 continue
             av.append(v)
+            an.append(n)
             ac.append(c)
             az.append(s)
         if(len(av) > 0):
             vs = np.concatenate(av, axis=0, )
+            ns = np.concatenate(an, axis=0, )
             cs = np.concatenate(ac, axis=0, )
             sz = np.concatenate(az, axis=0, )
         
         log("render: drawing..", 1, prefix='>>>', )
         c = PCVIV2Control(o)
-        c.draw(vs, [], cs, sz, )
+        c.draw(vs, ns, cs, sz, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         pcv = o.point_cloud_visualizer
@@ -9372,6 +9462,11 @@ class PCV_PT_development(Panel):
             c.label(text='shader normal lines options..')
         
         c.separator()
+        
+        sub.label(text="normals transform")
+        c = sub.column()
+        c.prop_search(pcv, 'dev_transform_normals_target_object', context.scene, 'objects')
+        c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
 
 
 class PCVIV2_PT_panel(Panel):
@@ -10102,6 +10197,8 @@ class PCV_properties(PropertyGroup):
     pcviv_debug_draw: StringProperty(default="", )
     pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    dev_transform_normals_target_object: StringProperty(name="Object", default="", )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.point_cloud_visualizer = PointerProperty(type=cls)
@@ -10225,6 +10322,7 @@ classes = (
     PCV_OT_generate_volume_point_cloud,
     
     PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    PCVIV2_OT_dev_transform_normals,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
