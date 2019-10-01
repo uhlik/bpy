@@ -1926,6 +1926,60 @@ class PCVShaders():
             fragColor = vec4(f_color, f_alpha);
         }
     '''
+    
+    vertex_shader_minimal_variable_size_and_depth = '''
+        in vec3 position;
+        in vec4 color;
+        in int size;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float global_alpha;
+        
+        uniform vec3 center;
+        uniform float maxdist;
+        
+        out vec3 f_color;
+        out float f_alpha;
+        
+        out float f_depth;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = size;
+            f_color = color.rgb;
+            f_alpha = global_alpha;
+            
+            vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
+            vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
+            float d = op.z - pp.z;
+            f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
+        }
+    '''
+    fragment_shader_minimal_variable_size_and_depth = '''
+        in vec3 f_color;
+        in float f_alpha;
+        
+        in float f_depth;
+        uniform float brightness;
+        uniform float contrast;
+        uniform float blend;
+        
+        out vec4 fragColor;
+        void main()
+        {
+            // fragColor = vec4(f_color, f_alpha);
+            
+            vec3 depth_color = vec3(f_depth, f_depth, f_depth);
+            depth_color = (depth_color - 0.5) * contrast + 0.5 + brightness;
+            // fragColor = vec4(depth_color, global_alpha) * a;
+            
+            depth_color = mix(depth_color, vec3(1.0, 1.0, 1.0), blend);
+            
+            fragColor = vec4(f_color * depth_color, f_alpha);
+            
+        }
+    '''
 
 
 class PCVManager():
@@ -2653,6 +2707,74 @@ class PCVManager():
             shader.uniform_float("object_matrix", o.matrix_world)
             # shader.uniform_float("point_size", pcv.point_size)
             shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'MINIMAL_VARIABLE_SIZE_AND_DEPTH'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizes = v['sizes']
+                            break
+            
+            if(not use_stored):
+                # # generate something to test it, later implement how to set it
+                # sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    if('MINIMAL_VARIABLE_SIZE_AND_DEPTH' in ci['extra'].keys()):
+                        sizes = ci['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH']['sizes']
+                    else:
+                        sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                else:
+                    sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizes': sizes,
+                     'length': l, }
+                ci['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+            # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
+            cx = np.sum(vs[:, 0]) / len(vs)
+            cy = np.sum(vs[:, 1]) / len(vs)
+            cz = np.sum(vs[:, 2]) / len(vs)
+            _, _, s = o.matrix_world.decompose()
+            l = s.length
+            maxd = abs(np.max(vs))
+            mind = abs(np.min(vs))
+            maxdist = maxd
+            if(mind > maxd):
+                maxdist = mind
+            shader.uniform_float("maxdist", float(maxdist) * l)
+            shader.uniform_float("center", (cx, cy, cz, ))
+            shader.uniform_float("brightness", pcv.dev_minimal_shader_variable_size_and_depth_brightness)
+            shader.uniform_float("contrast", pcv.dev_minimal_shader_variable_size_and_depth_contrast)
+            shader.uniform_float("blend", 1.0 - pcv.dev_minimal_shader_variable_size_and_depth_blend)
+            
             batch.draw(shader)
         
         # and now back to some production stuff..
@@ -8259,7 +8381,8 @@ class PCVIV2Control(PCVControl):
         o = self.o
         pcv = o.point_cloud_visualizer
         
-        pcv.dev_minimal_shader_variable_size_enabled = True
+        # pcv.dev_minimal_shader_variable_size_enabled = True
+        pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
         
         # check if object has been used before, i.e. has uuid and uuid item is in cache
         if(pcv.uuid != "" and pcv.runtime):
@@ -8333,6 +8456,17 @@ class PCVIV2Control(PCVControl):
         }
         d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
         
+        # TODO: do the same for the other shader until i decide which is better..
+        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        extra = {
+            'shader': e_shader,
+            'batch': e_batch,
+            'sizes': sz,
+            'length': l,
+        }
+        d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
+        
         # set properties
         pcv.uuid = u
         pcv.filepath = filepath
@@ -8351,6 +8485,9 @@ class PCVIV2Control(PCVControl):
     def _update(self, vs, ns, cs, sz, ):
         o = self.o
         pcv = o.point_cloud_visualizer
+        
+        # pcv.dev_minimal_shader_variable_size_enabled = True
+        pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
         
         # validate/prepare input data
         vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
@@ -8406,6 +8543,17 @@ class PCVIV2Control(PCVControl):
             'length': l,
         }
         d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        
+        # TODO: do the same for the other shader until i decide which is better..
+        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        extra = {
+            'shader': e_shader,
+            'batch': e_batch,
+            'sizes': sz,
+            'length': l,
+        }
+        d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
         
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = True
@@ -9386,10 +9534,18 @@ class PCV_PT_development(Panel):
         c = sub.column()
         
         c.prop(pcv, 'dev_minimal_shader_enabled', toggle=True, text="Minimal Shader", )
-        sub.separator()
+        c.separator()
         
         c.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Minimal Shader With Variable Size", )
-        sub.separator()
+        c.separator()
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Minimal Shader With Variable Size And Depth", )
+        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
+        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
+        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
+        
+        c.separator()
         
         c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
@@ -10085,6 +10241,7 @@ class PCV_properties(PropertyGroup):
             
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10097,6 +10254,7 @@ class PCV_properties(PropertyGroup):
             
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10109,6 +10267,7 @@ class PCV_properties(PropertyGroup):
             
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10147,6 +10306,7 @@ class PCV_properties(PropertyGroup):
             
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -10170,6 +10330,7 @@ class PCV_properties(PropertyGroup):
             self.dev_position_colors_enabled = False
             self.color_adjustment_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.illumination = False
             self.override_default_shader = True
         else:
@@ -10182,6 +10343,7 @@ class PCV_properties(PropertyGroup):
             self.dev_position_colors_enabled = False
             self.color_adjustment_shader_enabled = False
             self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.illumination = False
             self.override_default_shader = True
         else:
@@ -10190,6 +10352,24 @@ class PCV_properties(PropertyGroup):
     dev_minimal_shader_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader", update=_update_minimal_shader, )
     dev_minimal_shader_variable_size_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size", update=_update_minimal_shader_variable_size, )
     
+    def _update_minimal_shader_variable_size_with_depth(self, context):
+        if(self.dev_minimal_shader_variable_size_and_depth_enabled):
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.illumination = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_minimal_shader_variable_size_and_depth_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size with depth", update=_update_minimal_shader_variable_size_with_depth, )
+    dev_minimal_shader_variable_size_and_depth_brightness: FloatProperty(name="Brightness", description="Depth shader color brightness", default=0.0, min=-10.0, max=10.0, )
+    dev_minimal_shader_variable_size_and_depth_contrast: FloatProperty(name="Contrast", description="Depth shader color contrast", default=1.0, min=-10.0, max=10.0, )
+    dev_minimal_shader_variable_size_and_depth_blend: FloatProperty(name="Blend", description="Depth shader blending with original colors", default=0.5, min=0.0, max=1.0, subtype='FACTOR', )
+    
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
@@ -10197,6 +10377,7 @@ class PCV_properties(PropertyGroup):
     pcviv_debug_draw: StringProperty(default="", )
     pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    # testing / development
     dev_transform_normals_target_object: StringProperty(name="Object", default="", )
     
     @classmethod
