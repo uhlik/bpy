@@ -69,8 +69,8 @@ def log(msg, indent=0, prefix='>', ):
 
 
 def debug_mode():
-    return True
-    # return (bpy.app.debug_value != 0)
+    # return True
+    return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -2757,18 +2757,25 @@ class PCVManager():
             shader.uniform_float("object_matrix", o.matrix_world)
             shader.uniform_float("global_alpha", pcv.global_alpha)
             
-            # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
-            # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
-            cx = np.sum(vs[:, 0]) / len(vs)
-            cy = np.sum(vs[:, 1]) / len(vs)
-            cz = np.sum(vs[:, 2]) / len(vs)
-            _, _, s = o.matrix_world.decompose()
-            l = s.length
-            maxd = abs(np.max(vs))
-            mind = abs(np.min(vs))
-            maxdist = maxd
-            if(mind > maxd):
-                maxdist = mind
+            if(len(vs) == 0):
+                maxdist = 1.0
+                cx = 0.0
+                cy = 0.0
+                cz = 0.0
+            else:
+                # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+                # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
+                cx = np.sum(vs[:, 0]) / len(vs)
+                cy = np.sum(vs[:, 1]) / len(vs)
+                cz = np.sum(vs[:, 2]) / len(vs)
+                _, _, s = o.matrix_world.decompose()
+                l = s.length
+                # FIXME: here is error in max with zero length arrays, why are they zero length anyway, putting this single fix for now
+                maxd = abs(np.max(vs))
+                mind = abs(np.min(vs))
+                maxdist = maxd
+                if(mind > maxd):
+                    maxdist = mind
             shader.uniform_float("maxdist", float(maxdist) * l)
             shader.uniform_float("center", (cx, cy, cz, ))
             shader.uniform_float("brightness", pcv.dev_minimal_shader_variable_size_and_depth_brightness)
@@ -4621,6 +4628,116 @@ class PCVIVDraftWeightedFixedCountNumpySampler():
         elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             colors = np.zeros((li, 3), dtype=np.float32, )
             colors = np.take(material_colors, material_indices, axis=0,)
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = np.take(colors, indices, axis=0, )
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        if(use_material_factors is None and colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            use_material_factors = False
+        if(use_material_factors):
+            if(colorize == 'CONSTANT'):
+                use_material_factors = False
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed, )
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        choices = np.indices((l, ), dtype=np.int, )
+        choices.shape = (l, )
+        weights = np.zeros(l, dtype=np.float32, )
+        me.polygons.foreach_get('area', weights, )
+        # make it all sum to 1.0
+        weights *= 1.0 / np.sum(weights)
+        indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+        
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            material_indices = np.zeros(l, dtype=np.int, )
+            me.polygons.foreach_get('material_index', material_indices, )
+            material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+            material_factors = np.zeros((len(materials)), dtype=np.float32, )
+            for i, m in enumerate(materials):
+                mc = m.diffuse_color[:3]
+                material_colors[i][0] = mc[0] ** (1 / 2.2)
+                material_colors[i][1] = mc[1] ** (1 / 2.2)
+                material_colors[i][2] = mc[2] ** (1 / 2.2)
+                material_factors[i] = m.pcv_instance_visualizer.factor
+        
+        if(use_material_factors):
+            material_weights = np.take(material_factors, material_indices, axis=0, )
+            # material_weights *= 1.0 / np.sum(material_weights)
+            material_weights *= 1.0 / np.sum(material_weights)
+            # weights = material_weights
+            
+            if(use_face_area):
+                weights = (weights + material_weights) / 2.0
+            else:
+                weights = material_weights
+            
+            indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+            
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(l, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            colors = np.take(material_colors, material_indices, axis=0, )
         
         if(l == count):
             vs = centers
@@ -8107,7 +8224,7 @@ class PCVIV2Manager():
         cls.render(o)
     
     @classmethod
-    def generate_psys(cls, o, psys_slot, max_points, color_source, color_constant, ):
+    def generate_psys(cls, o, psys_slot, max_points, color_source, color_constant, use_face_area, use_material_factors, ):
         log("generate_psys", prefix='>>>', )
         
         # FIXME: this should be created just once and passed to next call in the same update.. possible optimization?
@@ -8130,7 +8247,8 @@ class PCVIV2Manager():
                     return {'CANCELLED'}
                 # extract points
                 # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
-                sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+                # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+                sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
                 # store
                 fragments.append((sampler.vs, sampler.ns, sampler.cs, ))
                 # FIXME: better not to access data by object name, find something different
@@ -8187,7 +8305,8 @@ class PCVIV2Manager():
                 return {'CANCELLED'}
             # extract points
             # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
-            sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+            # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+            sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
             ofvs = sampler.vs
             ofns = sampler.ns
             ofcs = sampler.cs
@@ -8302,6 +8421,7 @@ class PCVIV2Manager():
         for i, psys in enumerate(o.particle_systems):
             _t = time.time()
             
+            # pcv = o.point_cloud_visualizer
             pcviv = psys.settings.pcv_instance_visualizer
             if(pcviv.uuid not in cls.cache.keys()):
                 continue
@@ -8311,7 +8431,7 @@ class PCVIV2Manager():
                 log("render: psys is dirty", 1, prefix='>>>', )
                 
                 dts, dt, psys_collection, psys_object, mod, mview = pre_generate(o, psys, )
-                vs, ns, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, )
+                vs, ns, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, pcviv.use_face_area, pcviv.use_material_factors, )
                 post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, )
                 ci['vs'] = vs
                 ci['ns'] = ns
@@ -8735,15 +8855,19 @@ class PCV_PT_panel(Panel):
         
         pcv = context.object.point_cloud_visualizer
         ok = False
+        zero_length = False
         for k, v in PCVManager.cache.items():
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
                         ok = True
+                    if(len(v['vertices']) == 0):
+                        zero_length = True
         
         if(ok):
             if(not pcv.has_normals):
-                sub.label(text="Missing vertex normals.", icon='ERROR', )
+                if(not zero_length):
+                    sub.label(text="Missing vertex normals.", icon='ERROR', )
         
         c = sub.column()
         r = c.row(align=True)
@@ -9717,6 +9841,10 @@ class PCVIV2_PT_panel(Panel):
         if(not PCVIV2Manager.initialized):
             c.label(text='Not initialized..', icon='ERROR', )
         else:
+            if(len(o.particle_systems) == 0):
+                b = c.box()
+                b.label(text='No Particle Systems..', icon='ERROR', )
+            
             for psys in o.particle_systems:
                 pcviv = psys.settings.pcv_instance_visualizer
                 b = c.box()
@@ -9727,10 +9855,12 @@ class PCVIV2_PT_panel(Panel):
                     # twice, because i want clicking on psys name to be possible
                     rr.prop(pcviv, 'subpanel_opened', icon='TRIA_DOWN' if pcviv.subpanel_opened else 'TRIA_RIGHT', icon_only=True, emboss=False, )
                     rr.prop(pcviv, 'subpanel_opened', icon='PARTICLES', icon_only=True, emboss=False, text=psys.settings.name, )
-                    rr = r.row(align=True)
-                    rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    rr = r.row()
+                    # rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
                     # update, alert when dirty. in fact it's just before first draw
                     ccc = rr.column(align=True)
+                    rrr = ccc.row(align=True)
                     if(pcviv.draw):
                         alert = False
                         if(pcviv.uuid in PCVIV2Manager.cache.keys()):
@@ -9738,10 +9868,15 @@ class PCVIV2_PT_panel(Panel):
                                 alert = True
                         else:
                             alert = True
-                        ccc.alert = alert
+                        rrr.alert = alert
                     else:
-                        ccc.enabled = False
-                    ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                        rrr.enabled = False
+                    rrr.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    cccc = rrr.row(align=True)
+                    cccc.alert = False
+                    # cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACESEL', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACE_MAPS', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_material_factors', icon_only=True, icon='MATERIAL', toggle=True, text='', )
                 else:
                     r = b.row(align=True)
                     # twice, because i want clicking on psys name to be possible
@@ -9762,9 +9897,11 @@ class PCVIV2_PT_panel(Panel):
                         _r.prop(pcviv, 'color_source', )
                     # update
                     cc = b.column()
-                    r = cc.row(align=True)
-                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    r = cc.row()
+                    # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
                     ccc = r.column(align=True)
+                    rrr = ccc.row(align=True)
                     if(pcviv.draw):
                         alert = False
                         if(pcviv.uuid in PCVIV2Manager.cache.keys()):
@@ -9774,10 +9911,15 @@ class PCVIV2_PT_panel(Panel):
                         else:
                             # or not in cache at all, ie. not processed yet
                             alert = True
-                        ccc.alert = alert
+                        rrr.alert = alert
                     else:
-                        ccc.enabled = False
-                    ccc.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                        rrr.enabled = False
+                    rrr.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    cccc = rrr.row(align=True)
+                    cccc.alert = False
+                    # cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACESEL', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACE_MAPS', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_material_factors', icon_only=True, icon='MATERIAL', toggle=True, text='', )
                     if(debug_mode()):
                         if(pcviv.debug_update == ''):
                             cc.label(text='(debug: {})'.format('n/a', ))
@@ -9810,6 +9952,7 @@ class PCVIV2_PT_panel(Panel):
         # -----------------------------------------------------------------------
         
         # debug stuff ----------------->
+        
         if(debug_mode()):
             r = c.row()
             r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
@@ -9853,6 +9996,97 @@ class PCVIV2_PT_panel(Panel):
             # and some development shortcuts..
             c.separator()
             c.operator('script.reload', text='debug: reload scripts', )
+
+
+class PCVIV2_UL_materials(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, ):
+        pcvivgp = item.pcv_instance_visualizer
+        
+        r = layout.row(align=True)
+        s = r.split(factor=0.5, align=True, )
+        s.label(text=item.name, icon='MATERIAL', )
+        s = s.split(factor=0.8, align=True, )
+        s.prop(pcvivgp, 'factor', text='', )
+        s = s.split(factor=1.0, align=True, )
+        s.prop(item, 'diffuse_color', text='', )
+
+
+class PCVIV2_PT_generator(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Generator Options"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        return True
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        # c.label(text="Material Point Probability:")
+        c.label(text="Probability of generated point per material:")
+        c.template_list("PCVIV2_UL_materials", "", bpy.data, "materials", pcv, "pcviv_material_list_active_index")
+
+
+class PCVIV2_PT_display(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Display Options"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        return True
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.label(text="Shader:")
+        r = c.row(align=True)
+        r.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Basic Shader", )
+        r.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Depth Shader", )
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
 
 
 class PCV_PT_debug(Panel):
@@ -9975,6 +10209,13 @@ class PCVIV2_properties(PropertyGroup):
                                                     ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", )
     color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
     
+    def _method_update(self, context, ):
+        if(not self.use_face_area and not self.use_material_factors):
+            self.use_face_area = True
+    
+    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
+    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
+    
     # helper property, draw minimal ui or draw all props
     subpanel_opened: BoolProperty(default=False, options={'HIDDEN', }, )
     
@@ -9988,6 +10229,18 @@ class PCVIV2_properties(PropertyGroup):
     @classmethod
     def unregister(cls):
         del bpy.types.ParticleSettings.pcv_instance_visualizer
+
+
+class PCVIV2_generator_properties(PropertyGroup):
+    factor: FloatProperty(name="Factor", default=0.5, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Material.pcv_instance_visualizer = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Material.pcv_instance_visualizer
 
 
 class PCV_properties(PropertyGroup):
@@ -10366,9 +10619,9 @@ class PCV_properties(PropertyGroup):
             self.override_default_shader = False
     
     dev_minimal_shader_variable_size_and_depth_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size with depth", update=_update_minimal_shader_variable_size_with_depth, )
-    dev_minimal_shader_variable_size_and_depth_brightness: FloatProperty(name="Brightness", description="Depth shader color brightness", default=0.0, min=-10.0, max=10.0, )
-    dev_minimal_shader_variable_size_and_depth_contrast: FloatProperty(name="Contrast", description="Depth shader color contrast", default=1.0, min=-10.0, max=10.0, )
-    dev_minimal_shader_variable_size_and_depth_blend: FloatProperty(name="Blend", description="Depth shader blending with original colors", default=0.5, min=0.0, max=1.0, subtype='FACTOR', )
+    dev_minimal_shader_variable_size_and_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
+    dev_minimal_shader_variable_size_and_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
+    dev_minimal_shader_variable_size_and_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
     
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
@@ -10376,6 +10629,7 @@ class PCV_properties(PropertyGroup):
     # store info how long was last draw call, ie get points from cache, join, draw
     pcviv_debug_draw: StringProperty(default="", )
     pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
+    pcviv_material_list_active_index: IntProperty(name="Index", default=0, description="", options={'HIDDEN', }, )
     
     # testing / development
     dev_transform_normals_target_object: StringProperty(name="Object", default="", )
@@ -10396,7 +10650,7 @@ def _update_panel_bl_category(self, context, ):
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
-        PCVIV2_PT_panel,
+        PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display,
         PCV_PT_debug,
     )
     try:
@@ -10485,7 +10739,7 @@ def watcher(scene):
 
 
 classes = (
-    PCVIV2_properties,
+    PCVIV2_properties, PCVIV2_generator_properties, PCVIV2_UL_materials,
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_edit,
@@ -10502,7 +10756,7 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV2_PT_panel, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
     PCVIV2_OT_dev_transform_normals,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
