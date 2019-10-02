@@ -69,8 +69,8 @@ def log(msg, indent=0, prefix='>', ):
 
 
 def debug_mode():
-    # return True
-    return (bpy.app.debug_value != 0)
+    return True
+    # return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -1980,6 +1980,76 @@ class PCVShaders():
             
         }
     '''
+    
+    billboard_vertex = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec4 color;
+        
+        uniform mat4 object_matrix;
+        uniform float alpha;
+        
+        out vec4 vcolor;
+        out float valpha;
+        
+        void main()
+        {
+            gl_Position = object_matrix * vec4(position, 1.0);
+            vcolor = color;
+            valpha = alpha;
+        }
+    '''
+    billboard_fragment = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 fcolor;
+        in float falpha;
+        
+        void main()
+        {
+            frag_color = vec4(fcolor.rgb, falpha);
+        }
+    '''
+    billboard_geometry = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            float s = size[0];
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
 
 
 class PCVManager():
@@ -2782,6 +2852,42 @@ class PCVManager():
             shader.uniform_float("contrast", pcv.dev_minimal_shader_variable_size_and_depth_contrast)
             shader.uniform_float("blend", 1.0 - pcv.dev_minimal_shader_variable_size_and_depth_blend)
             
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_billboard_point_cloud_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'BILLBOARD'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.billboard_vertex, PCVShaders.billboard_fragment, geocode=PCVShaders.billboard_geometry, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['BILLBOARD'] = d
+            
+            shader.bind()
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("size", pcv.dev_billboard_point_cloud_size)
+            shader.uniform_float("alpha", pcv.global_alpha)
             batch.draw(shader)
         
         # and now back to some production stuff..
@@ -9671,6 +9777,12 @@ class PCV_PT_development(Panel):
         
         c.separator()
         
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_billboard_point_cloud_enabled', toggle=True, text='BIllboard Shader', )
+        cc.prop(pcv, 'dev_billboard_point_cloud_size')
+        
+        c.separator()
+        
         c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
             r = c.row()
@@ -10043,7 +10155,7 @@ class PCVIV2_PT_generator(Panel):
         l = self.layout
         c = l.column()
         # c.label(text="Material Point Probability:")
-        c.label(text="Probability of generated point per material:")
+        c.label(text="Point probability per material:")
         c.template_list("PCVIV2_UL_materials", "", bpy.data, "materials", pcv, "pcviv_material_list_active_index")
 
 
@@ -10605,7 +10717,7 @@ class PCV_properties(PropertyGroup):
     dev_minimal_shader_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader", update=_update_minimal_shader, )
     dev_minimal_shader_variable_size_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size", update=_update_minimal_shader_variable_size, )
     
-    def _update_minimal_shader_variable_size_with_depth(self, context):
+    def _update_minimal_shader_variable_size_with_depth(self, context, ):
         if(self.dev_minimal_shader_variable_size_and_depth_enabled):
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -10622,6 +10734,23 @@ class PCV_properties(PropertyGroup):
     dev_minimal_shader_variable_size_and_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
     dev_minimal_shader_variable_size_and_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
     dev_minimal_shader_variable_size_and_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
+    
+    def _update_dev_billboard_point_cloud_enabled(self, context, ):
+        if(self.dev_billboard_point_cloud_enabled):
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.illumination = False
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_billboard_point_cloud_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size with depth", update=_update_dev_billboard_point_cloud_enabled, )
+    dev_billboard_point_cloud_size: FloatProperty(name="Size", default=0.002, min=0.0001, max=0.2, description="", precision=6, )
     
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
