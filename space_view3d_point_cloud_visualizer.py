@@ -2911,6 +2911,14 @@ class PCVManager():
                 else:
                     sizes = np.random.randint(low=1, high=10, size=len(vs), )
                 
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
                 shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
                 # batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -2961,6 +2969,14 @@ class PCVManager():
                         sizes = np.random.randint(low=1, high=10, size=len(vs), )
                 else:
                     sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
                 
                 shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
@@ -3073,6 +3089,14 @@ class PCVManager():
                 else:
                     sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
                     sizesf = sizesf.astype(np.float32)
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
                 
                 shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
@@ -8915,42 +8939,47 @@ class PCVIV2Control(PCVControl):
         d['object'] = o
         d['name'] = o.name
         
-        # store sizes
         d['extra'] = {}
-        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_enabled):
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            # TODO: do the same for the other shader until i decide which is better..
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD'] = extra
         
-        # TODO: do the same for the other shader until i decide which is better..
-        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
-        
-        # FIXME: this is getting ridiculous
-        e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['RICH_BILLBOARD'] = extra
+        # d['extra_data'] = {
+        #     'sizes': sz,
+        #     'sizesf': szf,
+        # }
         
         # set properties
         pcv.uuid = u
@@ -9024,42 +9053,47 @@ class PCVIV2Control(PCVControl):
         pcv.has_normals = has_normals
         pcv.has_vcols = has_colors
         
-        # store sizes
         d['extra'] = {}
-        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_enabled):
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            # TODO: do the same for the other shader until i decide which is better..
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD'] = extra
         
-        # TODO: do the same for the other shader until i decide which is better..
-        e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
-        
-        # FIXME: this is getting ridiculous
-        e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
-        e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
-        extra = {
-            'shader': e_shader,
-            'batch': e_batch,
-            'sizes': sz,
-            'sizesf': szf,
-            'length': l,
-        }
-        d['extra']['RICH_BILLBOARD'] = extra
+        # d['extra_data'] = {
+        #     'sizes': sz,
+        #     'sizesf': szf,
+        # }
         
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = True
@@ -10324,82 +10358,22 @@ class PCVIV2_PT_panel(Panel):
                     # cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACESEL', toggle=True, text='', )
                     cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACE_MAPS', toggle=True, text='', )
                     cccc.prop(pcviv, 'use_material_factors', icon_only=True, icon='MATERIAL', toggle=True, text='', )
-                    if(debug_mode()):
-                        if(pcviv.debug_update == ''):
-                            cc.label(text='(debug: {})'.format('n/a', ))
-                        else:
-                            cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
-            
+                    # if(debug_mode()):
+                    #     if(pcviv.debug_update == ''):
+                    #         cc.label(text='(debug: {})'.format('n/a', ))
+                    #     else:
+                    #         cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
+                
+                if(debug_mode()):
+                    if(pcviv.debug_update == ''):
+                        b.label(text='(debug: {})'.format('n/a', ))
+                    else:
+                        b.label(text='(debug: {})'.format(pcviv.debug_update, ))
+                
             c.separator()
             r = c.row(align=True)
             r.operator('point_cloud_visualizer.pcviv_update_all')
             r.operator('point_cloud_visualizer.pcviv_reset')
-        
-        if(debug_mode()):
-            c.separator()
-            b = c.box()
-            c = b.column()
-        
-        if(debug_mode()):
-            c.separator()
-            if(pcv.pcviv_debug_draw != ''):
-                c.label(text='(debug: {})'.format(pcv.pcviv_debug_draw, ))
-                c.separator()
-        
-        if(debug_mode()):
-            r = c.row(align=True)
-            # r.operator('point_cloud_visualizer.pcviv_reset')
-            r.operator('point_cloud_visualizer.pcviv_deinit')
-            r.operator('point_cloud_visualizer.pcviv_reset_all')
-            c.separator()
-        
-        # -----------------------------------------------------------------------
-        
-        # debug stuff ----------------->
-        
-        if(debug_mode()):
-            r = c.row()
-            r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-            r.label(text="Debug Info")
-            if(pcv.pcviv_debug_panel_show_info):
-                cc = c.column()
-                cc.label(text="object: '{}'".format(o.name))
-                cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
-                cc.scale_y = 0.5
-                
-                c.separator()
-                
-                tab = '        '
-                
-                cc = c.column()
-                cc.label(text="PCVIV2Manager:")
-                cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
-                cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
-                cc.scale_y = 0.5
-                
-                c.separator()
-                tab = '    '
-                ci = 0
-                for k, v in PCVIV2Manager.cache.items():
-                    b = c.box()
-                    cc = b.column()
-                    cc.scale_y = 0.5
-                    cc.label(text='item: {}'.format(ci))
-                    ci += 1
-                    for l, w in v.items():
-                        if(type(w) == dict):
-                            cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
-                        elif(type(w) == np.ndarray or type(w) == list):
-                            cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
-                        else:
-                            cc.label(text='{}{}: {}'.format(tab, l, w))
-        
-        # <----------------- debug stuff
-        
-        if(debug_mode()):
-            # and some development shortcuts..
-            c.separator()
-            c.operator('script.reload', text='debug: reload scripts', )
 
 
 class PCVIV2_UL_materials(UIList):
@@ -10499,6 +10473,94 @@ class PCVIV2_PT_display(Panel):
             cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
             cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
             cc.prop(pcv, 'dev_rich_billboard_depth_blend')
+
+
+class PCVIV2_PT_debug(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCVIV Debug"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        if(debug_mode()):
+            return True
+        
+        return False
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        b = c.box()
+        c = b.column()
+        
+        c.separator()
+        if(pcv.pcviv_debug_draw != ''):
+            c.label(text='(debug: {})'.format(pcv.pcviv_debug_draw, ))
+            c.separator()
+        
+        r = c.row(align=True)
+        # r.operator('point_cloud_visualizer.pcviv_reset')
+        r.operator('point_cloud_visualizer.pcviv_deinit')
+        r.operator('point_cloud_visualizer.pcviv_reset_all')
+        c.separator()
+        
+        r = c.row()
+        r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Debug Info")
+        if(pcv.pcviv_debug_panel_show_info):
+            cc = c.column()
+            cc.label(text="object: '{}'".format(o.name))
+            cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
+            cc.scale_y = 0.5
+            
+            c.separator()
+            
+            tab = '        '
+            
+            cc = c.column()
+            cc.label(text="PCVIV2Manager:")
+            cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
+            cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
+            cc.scale_y = 0.5
+            
+            c.separator()
+            tab = '    '
+            ci = 0
+            for k, v in PCVIV2Manager.cache.items():
+                b = c.box()
+                cc = b.column()
+                cc.scale_y = 0.5
+                cc.label(text='item: {}'.format(ci))
+                ci += 1
+                for l, w in v.items():
+                    if(type(w) == dict):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
+                    elif(type(w) == np.ndarray or type(w) == list):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
+                    else:
+                        cc.label(text='{}{}: {}'.format(tab, l, w))
+        
+        # and some development shortcuts..
+        c.separator()
+        c.operator('script.reload', text='debug: reload scripts', )
 
 
 class PCV_PT_debug(Panel):
@@ -11005,13 +11067,16 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader_variable_size(self, context, ):
         if(self.dev_minimal_shader_variable_size_enabled):
+            self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
             self.color_adjustment_shader_enabled = False
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
-            self.illumination = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -11021,14 +11086,16 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader_variable_size_with_depth(self, context, ):
         if(self.dev_minimal_shader_variable_size_and_depth_enabled):
+            self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
             self.color_adjustment_shader_enabled = False
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
-            self.illumination = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -11105,7 +11172,7 @@ def _update_panel_bl_category(self, context, ):
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
-        PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display,
+        PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
         PCV_PT_debug,
     )
     try:
@@ -11211,7 +11278,9 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
+    PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    
     PCVIV2_OT_dev_transform_normals,
     
     PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
