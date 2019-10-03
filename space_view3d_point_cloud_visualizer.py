@@ -10971,6 +10971,8 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10984,6 +10986,8 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10997,6 +11001,8 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11036,6 +11042,8 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -11054,13 +11062,16 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader(self, context, ):
         if(self.dev_minimal_shader_enabled):
+            self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
             self.color_adjustment_shader_enabled = False
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
-            self.illumination = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -11107,6 +11118,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_billboard_point_cloud_enabled(self, context, ):
         if(self.dev_billboard_point_cloud_enabled):
+            self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
@@ -11115,7 +11127,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
-            self.illumination = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
