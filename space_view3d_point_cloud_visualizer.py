@@ -10495,6 +10495,7 @@ class PCVIV2_PT_display(Panel):
         if(pcv.dev_rich_billboard_point_cloud_enabled):
             cc = c.column(align=True)
             cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
+            cc = c.column(align=True)
             cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
             cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
             cc.prop(pcv, 'dev_rich_billboard_depth_blend')
