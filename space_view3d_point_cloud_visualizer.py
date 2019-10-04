@@ -4561,16 +4561,25 @@ class PCV_OT_export(Operator, ExportHelper):
         #     return vs, ns
         
         def apply_matrix(vs, ns, matrix, ):
+            apply_normals = ns is not None
             matrot = matrix.decompose()[1].to_matrix().to_4x4()
             dtv = vs.dtype
-            dtn = ns.dtype
             rvs = np.zeros(vs.shape, dtv)
-            rns = np.zeros(ns.shape, dtn)
+
+            if apply_normals:
+                dtn = ns.dtype
+                rns = np.zeros(ns.shape, dtn)
+            else:
+                rns = None
+
             for i in range(len(vs)):
                 co = matrix @ Vector(vs[i])
-                no = matrot @ Vector(ns[i])
                 rvs[i] = np.array(co.to_tuple(), dtv)
-                rns[i] = np.array(no.to_tuple(), dtn)
+
+                if apply_normals:
+                    no = matrot @ Vector(ns[i])
+                    rns[i] = np.array(no.to_tuple(), dtn)
+
             return rvs, rns
         
         if(pcv.export_apply_transformation):
@@ -4589,23 +4598,31 @@ class PCV_OT_export(Operator, ExportHelper):
         
         if(pcv.export_use_viewport):
             vs = vs.astype(np.float32)
-            ns = ns.astype(np.float32)
-            cs = cs.astype(np.float32)
-            # back to uint8 colors
-            cs = cs * 255
-            cs = cs.astype(np.uint8)
+            if(normals):
+                ns = ns.astype(np.float32)
+            if(colors):
+                cs = cs.astype(np.float32)
+                # back to uint8 colors
+                cs = cs * 255
+                cs = cs.astype(np.uint8)
             l = len(vs)
-            dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
+            dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4')]
+            if(normals):
+                dt = dt + [('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4')]
+            if(colors):
+                dt = dt + [('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
             a = np.empty(l, dtype=dt, )
             a['x'] = vs[:, 0]
             a['y'] = vs[:, 1]
             a['z'] = vs[:, 2]
-            a['nx'] = ns[:, 0]
-            a['ny'] = ns[:, 1]
-            a['nz'] = ns[:, 2]
-            a['red'] = cs[:, 0]
-            a['green'] = cs[:, 1]
-            a['blue'] = cs[:, 2]
+            if(normals):
+                a['nx'] = ns[:, 0]
+                a['ny'] = ns[:, 1]
+                a['nz'] = ns[:, 2]
+            if(colors):
+                a['red'] = cs[:, 0]
+                a['green'] = cs[:, 1]
+                a['blue'] = cs[:, 2]
         else:
             # combine back to points, using original dtype
             dt = (('x', vs[0].dtype.str, ),
