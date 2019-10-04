@@ -5872,31 +5872,47 @@ class PCV_OT_export(Operator, ExportHelper):
             if(colors):
                 cs = np.column_stack((points['red'], points['green'], points['blue'], ))
         
-        # fabricate matrix
-        m = Matrix.Identity(4)
-        if(pcv.export_apply_transformation):
-            if(o.matrix_world != Matrix.Identity(4)):
-                log("apply transformation..", 1)
-                m = o.matrix_world.copy()
-        if(pcv.export_convert_axes):
-            log("convert axes..", 1)
-            axis_forward = '-Z'
-            axis_up = 'Y'
-            cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
-            m = m @ cm
-        # apply that matrix in not identity
-        if(m != Matrix.Identity(4)):
+        def apply_matrix(m, vs, ns=None, ):
             vs.shape = (-1, 3)
             vs = np.c_[vs, np.ones(vs.shape[0])]
             vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
             vs.shape = (-1, 3)
-            if(normals):
+            if(ns is not None):
                 _, rot, _ = m.decompose()
                 rmat = rot.to_matrix().to_4x4()
                 ns.shape = (-1, 3)
                 ns = np.c_[ns, np.ones(ns.shape[0])]
                 ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
                 ns.shape = (-1, 3)
+            return vs, ns
+        
+        # fabricate matrix
+        m = Matrix.Identity(4)
+        if(pcv.export_apply_transformation):
+            if(o.matrix_world != Matrix.Identity(4)):
+                log("apply transformation..", 1)
+                vs, ns = apply_matrix(o.matrix_world.copy(), vs, ns, )
+        if(pcv.export_convert_axes):
+            log("convert axes..", 1)
+            axis_forward = '-Z'
+            axis_up = 'Y'
+            cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
+            vs, ns = apply_matrix(cm, vs, ns, )
+        
+        # TODO: make whole PCV data type agnostic, load anything, keep original, convert to what is needed for display (float32), use original for export if not set to use viewport/edited data. now i am forcing float32 for x, y, z, nx, ny, nz and uint8 for red, green, blue. 99% of ply files i've seen is like that, but specification is not that strict (read again the best resource: http://paulbourke.net/dataformats/ply/ )
+        
+        # somehow along the way i am getting double dtype, so correct that
+        vs = vs.astype(np.float32)
+        if(normals):
+            ns = ns.astype(np.float32)
+        if(colors):
+            # cs = cs.astype(np.float32)
+            
+            if(pcv.export_use_viewport):
+                # viewport colors are in float32 now, back to uint8 colors, loaded data should be in uint8, so no need for conversion
+                cs = cs.astype(np.float32)
+                cs = cs * 255
+                cs = cs.astype(np.uint8)
         
         log("write..", 1)
         
@@ -5909,15 +5925,11 @@ class PCV_OT_export(Operator, ExportHelper):
                    ('ny', ns[1].dtype.str, ),
                    ('nz', ns[2].dtype.str, ), )
         if(colors):
-            if(pcv.export_use_viewport):
-                # back to uint8 colors
-                cs = cs.astype(np.float32)
-                cs = cs * 255
-                cs = cs.astype(np.uint8)
-            
             dt += (('red', cs[0].dtype.str, ),
                    ('green', cs[1].dtype.str, ),
                    ('blue', cs[2].dtype.str, ), )
+        log("dtype: {}".format(dt), 1)
+        
         l = len(vs)
         dt = list(dt)
         a = np.empty(l, dtype=dt, )
