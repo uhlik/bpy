@@ -5847,6 +5847,10 @@ class PCV_OT_export(Operator, ExportHelper):
                 ns = ns[:l]
                 cs = cs[:l]
             
+            # TODO: viewport points have always some normals and colors, should i keep it how it was loaded or should i include also generic data created for viewing?
+            normals = True
+            colors = True
+            
         else:
             log("using original loaded points..", 1)
             # get original loaded points
@@ -5868,103 +5872,66 @@ class PCV_OT_export(Operator, ExportHelper):
             if(colors):
                 cs = np.column_stack((points['red'], points['green'], points['blue'], ))
         
-        # FIXME: something is not right with this.. it would be nice to have it working
-        # def apply_matrix(vs, ns, m):
-        #     # https://blender.stackexchange.com/questions/139511/replace-matrix-vector-list-comprehensions-with-something-more-efficient/
-        #     l = len(vs)
-        #     mw = np.array(m.inverted(), dtype=np.float, )
-        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
-        #
-        #     a = np.ones((l, 4), vs.dtype)
-        #     a[:, :-1] = vs
-        #     # a = np.einsum('ij,aj->ai', mw, a)
-        #     a = np.dot(a, mw)
-        #     a = np.float32(a)
-        #     vs = a[:, :-1]
-        #
-        #     if(ns is not None):
-        #         a = np.ones((l, 4), ns.dtype)
-        #         a[:, :-1] = ns
-        #         # a = np.einsum('ij,aj->ai', mwrot, a)
-        #         a = np.dot(a, mwrot)
-        #         a = np.float32(a)
-        #         ns = a[:, :-1]
-        #
-        #     return vs, ns
-        
-        def apply_matrix(vs, ns, matrix, ):
-            matrot = matrix.decompose()[1].to_matrix().to_4x4()
-            dtv = vs.dtype
-            dtn = ns.dtype
-            rvs = np.zeros(vs.shape, dtv)
-            rns = np.zeros(ns.shape, dtn)
-            for i in range(len(vs)):
-                co = matrix @ Vector(vs[i])
-                no = matrot @ Vector(ns[i])
-                rvs[i] = np.array(co.to_tuple(), dtv)
-                rns[i] = np.array(no.to_tuple(), dtn)
-            return rvs, rns
-        
+        # fabricate matrix
+        m = Matrix.Identity(4)
         if(pcv.export_apply_transformation):
-            if(o.matrix_world != Matrix()):
+            if(o.matrix_world != Matrix.Identity(4)):
                 log("apply transformation..", 1)
-                vs, ns = apply_matrix(vs, ns, o.matrix_world.copy())
-        
+                m = o.matrix_world.copy()
         if(pcv.export_convert_axes):
             log("convert axes..", 1)
             axis_forward = '-Z'
             axis_up = 'Y'
             cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
-            vs, ns = apply_matrix(vs, ns, cm)
+            m = m @ cm
+        # apply that matrix in not identity
+        if(m != Matrix.Identity(4)):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(normals):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
         
         log("write..", 1)
         
-        if(pcv.export_use_viewport):
-            vs = vs.astype(np.float32)
-            ns = ns.astype(np.float32)
-            cs = cs.astype(np.float32)
-            # back to uint8 colors
-            cs = cs * 255
-            cs = cs.astype(np.uint8)
-            l = len(vs)
-            dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
-            a = np.empty(l, dtype=dt, )
-            a['x'] = vs[:, 0]
-            a['y'] = vs[:, 1]
-            a['z'] = vs[:, 2]
+        # combine back to points, using original dtype
+        dt = (('x', vs[0].dtype.str, ),
+              ('y', vs[1].dtype.str, ),
+              ('z', vs[2].dtype.str, ), )
+        if(normals):
+            dt += (('nx', ns[0].dtype.str, ),
+                   ('ny', ns[1].dtype.str, ),
+                   ('nz', ns[2].dtype.str, ), )
+        if(colors):
+            if(pcv.export_use_viewport):
+                # back to uint8 colors
+                cs = cs.astype(np.float32)
+                cs = cs * 255
+                cs = cs.astype(np.uint8)
+            
+            dt += (('red', cs[0].dtype.str, ),
+                   ('green', cs[1].dtype.str, ),
+                   ('blue', cs[2].dtype.str, ), )
+        l = len(vs)
+        dt = list(dt)
+        a = np.empty(l, dtype=dt, )
+        a['x'] = vs[:, 0]
+        a['y'] = vs[:, 1]
+        a['z'] = vs[:, 2]
+        if(normals):
             a['nx'] = ns[:, 0]
             a['ny'] = ns[:, 1]
             a['nz'] = ns[:, 2]
+        if(colors):
             a['red'] = cs[:, 0]
             a['green'] = cs[:, 1]
             a['blue'] = cs[:, 2]
-        else:
-            # combine back to points, using original dtype
-            dt = (('x', vs[0].dtype.str, ),
-                  ('y', vs[1].dtype.str, ),
-                  ('z', vs[2].dtype.str, ), )
-            if(normals):
-                dt += (('nx', ns[0].dtype.str, ),
-                       ('ny', ns[1].dtype.str, ),
-                       ('nz', ns[2].dtype.str, ), )
-            if(colors):
-                dt += (('red', cs[0].dtype.str, ),
-                       ('green', cs[1].dtype.str, ),
-                       ('blue', cs[2].dtype.str, ), )
-            l = len(vs)
-            dt = list(dt)
-            a = np.empty(l, dtype=dt, )
-            a['x'] = vs[:, 0]
-            a['y'] = vs[:, 1]
-            a['z'] = vs[:, 2]
-            if(normals):
-                a['nx'] = ns[:, 0]
-                a['ny'] = ns[:, 1]
-                a['nz'] = ns[:, 2]
-            if(colors):
-                a['red'] = cs[:, 0]
-                a['green'] = cs[:, 1]
-                a['blue'] = cs[:, 2]
         
         w = BinPlyPointCloudWriter(self.filepath, a, )
         
