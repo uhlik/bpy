@@ -69,8 +69,8 @@ def log(msg, indent=0, prefix='>', ):
 
 
 def debug_mode():
-    # return True
-    return (bpy.app.debug_value != 0)
+    return True
+    # return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -2203,6 +2203,75 @@ class PCVShaders():
             EndPrimitive();
         }
     '''
+    
+    phong_vs = '''
+        layout (location = 0) in vec3 position;
+        layout (location = 1) in vec3 normal;
+        layout (location = 2) in vec4 color;
+        
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        uniform float point_size;
+        uniform float alpha_radius;
+        
+        out vec3 f_position;
+        out vec3 f_normal;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        
+        void main()
+        {
+            gl_Position = projection * view * model * vec4(position, 1.0);
+            gl_PointSize = point_size;
+            f_position = vec3(model * vec4(position, 1.0));
+            f_normal = mat3(transpose(inverse(model))) * normal;
+            f_color = color;
+            f_alpha_radius = alpha_radius;
+        }
+    '''
+    phong_fs = '''
+        in vec3 f_position;
+        in vec3 f_normal;
+        in vec4 f_color;
+        in float f_alpha_radius;
+        
+        uniform float alpha;
+        uniform vec3 light_position;
+        uniform vec3 light_color;
+        uniform vec3 view_position;
+        uniform float ambient_strength;
+        uniform float specular_strength;
+        uniform float specular_exponent;
+        
+        out vec4 frag_color;
+        
+        void main()
+        {
+            vec3 ambient = ambient_strength * light_color;
+  	        
+            vec3 nor = normalize(f_normal);
+            vec3 light_direction = normalize(light_position - f_position);
+            vec3 diffuse = max(dot(nor, light_direction), 0.0) * light_color;
+            
+            vec3 view_direction = normalize(view_position - f_position);
+            vec3 reflection_direction = reflect(-light_direction, nor);
+            float spec = pow(max(dot(view_direction, reflection_direction), 0.0), specular_exponent);
+            vec3 specular = specular_strength * spec * light_color;
+            
+            vec3 col = (ambient + diffuse + specular) * f_color.rgb;
+            
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            
+            frag_color = vec4(col, alpha) * a;
+        }
+    '''
 
 
 class PCVManager():
@@ -3143,6 +3212,62 @@ class PCVManager():
             shader.uniform_float("contrast", pcv.dev_rich_billboard_depth_contrast)
             shader.uniform_float("blend", 1.0 - pcv.dev_rich_billboard_depth_blend)
             
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_phong_shader_enabled):
+            vs = ci['vertices']
+            ns = ci['normals']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'PHONG'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.phong_vs, PCVShaders.phong_fs, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['PHONG'] = d
+            
+            shader.bind()
+            
+            # shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("view", bpy.context.region_data.view_matrix)
+            shader.uniform_float("projection", bpy.context.region_data.window_matrix)
+            shader.uniform_float("model", o.matrix_world)
+            
+            shader.uniform_float("light_position", bpy.context.region_data.view_matrix.inverted().translation)
+            # shader.uniform_float("light_color", (1.0, 1.0, 1.0))
+            shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+            shader.uniform_float("view_position", bpy.context.region_data.view_matrix.inverted().translation)
+            
+            shader.uniform_float("ambient_strength", pcv.dev_phong_shader_ambient_strength)
+            shader.uniform_float("specular_strength", pcv.dev_phong_shader_specular_strength)
+            shader.uniform_float("specular_exponent", pcv.dev_phong_shader_specular_exponent)
+            
+            shader.uniform_float("alpha", pcv.global_alpha)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            
+            # pm = bpy.context.region_data.perspective_matrix
+            # shader.uniform_float("perspective_matrix", pm)
+            # shader.uniform_float("object_matrix", o.matrix_world)
+            # shader.uniform_float("point_size", pcv.point_size)
+            # shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
         
         # and now back to some production stuff..
@@ -10021,7 +10146,8 @@ class PCV_PT_development(Panel):
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        l.label(text='', icon='SETTINGS', )
+        # l.label(text='', icon='SETTINGS', )
+        l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -10057,48 +10183,52 @@ class PCV_PT_development(Panel):
         c = sub.column()
         
         c.prop(pcv, 'dev_minimal_shader_enabled', toggle=True, text="Minimal Shader", )
-        c.separator()
         
         c.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Minimal Shader With Variable Size", )
-        c.separator()
         
         cc = c.column(align=True)
         cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Minimal Shader With Variable Size And Depth", )
-        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
-        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
-        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
-        
-        c.separator()
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
         
         cc = c.column(align=True)
         cc.prop(pcv, 'dev_billboard_point_cloud_enabled', toggle=True, text='BIllboard Shader', )
-        cc.prop(pcv, 'dev_billboard_point_cloud_size')
-        
-        c.separator()
+        if(pcv.dev_billboard_point_cloud_enabled):
+            cc.prop(pcv, 'dev_billboard_point_cloud_size')
         
         cc = c.column(align=True)
         cc.prop(pcv, 'dev_rich_billboard_point_cloud_enabled', toggle=True, text='Rich BIllboard Shader', )
-        cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
-        cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
-        cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
-        cc.prop(pcv, 'dev_rich_billboard_depth_blend')
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
+            cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
+            cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
+            cc.prop(pcv, 'dev_rich_billboard_depth_blend')
         
-        c.separator()
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_phong_shader_enabled', toggle=True, text='Phong Shader', )
+        if(pcv.dev_phong_shader_enabled):
+            cc.prop(pcv, 'dev_phong_shader_ambient_strength')
+            cc.prop(pcv, 'dev_phong_shader_specular_strength')
+            cc.prop(pcv, 'dev_phong_shader_specular_exponent')
         
-        c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
-            r = c.row()
+            r = cc.row(align=True)
             r.prop(pcv, 'dev_selection_shader_color', text="", )
-        c.enabled = e
-        sub.separator()
         
+        sub.separator()
         sub.label(text="Generate Volume:")
         c = sub.column(align=True)
         c.prop(pcv, 'generate_number_of_points')
         c.prop(pcv, 'generate_seed')
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
         
-        c.separator()
+        sub.separator()
+        
+        """
         c.separator()
         
         c.label(text="new ui for shaders")
@@ -10156,6 +10286,7 @@ class PCV_PT_development(Panel):
             c.label(text='shader normal lines options..')
         
         c.separator()
+        """
         
         sub.label(text="normals transform")
         c = sub.column()
@@ -10191,7 +10322,7 @@ class PCVIV2_PT_panel(Panel):
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        l.label(text='', icon='SETTINGS', )
+        l.label(text='', icon='MOD_PARTICLE_INSTANCE', )
     
     def draw(self, context):
         """
@@ -10643,6 +10774,38 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
+class PCV_PT_debug_utils(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Debug Utils"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(debug_mode()):
+                return True
+        return False
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.operator('script.reload')
+
+
 class PCVIV2_properties(PropertyGroup):
     # to identify object, key for storing cloud in cache, etc.
     uuid: StringProperty(default="", options={'HIDDEN', }, )
@@ -10755,6 +10918,7 @@ class PCV_properties(PropertyGroup):
     def _shader_update(self, context, ):
         pass
     """
+    """
     shader_items = [
         ('DEFAULT', 'Default', "", ),
         ('DEPTH', 'Depth', "", ),
@@ -10769,6 +10933,7 @@ class PCV_properties(PropertyGroup):
     shader_illumination: BoolProperty(name="Illumination", default=False, description="Enable extra illumination on point cloud", )
     shader_options_show: BoolProperty(name="Shader Options", default=False, description="Show shader options", )
     shader_normal_lines: BoolProperty(name="Normals", default=False, description="Show normals as lines", )
+    """
     
     runtime: BoolProperty(default=False, options={'HIDDEN', }, )
     
@@ -10952,6 +11117,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10967,6 +11133,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -10982,6 +11149,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11023,6 +11191,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -11050,6 +11219,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11066,6 +11236,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11085,6 +11256,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11106,6 +11278,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11125,6 +11298,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11136,15 +11310,39 @@ class PCV_properties(PropertyGroup):
     dev_rich_billboard_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
     dev_rich_billboard_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
     
+    def _update_dev_phong_shader_enabled(self, context):
+        if(self.dev_phong_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_phong_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_update_dev_phong_shader_enabled, )
+    dev_phong_shader_ambient_strength: FloatProperty(name="ambient_strength", default=0.5, min=0.0, max=1.0, description="", )
+    dev_phong_shader_specular_strength: FloatProperty(name="specular_strength", default=0.5, min=0.0, max=1.0, description="", )
+    dev_phong_shader_specular_exponent: FloatProperty(name="specular_exponent", default=8.0, min=1.0, max=512.0, description="", )
+    
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
     # store info how long was last draw call, ie get points from cache, join, draw
     pcviv_debug_draw: StringProperty(default="", )
     pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
+    # have to provide prop for indexing, not needed for anything in this case
     pcviv_material_list_active_index: IntProperty(name="Index", default=0, description="", options={'HIDDEN', }, )
     
-    # testing / development
+    # testing / development stuff
     dev_transform_normals_target_object: StringProperty(name="Object", default="", )
     
     @classmethod
@@ -11164,7 +11362,7 @@ def _update_panel_bl_category(self, context, ):
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
         PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
-        PCV_PT_debug,
+        PCV_PT_debug, PCV_PT_debug_utils,
     )
     try:
         p = _main_panel
@@ -11274,7 +11472,8 @@ classes = (
     
     PCVIV2_OT_dev_transform_normals,
     
-    PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
+    PCV_PT_debug, PCV_PT_debug_utils,
+    PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
 
