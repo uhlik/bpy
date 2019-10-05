@@ -6275,45 +6275,30 @@ class PCV_OT_filter_project(Operator):
         if(o is None):
             raise Exception()
         
-        # FIXME: something is not right with this.. it would be nice to have it working
-        # def apply_matrix(vs, ns, m, ):
-        #     l = len(vs)
-        #     mw = np.array(m.inverted(), dtype=np.float, )
-        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
-        #     a = np.ones((l, 4), vs.dtype)
-        #     a[:, :-1] = vs
-        #     a = np.dot(a, mw)
-        #     a = np.float32(a)
-        #     vs = a[:, :-1]
-        #     if(ns is not None):
-        #         a = np.ones((l, 4), ns.dtype)
-        #         a[:, :-1] = ns
-        #         a = np.dot(a, mwrot)
-        #         a = np.float32(a)
-        #         ns = a[:, :-1]
-        #     return vs, ns
-        
-        def apply_matrix(vs, ns, matrix, ):
-            matrot = matrix.decompose()[1].to_matrix().to_4x4()
-            dtv = vs.dtype
-            dtn = ns.dtype
-            rvs = np.zeros(vs.shape, dtv)
-            rns = np.zeros(ns.shape, dtn)
-            for i in range(len(vs)):
-                co = matrix @ Vector(vs[i])
-                no = matrot @ Vector(ns[i])
-                rvs[i] = np.array(co.to_tuple(), dtv)
-                rns[i] = np.array(no.to_tuple(), dtn)
-            return rvs, rns
-        
         c = PCVManager.cache[pcv.uuid]
         vs = c['vertices']
         ns = c['normals']
         cs = c['colors']
         
         # apply parent matrix to points
+        def apply_matrix(m, vs, ns=None, ):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(ns is not None):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
+            return vs, ns
+        
         m = c['object'].matrix_world.copy()
-        vs, ns = apply_matrix(vs, ns, m)
+        vs, ns = apply_matrix(m, vs, ns, )
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
         
         # combine
         l = len(vs)
@@ -6593,10 +6578,11 @@ class PCV_OT_filter_project(Operator):
         # unapply parent matrix to points
         m = c['object'].matrix_world.copy()
         m = m.inverted()
-        vs, ns = apply_matrix(vs, ns, m)
+        vs, ns = apply_matrix(m, vs, ns, )
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
         
         # cleanup
-        
         if(pcv.filter_project_colorize):
             bm.free()
             # owner.to_mesh_clear()
