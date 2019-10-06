@@ -11291,7 +11291,7 @@ class PCV_properties(PropertyGroup):
             self.override_default_shader = False
     
     dev_rich_billboard_point_cloud_enabled: BoolProperty(name="Enabled", default=False, description="Enable Rich Billboard Shader", update=_update_dev_rich_billboard_point_cloud_enabled, )
-    dev_rich_billboard_point_cloud_size: FloatProperty(name="Size", default=0.01, min=0.0001, max=0.5, description="", precision=6, )
+    dev_rich_billboard_point_cloud_size: FloatProperty(name="Size", default=0.01, min=0.0001, max=1.0, description="", precision=6, )
     dev_rich_billboard_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
     dev_rich_billboard_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
     dev_rich_billboard_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
