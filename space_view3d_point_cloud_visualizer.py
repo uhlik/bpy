@@ -2272,6 +2272,83 @@ class PCVShaders():
             frag_color = vec4(col, alpha) * a;
         }
     '''
+    
+    billboard_vertex_with_no_depth_and_size = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec4 color;
+        layout(location = 2) in float sizef;
+        
+        uniform mat4 object_matrix;
+        
+        uniform float alpha;
+        
+        out vec4 vcolor;
+        out float valpha;
+        out float vsizef;
+        
+        void main()
+        {
+            gl_Position = object_matrix * vec4(position, 1.0);
+            vcolor = color;
+            valpha = alpha;
+            vsizef = sizef;
+        }
+    '''
+    billboard_fragment_with_no_depth_and_size = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 fcolor;
+        in float falpha;
+        
+        void main()
+        {
+            frag_color = vec4(fcolor.rgb, falpha);
+        }
+    '''
+    billboard_geometry_with_no_depth_and_size = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        in float vsizef[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            
+            // value is diameter, i need radius, then multiply by individual point size
+            float s = (size[0] / 2) * vsizef[0];
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
 
 
 class PCVManager():
@@ -2982,7 +3059,7 @@ class PCVManager():
                 
                 if('extra' in ci.keys()):
                     for k, v in ci['extra'].items():
-                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
                             # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
                             sizes = ci['extra'][k]['sizes']
                             sizesf = ci['extra'][k]['sizesf']
@@ -3041,7 +3118,7 @@ class PCVManager():
                 
                 if('extra' in ci.keys()):
                     for k, v in ci['extra'].items():
-                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
                             # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
                             sizes = ci['extra'][k]['sizes']
                             sizesf = ci['extra'][k]['sizesf']
@@ -3161,7 +3238,7 @@ class PCVManager():
                 
                 if('extra' in ci.keys()):
                     for k, v in ci['extra'].items():
-                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', )):
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
                             # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
                             sizes = ci['extra'][k]['sizes']
                             sizesf = ci['extra'][k]['sizesf']
@@ -3211,6 +3288,65 @@ class PCVManager():
             shader.uniform_float("brightness", pcv.dev_rich_billboard_depth_brightness)
             shader.uniform_float("contrast", pcv.dev_rich_billboard_depth_contrast)
             shader.uniform_float("blend", 1.0 - pcv.dev_rich_billboard_depth_blend)
+            
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'RICH_BILLBOARD_NO_DEPTH'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizesf = v['sizesf']
+                            break
+            
+            if(not use_stored):
+                
+                if('extra' in ci.keys()):
+                    if('RICH_BILLBOARD_NO_DEPTH' in ci['extra'].keys()):
+                        sizesf = ci['extra']['RICH_BILLBOARD_NO_DEPTH']['sizesf']
+                    else:
+                        sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                        sizesf = sizesf.astype(np.float32)
+                else:
+                    sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                    sizesf = sizesf.astype(np.float32)
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
+                shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizesf': sizesf,
+                     'length': l, }
+                ci['extra']['RICH_BILLBOARD_NO_DEPTH'] = d
+            
+            shader.bind()
+            # shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("size", pcv.dev_rich_billboard_point_cloud_size)
+            shader.uniform_float("alpha", pcv.global_alpha)
             
             batch.draw(shader)
         
@@ -8964,10 +9100,14 @@ class PCVIV2Control(PCVControl):
         # pcv.dev_rich_billboard_point_cloud_enabled = True
         
         # FIXME: this is also stupid
-        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled):
+        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
             pass
         else:
-            pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            # NOTE: this is what will be default draw type, should i put preferences for it somewhere?
+            # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            
+            # lets go with the best one
+            pcv.dev_rich_billboard_point_cloud_enabled = True
         
         # check if object has been used before, i.e. has uuid and uuid item is in cache
         if(pcv.uuid != "" and pcv.runtime):
@@ -9066,6 +9206,19 @@ class PCVIV2Control(PCVControl):
             }
             d['extra']['RICH_BILLBOARD'] = extra
         
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD_NO_DEPTH'] = extra
+        
         # d['extra_data'] = {
         #     'sizes': sz,
         #     'sizesf': szf,
@@ -9095,10 +9248,14 @@ class PCVIV2Control(PCVControl):
         # pcv.dev_rich_billboard_point_cloud_enabled = True
         
         # FIXME: this is also stupid
-        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled):
+        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
             pass
         else:
-            pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            # NOTE: this is what will be default draw type, should i put preferences for it somewhere?
+            # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            
+            # lets go with the best one
+            pcv.dev_rich_billboard_point_cloud_enabled = True
         
         # validate/prepare input data
         vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
@@ -9179,6 +9336,19 @@ class PCVIV2Control(PCVControl):
                 'length': l,
             }
             d['extra']['RICH_BILLBOARD'] = extra
+        
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD_NO_DEPTH'] = extra
         
         # d['extra_data'] = {
         #     'sizes': sz,
@@ -10416,7 +10586,7 @@ class PCVIV2_PT_panel(Panel):
                     # options
                     cc = b.column(align=True)
                     cc.prop(pcviv, 'max_points')
-                    if(pcv.dev_rich_billboard_point_cloud_enabled):
+                    if(pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
                         cc.prop(pcviv, 'point_size_f')
                     else:
                         cc.prop(pcviv, 'point_size')
@@ -10554,14 +10724,18 @@ class PCVIV2_PT_display(Panel):
         c = l.column()
         c.label(text="Shader:")
         r = c.row(align=True)
-        r.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Basic Shader", )
-        r.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Depth Shader", )
-        r.prop(pcv, 'dev_rich_billboard_point_cloud_enabled', toggle=True, text="Billboard Shader", )
+        r.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Basic", )
+        r.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Depth", )
+        r.prop(pcv, 'dev_rich_billboard_point_cloud_no_depth_enabled', toggle=True, text="Billboard", )
+        r.prop(pcv, 'dev_rich_billboard_point_cloud_enabled', toggle=True, text="Depth Billboard", )
         if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
             cc = c.column(align=True)
             cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
             cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
             cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
         if(pcv.dev_rich_billboard_point_cloud_enabled):
             cc = c.column(align=True)
             cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
@@ -11103,6 +11277,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11119,6 +11294,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11135,6 +11311,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11177,6 +11354,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.illumination = False
@@ -11205,6 +11383,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11222,6 +11401,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11242,6 +11422,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11264,6 +11445,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11284,6 +11466,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_enabled = False
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             
             self.override_default_shader = True
@@ -11295,6 +11478,26 @@ class PCV_properties(PropertyGroup):
     dev_rich_billboard_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
     dev_rich_billboard_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
     dev_rich_billboard_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
+    
+    def _update_dev_rich_billboard_point_cloud_no_depth_enabled(self, context):
+        if(self.dev_rich_billboard_point_cloud_no_depth_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_rich_billboard_point_cloud_no_depth_enabled: BoolProperty(name="Enabled", default=False, description="Enable Rich Billboard Shader Without Depth", update=_update_dev_rich_billboard_point_cloud_no_depth_enabled, )
     
     def _update_dev_phong_shader_enabled(self, context):
         if(self.dev_phong_shader_enabled):
@@ -11309,6 +11512,7 @@ class PCV_properties(PropertyGroup):
             self.dev_minimal_shader_variable_size_and_depth_enabled = False
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             
             self.override_default_shader = True
         else:
