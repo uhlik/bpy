@@ -5279,7 +5279,8 @@ class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
         if(colorize is None):
             colorize = 'CONSTANT'
         if(constant_color is None):
-            constant_color = (1.0, 0.0, 0.0, )
+            # constant_color = (1.0, 0.0, 0.0, )
+            constant_color = (1.0, 0.0, 1.0, )
         if(use_material_factors is None and colorize == 'VIEWPORT_DISPLAY_COLOR'):
             use_material_factors = False
         if(use_material_factors):
@@ -5289,14 +5290,27 @@ class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
         me = target.data
         
         if(len(me.polygons) == 0):
-            raise Exception("Mesh has no faces")
-        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
-            if(len(me.polygons) == 0):
-                raise Exception("Mesh has no faces")
+            # raise Exception("Mesh has no faces")
+            # no polygons to generate from, use origin
+            self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
+            self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            self.cs = np.array(((1.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            return
+        # if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+        #     if(len(me.polygons) == 0):
+        #         raise Exception("Mesh has no faces")
         if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             if(len(target.data.materials) == 0):
-                raise Exception("Cannot find any material")
+                # raise Exception("Cannot find any material")
+                # no materials, set to constant
+                colorize = 'CONSTANT'
+                constant_color = (1.0, 0.0, 1.0, )
             materials = target.data.materials
+            if(None in materials[:]):
+                # if there is empty slot, abort it and set to constant
+                # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
+                colorize = 'CONSTANT'
+                constant_color = (1.0, 0.0, 1.0, )
         
         vs = []
         ns = []
@@ -8829,17 +8843,28 @@ class PCVIV2Manager():
             fragments = []
             fragments_indices = {}
             for i, co in enumerate(cos):
+                no_geometry = False
                 if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
-                    self.report({'ERROR'}, "Object does not have geometry data.")
-                    return {'CANCELLED'}
-                # extract points
-                # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
-                # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
-                sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
-                # store
-                fragments.append((sampler.vs, sampler.ns, sampler.cs, ))
-                # FIXME: better not to access data by object name, find something different
-                fragments_indices[co.name] = (i, co, )
+                    # self.report({'ERROR'}, "Object does not have geometry data.")
+                    # return {'CANCELLED'}
+                    # NOTE: handle no mesh objects by generating single vertex in object origin (0,0,0)
+                    no_geometry = True
+                if(no_geometry):
+                    fragments.append((
+                        np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, ),
+                        np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, ),
+                        np.array(((1.0, 0.0, 1.0, ), ), dtype=np.float32, ),
+                    ), )
+                    fragments_indices[co.name] = (i, co, )
+                else:
+                    # extract points
+                    # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                    # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+                    sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
+                    # store
+                    fragments.append((sampler.vs, sampler.ns, sampler.cs, ))
+                    # FIXME: better not to access data by object name, find something different
+                    fragments_indices[co.name] = (i, co, )
             
             # process all instances, transform fragment and store
             all_frags = []
