@@ -69,8 +69,8 @@ def log(msg, indent=0, prefix='>', ):
 
 
 def debug_mode():
-    return True
-    # return (bpy.app.debug_value != 0)
+    # return True
+    return (bpy.app.debug_value != 0)
 
 
 class Progress():
@@ -10479,7 +10479,7 @@ class PCVIV2_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
-    bl_label = "PCV Instance Visualizer"
+    bl_label = "Point Cloud Instance Visualizer"
     bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -10557,16 +10557,26 @@ class PCVIV2_PT_panel(Panel):
         l = self.layout
         c = l.column()
         
-        r = c.row(align=True)
-        r.operator('point_cloud_visualizer.pcviv_init')
-        if(not debug_mode()):
-            if(PCVIV2Manager.initialized):
-                r.enabled = False
-        c.separator()
-        
         if(not PCVIV2Manager.initialized):
-            c.label(text='Not initialized..', icon='ERROR', )
+            
+            r = c.row()
+            r.alignment = 'CENTER'
+            r.label(text='Not initialized..', icon='ERROR', )
+            c.separator()
+            
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_init')
+            # if(not debug_mode()):
+            #     if(PCVIV2Manager.initialized):
+            #         r.enabled = False
+            
         else:
+            
+            if(debug_mode()):
+                r = c.row(align=True)
+                r.operator('point_cloud_visualizer.pcviv_init')
+                c.separator()
+            
             if(len(o.particle_systems) == 0):
                 b = c.box()
                 b.label(text='No Particle Systems..', icon='ERROR', )
@@ -10660,11 +10670,16 @@ class PCVIV2_PT_panel(Panel):
                         b.label(text='(debug: {})'.format('n/a', ))
                     else:
                         b.label(text='(debug: {})'.format(pcviv.debug_update, ))
-                
+            
             c.separator()
             r = c.row(align=True)
             r.operator('point_cloud_visualizer.pcviv_update_all')
             r.operator('point_cloud_visualizer.pcviv_reset')
+            
+            c.separator()
+            r = c.row()
+            r.alignment = 'RIGHT'
+            r.label(text='Powered by: Point Cloud Visualizer')
 
 
 class PCVIV2_UL_materials(UIList):
