@@ -57,6 +57,7 @@ from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
 from mathutils.interpolate import poly_3d_calc
 from mathutils.bvhtree import BVHTree
+import mathutils.geometry
 
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
@@ -2249,7 +2250,7 @@ class PCVShaders():
         void main()
         {
             vec3 ambient = ambient_strength * light_color;
-  	        
+            
             vec3 nor = normalize(f_normal);
             vec3 light_direction = normalize(light_position - f_position);
             vec3 diffuse = max(dot(nor, light_direction), 0.0) * light_color;
@@ -2347,6 +2348,57 @@ class PCVShaders():
             EmitVertex();
             
             EndPrimitive();
+        }
+    '''
+    
+    vertex_shader_simple_clip = '''
+        in vec3 position;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        
+        uniform vec4 clip_plane0;
+        uniform vec4 clip_plane1;
+        uniform vec4 clip_plane2;
+        uniform vec4 clip_plane3;
+        uniform vec4 clip_plane4;
+        uniform vec4 clip_plane5;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
+            f_alpha_radius = alpha_radius;
+            
+            vec4 pos = vec4(position, 1.0f);
+            gl_ClipDistance[0] = dot(clip_plane0, pos);
+            gl_ClipDistance[1] = dot(clip_plane1, pos);
+            gl_ClipDistance[2] = dot(clip_plane2, pos);
+            gl_ClipDistance[3] = dot(clip_plane3, pos);
+            gl_ClipDistance[4] = dot(clip_plane4, pos);
+            gl_ClipDistance[5] = dot(clip_plane5, pos);
+        }
+    '''
+    fragment_shader_simple_clip = '''
+        in vec4 f_color;
+        in float f_alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            fragColor = f_color * a;
         }
     '''
 
@@ -3405,6 +3457,77 @@ class PCVManager():
             # shader.uniform_float("point_size", pcv.point_size)
             # shader.uniform_float("global_alpha", pcv.global_alpha)
             batch.draw(shader)
+        
+        # dev
+        if(pcv.clip_shader_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'CLIP'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.vertex_shader_simple_clip, PCVShaders.fragment_shader_simple_clip, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['CLIP'] = d
+            
+            if(pcv.clip_plane0_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE0)
+            if(pcv.clip_plane1_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE1)
+            if(pcv.clip_plane2_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE2)
+            if(pcv.clip_plane3_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE3)
+            if(pcv.clip_plane4_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE4)
+            if(pcv.clip_plane5_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE5)
+            
+            shader.bind()
+            
+            shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            shader.uniform_float("clip_plane0", pcv.clip_plane0)
+            shader.uniform_float("clip_plane1", pcv.clip_plane1)
+            shader.uniform_float("clip_plane2", pcv.clip_plane2)
+            shader.uniform_float("clip_plane3", pcv.clip_plane3)
+            shader.uniform_float("clip_plane4", pcv.clip_plane4)
+            shader.uniform_float("clip_plane5", pcv.clip_plane5)
+            
+            batch.draw(shader)
+            
+            if(pcv.clip_plane0_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE0)
+            if(pcv.clip_plane1_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE1)
+            if(pcv.clip_plane2_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE2)
+            if(pcv.clip_plane3_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE3)
+            if(pcv.clip_plane4_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE4)
+            if(pcv.clip_plane5_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE5)
         
         # and now back to some production stuff..
         
@@ -5364,7 +5487,6 @@ class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
                 weights = material_weights
             
             indices = np.random.choice(choices, size=count, replace=False, p=weights, )
-            
         
         li = len(indices)
         if(colorize == 'CONSTANT'):
@@ -8328,6 +8450,96 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_clip_planes_from_bbox(Operator):
+    bl_idname = "point_cloud_visualizer.clip_planes_from_bbox"
+    bl_label = "Set Clip Planes From Object Bounding Box"
+    bl_description = "Apply color adjustments to points, reset and exit"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        
+        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        if(bbo is not None):
+            ok = True
+        
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        
+        mw = bbo.matrix_world
+        vs = [mw @ Vector(v) for v in bbo.bound_box]
+        
+        # 0 front left down
+        # 1 front left up
+        # 2 back left up
+        # 3 back left down
+        # 4 front right down
+        # 5 front right up
+        # 6 back right up
+        # 7 back right down
+        #          2-----------6
+        #         /           /|
+        #       1-----------5  |
+        #       |           |  |
+        #       |           |  |
+        #       |  3        |  7
+        #       |           | /
+        #       0-----------4
+        
+        fs = (
+            (0, 4, 5, 1),  # front
+            (3, 2, 6, 7),  # back
+            (1, 5, 6, 2),  # top
+            (0, 3, 7, 4),  # bottom
+            (0, 1, 2, 3),  # left
+            (4, 7, 6, 5),  # right
+        )
+        
+        quads = [[vs[fs[i][j]] for j in range(4)] for i in range(6)]
+        ns = [mathutils.geometry.normal(quads[i]) for i in range(6)]
+        for i in range(6):
+            # FIXME: if i need to do this, it is highly probable i have something wrong.. somewhere..
+            ns[i].negate()
+        
+        ds = []
+        for i in range(6):
+            v = quads[i][0]
+            n = ns[i]
+            d = mathutils.geometry.distance_point_to_plane(Vector(), v, n)
+            ds.append(d)
+        
+        a = [ns[i].to_tuple() + (ds[i], ) for i in range(6)]
+        pcv.clip_plane0 = a[0]
+        pcv.clip_plane1 = a[1]
+        pcv.clip_plane2 = a[2]
+        pcv.clip_plane3 = a[3]
+        pcv.clip_plane4 = a[4]
+        pcv.clip_plane5 = a[5]
+        
+        pcv.clip_shader_enabled = True
+        pcv.clip_plane0_enabled = True
+        pcv.clip_plane1_enabled = True
+        pcv.clip_plane2_enabled = True
+        pcv.clip_plane3_enabled = True
+        pcv.clip_plane4_enabled = True
+        pcv.clip_plane5_enabled = True
+        
+        return {'FINISHED'}
+
+
 class PCVIV2_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_init"
     bl_label = "Initialize"
@@ -10395,6 +10607,30 @@ class PCV_PT_development(Panel):
             cc.prop(pcv, 'dev_phong_shader_specular_exponent')
         
         cc = c.column(align=True)
+        cc.prop(pcv, 'clip_shader_enabled', toggle=True, text='Clip', )
+        if(pcv.clip_shader_enabled):
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane0_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane0_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane0', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane1_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane1_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane1', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane2_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane2_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane2', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane3_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane3_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane3', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane4_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane4_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane4', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane5_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane5_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane5', )
+            cc.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+            cc.operator('point_cloud_visualizer.clip_planes_from_bbox')
+        
+        cc = c.column(align=True)
         cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
             r = cc.row(align=True)
@@ -11319,6 +11555,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11336,6 +11573,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11353,6 +11591,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11396,6 +11635,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -11425,6 +11665,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11443,6 +11684,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11464,6 +11706,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11487,6 +11730,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11508,6 +11752,7 @@ class PCV_properties(PropertyGroup):
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11532,6 +11777,7 @@ class PCV_properties(PropertyGroup):
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11553,6 +11799,7 @@ class PCV_properties(PropertyGroup):
             self.dev_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.clip_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11574,6 +11821,42 @@ class PCV_properties(PropertyGroup):
     
     # testing / development stuff
     dev_transform_normals_target_object: StringProperty(name="Object", default="", )
+    
+    # dev
+    def _clip_shader_enabled(self, context):
+        if(self.clip_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    clip_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_clip_shader_enabled, )
+    clip_plane0_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane1_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane2_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane3_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane4_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane5_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane0: FloatVectorProperty(name="Plane 0", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane1: FloatVectorProperty(name="Plane 1", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane2: FloatVectorProperty(name="Plane 2", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane3: FloatVectorProperty(name="Plane 3", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane4: FloatVectorProperty(name="Plane 4", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane5: FloatVectorProperty(name="Plane 5", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_planes_from_bbox_object: StringProperty(name="Object", default="", description="", )
     
     @classmethod
     def register(cls):
@@ -11700,7 +11983,7 @@ classes = (
     PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
     PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
     
-    PCVIV2_OT_dev_transform_normals,
+    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox,
     
     PCV_PT_debug, PCV_PT_debug_utils,
     PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
