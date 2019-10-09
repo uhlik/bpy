@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 27),
+           "version": (0, 9, 28),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -43,8 +43,8 @@ import statistics
 
 import bpy
 import bmesh
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
-from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
+from bpy.types import PropertyGroup, Panel, Operator, AddonPreferences, UIList
 import gpu
 from gpu.types import GPUOffScreen, GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
@@ -57,13 +57,14 @@ from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
 from mathutils.interpolate import poly_3d_calc
 from mathutils.bvhtree import BVHTree
+import mathutils.geometry
 
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
 
-def log(msg, indent=0, ):
-    m = "{0}> {1}".format("    " * indent, msg)
+def log(msg, indent=0, prefix='>', ):
+    m = "{}{} {}".format("    " * indent, prefix, msg)
     if(debug_mode()):
         print(m)
 
@@ -1831,13 +1832,13 @@ class PCVShaders():
             //     discard;
             // }
             // // fragColor = f_color * a;
-            // 
+            //
             // vec4 col;
-            // 
+            //
             // // if(f_show_normals > 0.5){
             // //     col = vec4(f_normal, 1.0) * a;
             // // }else if(f_show_illumination > 0.5){
-            // 
+            //
             // // if(f_show_illumination > 0.5){
             // //     vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
             // //     vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
@@ -1845,11 +1846,11 @@ class PCVShaders():
             // // }else{
             // //     col = f_color * a;
             // // }
-            // 
+            //
             // vec4 light = vec4(max(dot(f_light_direction, -f_normal), 0) * f_light_intensity, 1);
             // vec4 shadow = vec4(max(dot(f_shadow_direction, -f_normal), 0) * f_shadow_intensity, 1);
             // col = (f_color + light - shadow) * a;
-            // 
+            //
             // fragColor = col;
             
             float r = 0.0f;
@@ -1869,6 +1870,535 @@ class PCVShaders():
             //fragColor = col;
             fragColor = vec4(col.rgb, f_color.a * a);
             
+        }
+    '''
+    
+    vertex_shader_minimal = '''
+        in vec3 position;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float global_alpha;
+        out vec3 f_color;
+        out float f_alpha;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = color.rgb;
+            f_alpha = global_alpha;
+        }
+    '''
+    fragment_shader_minimal = '''
+        in vec3 f_color;
+        in float f_alpha;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vec4(f_color, f_alpha);
+        }
+    '''
+    
+    vertex_shader_minimal_variable_size = '''
+        in vec3 position;
+        in vec4 color;
+        // in float size;
+        in int size;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float global_alpha;
+        out vec3 f_color;
+        out float f_alpha;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = size;
+            f_color = color.rgb;
+            f_alpha = global_alpha;
+        }
+    '''
+    fragment_shader_minimal_variable_size = '''
+        in vec3 f_color;
+        in float f_alpha;
+        out vec4 fragColor;
+        void main()
+        {
+            fragColor = vec4(f_color, f_alpha);
+        }
+    '''
+    
+    vertex_shader_minimal_variable_size_and_depth = '''
+        in vec3 position;
+        in vec4 color;
+        in int size;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float global_alpha;
+        
+        uniform vec3 center;
+        uniform float maxdist;
+        
+        out vec3 f_color;
+        out float f_alpha;
+        
+        out float f_depth;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = size;
+            f_color = color.rgb;
+            f_alpha = global_alpha;
+            
+            vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
+            vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
+            float d = op.z - pp.z;
+            f_depth = ((d - (-maxdist)) / (maxdist - d)) / 2;
+        }
+    '''
+    fragment_shader_minimal_variable_size_and_depth = '''
+        in vec3 f_color;
+        in float f_alpha;
+        
+        in float f_depth;
+        uniform float brightness;
+        uniform float contrast;
+        uniform float blend;
+        
+        out vec4 fragColor;
+        void main()
+        {
+            // fragColor = vec4(f_color, f_alpha);
+            
+            vec3 depth_color = vec3(f_depth, f_depth, f_depth);
+            depth_color = (depth_color - 0.5) * contrast + 0.5 + brightness;
+            // fragColor = vec4(depth_color, global_alpha) * a;
+            
+            depth_color = mix(depth_color, vec3(1.0, 1.0, 1.0), blend);
+            
+            fragColor = vec4(f_color * depth_color, f_alpha);
+            
+        }
+    '''
+    
+    billboard_vertex = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec4 color;
+        
+        uniform mat4 object_matrix;
+        uniform float alpha;
+        
+        out vec4 vcolor;
+        out float valpha;
+        
+        void main()
+        {
+            gl_Position = object_matrix * vec4(position, 1.0);
+            vcolor = color;
+            valpha = alpha;
+        }
+    '''
+    billboard_fragment = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 fcolor;
+        in float falpha;
+        
+        void main()
+        {
+            frag_color = vec4(fcolor.rgb, falpha);
+        }
+    '''
+    billboard_geometry = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            // value is diameter, i need radius
+            float s = size[0] / 2;
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
+    
+    billboard_geometry_disc = '''
+        layout (points) in;
+        // 3 * 16 = 48
+        layout (triangle_strip, max_vertices = 48) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        
+        vec2 disc_coords(float radius, int step, int steps)
+        {
+            const float PI = 3.1415926535897932384626433832795;
+            float angstep = 2 * PI / steps;
+            float x = sin(step * angstep) * radius;
+            float y = cos(step * angstep) * radius;
+            return vec2(x, y);
+        }
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            float s = size[0];
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            float r = s / 2;
+            int steps = 16;
+            
+            for(int i = 0; i < steps; i++)
+            {
+                
+                gl_Position = window_matrix * (pos);
+                EmitVertex();
+                
+                vec2 xyloc = disc_coords(r, i, steps);
+                gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+                EmitVertex();
+                
+                xyloc = disc_coords(r, i + 1, steps);
+                gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+                EmitVertex();
+                
+                EndPrimitive();
+            }
+            
+        }
+    '''
+    
+    billboard_vertex_with_depth_and_size = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec4 color;
+        layout(location = 2) in float sizef;
+        
+        uniform mat4 object_matrix;
+        uniform mat4 perspective_matrix;
+        
+        uniform float alpha;
+        uniform vec3 center;
+        uniform float maxdist;
+        
+        out vec4 vcolor;
+        out float valpha;
+        out float vsizef;
+        out float vdepth;
+        
+        void main()
+        {
+            gl_Position = object_matrix * vec4(position, 1.0);
+            vcolor = color;
+            valpha = alpha;
+            vsizef = sizef;
+            
+            vec4 pp = perspective_matrix * object_matrix * vec4(position, 1.0);
+            vec4 op = perspective_matrix * object_matrix * vec4(center, 1.0);
+            float d = op.z - pp.z;
+            vdepth = ((d - (-maxdist)) / (maxdist - d)) / 2;
+        }
+    '''
+    billboard_fragment_with_depth_and_size = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 fcolor;
+        in float falpha;
+        
+        in float fdepth;
+        uniform float brightness;
+        uniform float contrast;
+        uniform float blend;
+        
+        void main()
+        {
+            vec3 depth_color = vec3(fdepth, fdepth, fdepth);
+            depth_color = (depth_color - 0.5) * contrast + 0.5 + brightness;
+            depth_color = mix(depth_color, vec3(1.0, 1.0, 1.0), blend);
+            frag_color = vec4(fcolor.rgb * depth_color, falpha);
+        }
+    '''
+    billboard_geometry_with_depth_and_size = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        in float vsizef[];
+        in float vdepth[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        out float fdepth;
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            fdepth = vdepth[0];
+            
+            // value is diameter, i need radius, then multiply by individual point size
+            float s = (size[0] / 2) * vsizef[0];
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
+    
+    phong_vs = '''
+        layout (location = 0) in vec3 position;
+        layout (location = 1) in vec3 normal;
+        layout (location = 2) in vec4 color;
+        
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        uniform float point_size;
+        uniform float alpha_radius;
+        
+        out vec3 f_position;
+        out vec3 f_normal;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        
+        void main()
+        {
+            gl_Position = projection * view * model * vec4(position, 1.0);
+            gl_PointSize = point_size;
+            f_position = vec3(model * vec4(position, 1.0));
+            f_normal = mat3(transpose(inverse(model))) * normal;
+            f_color = color;
+            f_alpha_radius = alpha_radius;
+        }
+    '''
+    phong_fs = '''
+        in vec3 f_position;
+        in vec3 f_normal;
+        in vec4 f_color;
+        in float f_alpha_radius;
+        
+        uniform float alpha;
+        uniform vec3 light_position;
+        uniform vec3 light_color;
+        uniform vec3 view_position;
+        uniform float ambient_strength;
+        uniform float specular_strength;
+        uniform float specular_exponent;
+        
+        out vec4 frag_color;
+        
+        void main()
+        {
+            vec3 ambient = ambient_strength * light_color;
+            
+            vec3 nor = normalize(f_normal);
+            vec3 light_direction = normalize(light_position - f_position);
+            vec3 diffuse = max(dot(nor, light_direction), 0.0) * light_color;
+            
+            vec3 view_direction = normalize(view_position - f_position);
+            vec3 reflection_direction = reflect(-light_direction, nor);
+            float spec = pow(max(dot(view_direction, reflection_direction), 0.0), specular_exponent);
+            vec3 specular = specular_strength * spec * light_color;
+            
+            vec3 col = (ambient + diffuse + specular) * f_color.rgb;
+            
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            
+            frag_color = vec4(col, alpha) * a;
+        }
+    '''
+    
+    billboard_vertex_with_no_depth_and_size = '''
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec4 color;
+        layout(location = 2) in float sizef;
+        
+        uniform mat4 object_matrix;
+        
+        uniform float alpha;
+        
+        out vec4 vcolor;
+        out float valpha;
+        out float vsizef;
+        
+        void main()
+        {
+            gl_Position = object_matrix * vec4(position, 1.0);
+            vcolor = color;
+            valpha = alpha;
+            vsizef = sizef;
+        }
+    '''
+    billboard_fragment_with_no_depth_and_size = '''
+        layout(location = 0) out vec4 frag_color;
+        
+        in vec4 fcolor;
+        in float falpha;
+        
+        void main()
+        {
+            frag_color = vec4(fcolor.rgb, falpha);
+        }
+    '''
+    billboard_geometry_with_no_depth_and_size = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec4 vcolor[];
+        in float valpha[];
+        in float vsizef[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        
+        uniform float size[];
+        
+        out vec4 fcolor;
+        out float falpha;
+        
+        void main()
+        {
+            fcolor = vcolor[0];
+            falpha = valpha[0];
+            
+            // value is diameter, i need radius, then multiply by individual point size
+            float s = (size[0] / 2) * vsizef[0];
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
+    
+    vertex_shader_simple_clip = '''
+        in vec3 position;
+        in vec4 color;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        
+        uniform vec4 clip_plane0;
+        uniform vec4 clip_plane1;
+        uniform vec4 clip_plane2;
+        uniform vec4 clip_plane3;
+        uniform vec4 clip_plane4;
+        uniform vec4 clip_plane5;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = point_size;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
+            f_alpha_radius = alpha_radius;
+            
+            vec4 pos = vec4(position, 1.0f);
+            gl_ClipDistance[0] = dot(clip_plane0, pos);
+            gl_ClipDistance[1] = dot(clip_plane1, pos);
+            gl_ClipDistance[2] = dot(clip_plane2, pos);
+            gl_ClipDistance[3] = dot(clip_plane3, pos);
+            gl_ClipDistance[4] = dot(clip_plane4, pos);
+            gl_ClipDistance[5] = dot(clip_plane5, pos);
+        }
+    '''
+    fragment_shader_simple_clip = '''
+        in vec4 f_color;
+        in float f_alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            fragColor = f_color * a;
         }
     '''
 
@@ -2513,6 +3043,492 @@ class PCVManager():
             
             batch.draw(shader)
         
+        # dev
+        if(pcv.dev_minimal_shader_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'MINIMAL'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.vertex_shader_minimal, PCVShaders.fragment_shader_minimal, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['MINIMAL'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_minimal_shader_variable_size_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'MINIMAL_VARIABLE_SIZE'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizes = v['sizes']
+                            break
+            
+            if(not use_stored):
+                # # generate something to test it, later implement how to set it
+                # sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    if('MINIMAL_VARIABLE_SIZE' in ci['extra'].keys()):
+                        sizes = ci['extra']['MINIMAL_VARIABLE_SIZE']['sizes']
+                    else:
+                        sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                else:
+                    sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
+                shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
+                # batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizes': sizes,
+                     'length': l, }
+                ci['extra']['MINIMAL_VARIABLE_SIZE'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            # shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'MINIMAL_VARIABLE_SIZE_AND_DEPTH'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizes = v['sizes']
+                            break
+            
+            if(not use_stored):
+                # # generate something to test it, later implement how to set it
+                # sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    if('MINIMAL_VARIABLE_SIZE_AND_DEPTH' in ci['extra'].keys()):
+                        sizes = ci['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH']['sizes']
+                    else:
+                        sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                else:
+                    sizes = np.random.randint(low=1, high=10, size=len(vs), )
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
+                shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizes': sizes,
+                     'length': l, }
+                ci['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = d
+            
+            shader.bind()
+            pm = bpy.context.region_data.perspective_matrix
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            if(len(vs) == 0):
+                maxdist = 1.0
+                cx = 0.0
+                cy = 0.0
+                cz = 0.0
+            else:
+                # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+                # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
+                cx = np.sum(vs[:, 0]) / len(vs)
+                cy = np.sum(vs[:, 1]) / len(vs)
+                cz = np.sum(vs[:, 2]) / len(vs)
+                _, _, s = o.matrix_world.decompose()
+                l = s.length
+                # FIXME: here is error in max with zero length arrays, why are they zero length anyway, putting this single fix for now
+                maxd = abs(np.max(vs))
+                mind = abs(np.min(vs))
+                maxdist = maxd
+                if(mind > maxd):
+                    maxdist = mind
+            shader.uniform_float("maxdist", float(maxdist) * l)
+            shader.uniform_float("center", (cx, cy, cz, ))
+            shader.uniform_float("brightness", pcv.dev_minimal_shader_variable_size_and_depth_brightness)
+            shader.uniform_float("contrast", pcv.dev_minimal_shader_variable_size_and_depth_contrast)
+            shader.uniform_float("blend", 1.0 - pcv.dev_minimal_shader_variable_size_and_depth_blend)
+            
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_billboard_point_cloud_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'BILLBOARD'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.billboard_vertex, PCVShaders.billboard_fragment, geocode=PCVShaders.billboard_geometry, )
+                # shader = GPUShader(PCVShaders.billboard_vertex, PCVShaders.billboard_fragment, geocode=PCVShaders.billboard_geometry_disc, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['BILLBOARD'] = d
+            
+            shader.bind()
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("size", pcv.dev_billboard_point_cloud_size)
+            shader.uniform_float("alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'RICH_BILLBOARD'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizesf = v['sizesf']
+                            break
+            
+            if(not use_stored):
+                
+                if('extra' in ci.keys()):
+                    if('RICH_BILLBOARD' in ci['extra'].keys()):
+                        sizesf = ci['extra']['RICH_BILLBOARD']['sizesf']
+                    else:
+                        sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                        sizesf = sizesf.astype(np.float32)
+                else:
+                    sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                    sizesf = sizesf.astype(np.float32)
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
+                shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizesf': sizesf,
+                     'length': l, }
+                ci['extra']['RICH_BILLBOARD'] = d
+            
+            shader.bind()
+            shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("size", pcv.dev_rich_billboard_point_cloud_size)
+            shader.uniform_float("alpha", pcv.global_alpha)
+            
+            if(len(vs) == 0):
+                maxdist = 1.0
+                cx = 0.0
+                cy = 0.0
+                cz = 0.0
+            else:
+                # NOTE: precalculating and storing following should speed up things a bit, but then it won't reflect edits..
+                # TODO: calculating center of all points is not quite correct, visually it works, but (as i've seen in bounding box shader) it's not working when distribution of points is uneven, so have a check if it might be a bit better..
+                cx = np.sum(vs[:, 0]) / len(vs)
+                cy = np.sum(vs[:, 1]) / len(vs)
+                cz = np.sum(vs[:, 2]) / len(vs)
+                _, _, s = o.matrix_world.decompose()
+                l = s.length
+                # FIXME: here is error in max with zero length arrays, why are they zero length anyway, putting this single fix for now
+                maxd = abs(np.max(vs))
+                mind = abs(np.min(vs))
+                maxdist = maxd
+                if(mind > maxd):
+                    maxdist = mind
+            shader.uniform_float("maxdist", float(maxdist) * l)
+            shader.uniform_float("center", (cx, cy, cz, ), )
+            
+            shader.uniform_float("brightness", pcv.dev_rich_billboard_depth_brightness)
+            shader.uniform_float("contrast", pcv.dev_rich_billboard_depth_contrast)
+            shader.uniform_float("blend", 1.0 - pcv.dev_rich_billboard_depth_blend)
+            
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'RICH_BILLBOARD_NO_DEPTH'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            sizesf = v['sizesf']
+                            break
+            
+            if(not use_stored):
+                
+                if('extra' in ci.keys()):
+                    if('RICH_BILLBOARD_NO_DEPTH' in ci['extra'].keys()):
+                        sizesf = ci['extra']['RICH_BILLBOARD_NO_DEPTH']['sizesf']
+                    else:
+                        sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                        sizesf = sizesf.astype(np.float32)
+                else:
+                    sizesf = np.random.uniform(low=0.5, high=1.5, size=len(vs), )
+                    sizesf = sizesf.astype(np.float32)
+                
+                if('extra' in ci.keys()):
+                    for k, v in ci['extra'].items():
+                        if(k in ('MINIMAL_VARIABLE_SIZE', 'MINIMAL_VARIABLE_SIZE_AND_DEPTH', 'RICH_BILLBOARD', 'RICH_BILLBOARD_NO_DEPTH', )):
+                            # FIXME: it was recently switched, try to recover already generated data, both arrays are the same, so thay are in memory just once, no problem here, the problem is with storing reference to it, this should be fixed with something, for example, shader and batch should be generated on one spot, etc.. but have to be done together with all new PCVManager.render and unified shader management. this is just mediocre workaround..
+                            sizes = ci['extra'][k]['sizes']
+                            sizesf = ci['extra'][k]['sizesf']
+                            break
+                
+                shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'sizesf': sizesf,
+                     'length': l, }
+                ci['extra']['RICH_BILLBOARD_NO_DEPTH'] = d
+            
+            shader.bind()
+            # shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("size", pcv.dev_rich_billboard_point_cloud_size)
+            shader.uniform_float("alpha", pcv.global_alpha)
+            
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.dev_phong_shader_enabled):
+            vs = ci['vertices']
+            ns = ci['normals']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'PHONG'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.phong_vs, PCVShaders.phong_fs, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['PHONG'] = d
+            
+            shader.bind()
+            
+            # shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("view", bpy.context.region_data.view_matrix)
+            shader.uniform_float("projection", bpy.context.region_data.window_matrix)
+            shader.uniform_float("model", o.matrix_world)
+            
+            shader.uniform_float("light_position", bpy.context.region_data.view_matrix.inverted().translation)
+            # shader.uniform_float("light_color", (1.0, 1.0, 1.0))
+            shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+            shader.uniform_float("view_position", bpy.context.region_data.view_matrix.inverted().translation)
+            
+            shader.uniform_float("ambient_strength", pcv.dev_phong_shader_ambient_strength)
+            shader.uniform_float("specular_strength", pcv.dev_phong_shader_specular_strength)
+            shader.uniform_float("specular_exponent", pcv.dev_phong_shader_specular_exponent)
+            
+            shader.uniform_float("alpha", pcv.global_alpha)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            
+            # pm = bpy.context.region_data.perspective_matrix
+            # shader.uniform_float("perspective_matrix", pm)
+            # shader.uniform_float("object_matrix", o.matrix_world)
+            # shader.uniform_float("point_size", pcv.point_size)
+            # shader.uniform_float("global_alpha", pcv.global_alpha)
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.clip_shader_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'CLIP'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.vertex_shader_simple_clip, PCVShaders.fragment_shader_simple_clip, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['CLIP'] = d
+            
+            if(pcv.clip_plane0_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE0)
+            if(pcv.clip_plane1_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE1)
+            if(pcv.clip_plane2_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE2)
+            if(pcv.clip_plane3_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE3)
+            if(pcv.clip_plane4_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE4)
+            if(pcv.clip_plane5_enabled):
+                bgl.glEnable(bgl.GL_CLIP_DISTANCE5)
+            
+            shader.bind()
+            
+            shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            shader.uniform_float("clip_plane0", pcv.clip_plane0)
+            shader.uniform_float("clip_plane1", pcv.clip_plane1)
+            shader.uniform_float("clip_plane2", pcv.clip_plane2)
+            shader.uniform_float("clip_plane3", pcv.clip_plane3)
+            shader.uniform_float("clip_plane4", pcv.clip_plane4)
+            shader.uniform_float("clip_plane5", pcv.clip_plane5)
+            
+            batch.draw(shader)
+            
+            if(pcv.clip_plane0_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE0)
+            if(pcv.clip_plane1_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE1)
+            if(pcv.clip_plane2_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE2)
+            if(pcv.clip_plane3_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE3)
+            if(pcv.clip_plane4_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE4)
+            if(pcv.clip_plane5_enabled):
+                bgl.glDisable(bgl.GL_CLIP_DISTANCE5)
+        
         # and now back to some production stuff..
         
         # draw selection as a last step bucause i clear depth buffer for it
@@ -2746,9 +3762,16 @@ class PCVControl():
     
     def _redraw(self):
         # force redraw
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        
+        # for area in bpy.context.screen.areas:
+        #     if(area.type == 'VIEW_3D'):
+        #         area.tag_redraw()
+        
+        # seems like sometimes context is different, this should work..
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
     
     def draw(self, vs=None, ns=None, cs=None, ):
         o = self.o
@@ -2887,10 +3910,11 @@ class PCVControl():
         c = PCVManager.cache[pcv.uuid]
         c['draw'] = False
         
-        # force redraw
-        for area in bpy.context.screen.areas:
-            if(area.type == 'VIEW_3D'):
-                area.tag_redraw()
+        # # force redraw
+        # for area in bpy.context.screen.areas:
+        #     if(area.type == 'VIEW_3D'):
+        #         area.tag_redraw()
+        self._redraw()
     
     def reset(self):
         o = self.o
@@ -2914,6 +3938,8 @@ class PCVControl():
         pcv.has_normals = False
         pcv.has_vcols = False
         pcv.runtime = False
+        
+        self._redraw()
 
 
 class PCVSequence():
@@ -3791,6 +4817,709 @@ class PCVRandomVolumeSampler():
         self.cs = cs[:]
 
 
+class PCVIVSampler():
+    def __init__(self, context, o, target, rnd, percentage=1.0, triangulate=True, use_modifiers=True, source=None, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        def remap(v, min1, max1, min2, max2, ):
+            def clamp(v, vmin, vmax):
+                if(vmax <= vmin):
+                    raise ValueError("Maximum value is smaller than or equal to minimum.")
+                if(v <= vmin):
+                    return vmin
+                if(v >= vmax):
+                    return vmax
+                return v
+            
+            def normalize(v, vmin, vmax):
+                return (v - vmin) / (vmax - vmin)
+            
+            def interpolate(nv, vmin, vmax):
+                return vmin + (vmax - vmin) * nv
+            
+            if(max1 - min1 == 0):
+                # handle zero division when min1 = max1
+                return min2
+            
+            r = interpolate(normalize(v, min1, max1), min2, max2)
+            return r
+        
+        owner = None
+        if(use_modifiers and target.modifiers):
+            depsgraph = context.evaluated_depsgraph_get()
+            owner = target.evaluated_get(depsgraph)
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph, )
+        else:
+            owner = target
+            me = owner.to_mesh(preserve_all_data_layers=True, depsgraph=None, )
+        
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        if(not triangulate):
+            if(colorize in ('VCOLS', 'UVTEX', 'GROUP_MONO', 'GROUP_COLOR', )):
+                bmesh.ops.triangulate(bm, faces=bm.faces)
+        else:
+            bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        
+        if(source is None):
+            source = 'VERTICES'
+        
+        if(len(bm.verts) == 0):
+            raise Exception("Mesh has no vertices")
+        if(colorize in ('UVTEX', 'VCOLS', 'VIEWPORT_DISPLAY_COLOR', )):
+            if(len(bm.faces) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            try:
+                if(len(target.data.materials) == 0):
+                    raise Exception("Cannot find any material")
+                materials = target.data.materials
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'UVTEX'):
+            try:
+                if(target.active_material is None):
+                    raise Exception("Cannot find active material")
+                uvtexnode = target.active_material.node_tree.nodes.active
+                if(uvtexnode is None):
+                    raise Exception("Cannot find active image texture in active material")
+                uvimage = uvtexnode.image
+                if(uvimage is None):
+                    raise Exception("Cannot find active image texture with loaded image in active material")
+                uvimage.update()
+                uvarray = np.asarray(uvimage.pixels)
+                uvarray = uvarray.reshape((uvimage.size[1], uvimage.size[0], 4))
+                uvlayer = bm.loops.layers.uv.active
+                if(uvlayer is None):
+                    raise Exception("Cannot find active UV layout")
+            except Exception as e:
+                raise Exception(str(e))
+        if(colorize == 'VCOLS'):
+            try:
+                col_layer = bm.loops.layers.color.active
+                if(col_layer is None):
+                    raise Exception()
+            except Exception:
+                raise Exception("Cannot find active vertex colors")
+        if(colorize in ('GROUP_MONO', 'GROUP_COLOR')):
+            try:
+                group_layer = bm.verts.layers.deform.active
+                if(group_layer is None):
+                    raise Exception()
+                group_layer_index = target.vertex_groups.active.index
+            except Exception:
+                raise Exception("Cannot find active vertex group")
+        
+        # if(percentage < 1.0):
+        #     if(source == 'FACES'):
+        #         rnd_layer = bm.faces.layers.float.new('face_random')
+        #         for f in bm.faces:
+        #             f[rnd_layer] = rnd.random()
+        #     if(source == 'VERTICES'):
+        #         rnd_layer = bm.verts.layers.float.new('vertex_random')
+        #         for v in bm.verts:
+        #             v[rnd_layer] = rnd.random()
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        if(source == 'FACES'):
+            for f in bm.faces:
+                if(percentage < 1.0):
+                    # if(f[rnd_layer] > percentage):
+                    #     continue
+                    if(rnd.random() > percentage):
+                        continue
+                
+                v = f.calc_center_median()
+                vs.append(v.to_tuple())
+                ns.append(f.normal.to_tuple())
+                
+                if(colorize is None):
+                    cs.append((1.0, 0.0, 0.0, ))
+                elif(colorize == 'CONSTANT'):
+                    cs.append(constant_color)
+                elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                    c = materials[f.material_index].diffuse_color[:3]
+                    c = [v ** (1 / 2.2) for v in c]
+                    cs.append(c)
+                elif(colorize == 'VCOLS'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    ac = f.loops[0][col_layer][:3]
+                    bc = f.loops[1][col_layer][:3]
+                    cc = f.loops[2][col_layer][:3]
+                    r = ac[0] * ws[0] + bc[0] * ws[1] + cc[0] * ws[2]
+                    g = ac[1] * ws[0] + bc[1] * ws[1] + cc[1] * ws[2]
+                    b = ac[2] * ws[0] + bc[2] * ws[1] + cc[2] * ws[2]
+                    cs.append((r, g, b, ))
+                elif(colorize == 'UVTEX'):
+                    uvtriangle = []
+                    for l in f.loops:
+                        uvtriangle.append(Vector(l[uvlayer].uv.to_tuple() + (0.0, )))
+                    uvpoint = barycentric_transform(v, f.verts[0].co, f.verts[1].co, f.verts[2].co, *uvtriangle, )
+                    w, h = uvimage.size
+                    # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                    x = int(round(remap(uvpoint.x % 1.0, 0.0, 1.0, 0, w - 1)))
+                    y = int(round(remap(uvpoint.y % 1.0, 0.0, 1.0, 0, h - 1)))
+                    cs.append(tuple(uvarray[y][x][:3].tolist()))
+                elif(colorize == 'GROUP_MONO'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    aw = f.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = f.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = f.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    cs.append((m, m, m, ))
+                elif(colorize == 'GROUP_COLOR'):
+                    ws = poly_3d_calc([f.verts[0].co, f.verts[1].co, f.verts[2].co, ], v)
+                    aw = f.verts[0][group_layer].get(group_layer_index, 0.0)
+                    bw = f.verts[1][group_layer].get(group_layer_index, 0.0)
+                    cw = f.verts[2][group_layer].get(group_layer_index, 0.0)
+                    m = aw * ws[0] + bw * ws[1] + cw * ws[2]
+                    hue = remap(1.0 - m, 0.0, 1.0, 0.0, 1 / 1.5)
+                    c = Color()
+                    c.hsv = (hue, 1.0, 1.0, )
+                    cs.append((c.r, c.g, c.b, ))
+        else:
+            # source == 'VERTICES'
+            for v in bm.verts:
+                if(percentage < 1.0):
+                    # if(v[rnd_layer] > percentage):
+                    #     continue
+                    if(rnd.random() > percentage):
+                        continue
+                
+                if(len(v.link_loops) == 0 and colorize in ('UVTEX', 'VCOLS', 'VIEWPORT_DISPLAY_COLOR', )):
+                    # single vertex without faces, skip when faces are required for colorizing
+                    continue
+                
+                vs.append(v.co.to_tuple())
+                ns.append(v.normal.to_tuple())
+                
+                if(colorize is None):
+                    cs.append((1.0, 0.0, 0.0, ))
+                elif(colorize == 'CONSTANT'):
+                    cs.append(constant_color)
+                elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    lfs = v.link_faces
+                    for f in lfs:
+                        c = materials[f.material_index].diffuse_color[:3]
+                        c = [v ** (1 / 2.2) for v in c]
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(lfs)
+                    g /= len(lfs)
+                    b /= len(lfs)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'VCOLS'):
+                    ls = v.link_loops
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    for l in ls:
+                        c = l[col_layer][:3]
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(ls)
+                    g /= len(ls)
+                    b /= len(ls)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'UVTEX'):
+                    ls = v.link_loops
+                    w, h = uvimage.size
+                    r = 0.0
+                    g = 0.0
+                    b = 0.0
+                    for l in ls:
+                        uvloc = l[uvlayer].uv.to_tuple()
+                        # x,y % 1.0 to wrap around if uv coordinate is outside 0.0-1.0 range
+                        x = int(round(remap(uvloc[0] % 1.0, 0.0, 1.0, 0, w - 1)))
+                        y = int(round(remap(uvloc[1] % 1.0, 0.0, 1.0, 0, h - 1)))
+                        c = tuple(uvarray[y][x][:3].tolist())
+                        r += c[0]
+                        g += c[1]
+                        b += c[2]
+                    r /= len(ls)
+                    g /= len(ls)
+                    b /= len(ls)
+                    cs.append((r, g, b, ))
+                elif(colorize == 'GROUP_MONO'):
+                    w = v[group_layer].get(group_layer_index, 0.0)
+                    cs.append((w, w, w, ))
+                elif(colorize == 'GROUP_COLOR'):
+                    w = v[group_layer].get(group_layer_index, 0.0)
+                    hue = remap(1.0 - w, 0.0, 1.0, 0.0, 1 / 1.5)
+                    c = Color()
+                    c.hsv = (hue, 1.0, 1.0, )
+                    cs.append((c.r, c.g, c.b, ))
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+        
+        bm.free()
+        owner.to_mesh_clear()
+
+
+class PCVIVDraftSampler():
+    def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        np.random.seed(seed=seed)
+        rnd = np.random.uniform(low=0.0, high=1.0, size=len(me.polygons), )
+        
+        for i, f in enumerate(me.polygons):
+            if(percentage < 1.0):
+                if(rnd[i] > percentage):
+                    continue
+            
+            v = f.center
+            vs.append(v.to_tuple())
+            ns.append(f.normal.to_tuple())
+            
+            if(colorize == 'CONSTANT'):
+                cs.append(constant_color)
+            elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+                c = materials[f.material_index].diffuse_color[:3]
+                c = [v ** (1 / 2.2) for v in c]
+                cs.append(c)
+        
+        # # skip normals..
+        # n = len(vs)
+        # ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
+        #                       np.full(n, 0.0, dtype=np.float32, ),
+        #                       np.full(n, 1.0, dtype=np.float32, ), ))
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVIVDraftPercentageNumpySampler():
+    def __init__(self, context, target, percentage=1.0, seed=0, colorize=None, constant_color=None, ):
+        log("{}:".format(self.__class__.__name__), 0)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        
+        np.random.seed(seed=seed)
+        rnd = np.random.uniform(low=0.0, high=1.0, size=l, )
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        rnd[rnd < percentage] = 1
+        rnd[rnd < 1] = 0
+        indices = []
+        for i, v in enumerate(rnd):
+            if(v):
+                indices.append(i)
+        indices = np.array(indices, dtype=np.int, )
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
+                                      np.full(li, constant_color[1], dtype=np.float32, ),
+                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            for i, index in enumerate(indices):
+                p = me.polygons[index]
+                c = materials[p.material_index].diffuse_color[:3]
+                c = [v ** (1 / 2.2) for v in c]
+                colors[i][0] = c[0]
+                colors[i][1] = c[1]
+                colors[i][2] = c[2]
+        
+        vs = np.take(centers, indices, axis=0, )
+        ns = np.take(normals, indices, axis=0, )
+        cs = colors
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVIVDraftFixedCountNumpySampler():
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
+        # log("{}:".format(self.__class__.__name__), 0)
+        # log("target: {}, count: {}".format(target, count, ), 1)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed)
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        indices = np.random.randint(0, l, count, dtype=np.int, )
+        
+        material_indices = np.zeros(l, dtype=np.int, )
+        me.polygons.foreach_get('material_index', material_indices, )
+        material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+        for i, m in enumerate(materials):
+            mc = m.diffuse_color[:3]
+            material_colors[i][0] = mc[0] ** (1 / 2.2)
+            material_colors[i][1] = mc[1] ** (1 / 2.2)
+            material_colors[i][2] = mc[2] ** (1 / 2.2)
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(li, constant_color[0], dtype=np.float32, ),
+                                      np.full(li, constant_color[1], dtype=np.float32, ),
+                                      np.full(li, constant_color[2], dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            colors = np.take(material_colors, material_indices, axis=0,)
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = np.take(colors, indices, axis=0, )
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVIVDraftWeightedFixedCountNumpySampler():
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
+        # log("{}:".format(self.__class__.__name__), 0)
+        # log("target: {}, count: {}".format(target, count, ), 1)
+        
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            constant_color = (1.0, 0.0, 0.0, )
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            raise Exception("Mesh has no faces")
+        if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+            if(len(me.polygons) == 0):
+                raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                raise Exception("Cannot find any material")
+            materials = target.data.materials
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed)
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        # indices = np.random.randint(0, l, count, dtype=np.int, )
+        
+        choices = np.indices((l, ), dtype=np.int, )
+        choices.shape = (l, )
+        weights = np.zeros(l, dtype=np.float32, )
+        me.polygons.foreach_get('area', weights, )
+        # # normalize
+        # weights *= (1.0 / np.max(weights))
+        # make it all sum to 1.0
+        weights *= 1.0 / np.sum(weights)
+        indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+        
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            material_indices = np.zeros(l, dtype=np.int, )
+            me.polygons.foreach_get('material_index', material_indices, )
+            material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+            for i, m in enumerate(materials):
+                mc = m.diffuse_color[:3]
+                material_colors[i][0] = mc[0] ** (1 / 2.2)
+                material_colors[i][1] = mc[1] ** (1 / 2.2)
+                material_colors[i][2] = mc[2] ** (1 / 2.2)
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(l, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            colors = np.take(material_colors, material_indices, axis=0,)
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = np.take(colors, indices, axis=0, )
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
+class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
+    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
+        if(colorize is None):
+            colorize = 'CONSTANT'
+        if(constant_color is None):
+            # constant_color = (1.0, 0.0, 0.0, )
+            constant_color = (1.0, 0.0, 1.0, )
+        if(use_material_factors is None and colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            use_material_factors = False
+        if(use_material_factors):
+            if(colorize == 'CONSTANT'):
+                use_material_factors = False
+        
+        me = target.data
+        
+        if(len(me.polygons) == 0):
+            # raise Exception("Mesh has no faces")
+            # no polygons to generate from, use origin
+            self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
+            self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            self.cs = np.array(((1.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            return
+        # if(colorize in ('VIEWPORT_DISPLAY_COLOR', )):
+        #     if(len(me.polygons) == 0):
+        #         raise Exception("Mesh has no faces")
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            if(len(target.data.materials) == 0):
+                # raise Exception("Cannot find any material")
+                # no materials, set to constant
+                colorize = 'CONSTANT'
+                constant_color = (1.0, 0.0, 1.0, )
+            materials = target.data.materials
+            if(None in materials[:]):
+                # if there is empty slot, abort it and set to constant
+                # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
+                colorize = 'CONSTANT'
+                constant_color = (1.0, 0.0, 1.0, )
+        
+        vs = []
+        ns = []
+        cs = []
+        
+        l = len(me.polygons)
+        if(count == -1):
+            count = l
+        if(count > l):
+            count = l
+        
+        np.random.seed(seed=seed, )
+        
+        centers = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('center', centers, )
+        centers.shape = (l, 3)
+        
+        normals = np.zeros((l * 3), dtype=np.float32, )
+        me.polygons.foreach_get('normal', normals, )
+        normals.shape = (l, 3)
+        
+        choices = np.indices((l, ), dtype=np.int, )
+        choices.shape = (l, )
+        weights = np.zeros(l, dtype=np.float32, )
+        me.polygons.foreach_get('area', weights, )
+        # make it all sum to 1.0
+        weights *= 1.0 / np.sum(weights)
+        indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+        
+        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            material_indices = np.zeros(l, dtype=np.int, )
+            me.polygons.foreach_get('material_index', material_indices, )
+            material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
+            material_factors = np.zeros((len(materials)), dtype=np.float32, )
+            for i, m in enumerate(materials):
+                mc = m.diffuse_color[:3]
+                material_colors[i][0] = mc[0] ** (1 / 2.2)
+                material_colors[i][1] = mc[1] ** (1 / 2.2)
+                material_colors[i][2] = mc[2] ** (1 / 2.2)
+                material_factors[i] = m.pcv_instance_visualizer.factor
+        
+        if(use_material_factors):
+            material_weights = np.take(material_factors, material_indices, axis=0, )
+            # material_weights *= 1.0 / np.sum(material_weights)
+            material_weights *= 1.0 / np.sum(material_weights)
+            # weights = material_weights
+            
+            if(use_face_area):
+                weights = (weights + material_weights) / 2.0
+            else:
+                weights = material_weights
+            
+            indices = np.random.choice(choices, size=count, replace=False, p=weights, )
+        
+        li = len(indices)
+        if(colorize == 'CONSTANT'):
+            colors = np.column_stack((np.full(l, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
+                                      np.full(l, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
+        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+            colors = np.zeros((li, 3), dtype=np.float32, )
+            colors = np.take(material_colors, material_indices, axis=0, )
+        
+        if(l == count):
+            vs = centers
+            ns = normals
+            cs = colors
+        else:
+            vs = np.take(centers, indices, axis=0, )
+            ns = np.take(normals, indices, axis=0, )
+            cs = np.take(colors, indices, axis=0, )
+        
+        # NOTE: shuffle can be removed if i am not going to use all points, shuffle also slows everything down, but display won't work as nicely as it does now..
+        
+        # and shuffle..
+        a = np.concatenate((vs, ns, cs), axis=1, )
+        np.random.shuffle(a)
+        vs = a[:, :3]
+        ns = a[:, 3:6]
+        cs = a[:, 6:]
+        
+        self.vs = vs[:]
+        self.ns = ns[:]
+        self.cs = cs[:]
+
+
 class PCV_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.init"
     bl_label = "init"
@@ -4515,6 +6244,10 @@ class PCV_OT_export(Operator, ExportHelper):
                 ns = ns[:l]
                 cs = cs[:l]
             
+            # TODO: viewport points have always some normals and colors, should i keep it how it was loaded or should i include also generic data created for viewing?
+            normals = True
+            colors = True
+            
         else:
             log("using original loaded points..", 1)
             # get original loaded points
@@ -4536,103 +6269,78 @@ class PCV_OT_export(Operator, ExportHelper):
             if(colors):
                 cs = np.column_stack((points['red'], points['green'], points['blue'], ))
         
-        # FIXME: something is not right with this.. it would be nice to have it working
-        # def apply_matrix(vs, ns, m):
-        #     # https://blender.stackexchange.com/questions/139511/replace-matrix-vector-list-comprehensions-with-something-more-efficient/
-        #     l = len(vs)
-        #     mw = np.array(m.inverted(), dtype=np.float, )
-        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
-        #
-        #     a = np.ones((l, 4), vs.dtype)
-        #     a[:, :-1] = vs
-        #     # a = np.einsum('ij,aj->ai', mw, a)
-        #     a = np.dot(a, mw)
-        #     a = np.float32(a)
-        #     vs = a[:, :-1]
-        #
-        #     if(ns is not None):
-        #         a = np.ones((l, 4), ns.dtype)
-        #         a[:, :-1] = ns
-        #         # a = np.einsum('ij,aj->ai', mwrot, a)
-        #         a = np.dot(a, mwrot)
-        #         a = np.float32(a)
-        #         ns = a[:, :-1]
-        #
-        #     return vs, ns
+        def apply_matrix(m, vs, ns=None, ):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(ns is not None):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
+            return vs, ns
         
-        def apply_matrix(vs, ns, matrix, ):
-            matrot = matrix.decompose()[1].to_matrix().to_4x4()
-            dtv = vs.dtype
-            dtn = ns.dtype
-            rvs = np.zeros(vs.shape, dtv)
-            rns = np.zeros(ns.shape, dtn)
-            for i in range(len(vs)):
-                co = matrix @ Vector(vs[i])
-                no = matrot @ Vector(ns[i])
-                rvs[i] = np.array(co.to_tuple(), dtv)
-                rns[i] = np.array(no.to_tuple(), dtn)
-            return rvs, rns
-        
+        # fabricate matrix
+        m = Matrix.Identity(4)
         if(pcv.export_apply_transformation):
-            if(o.matrix_world != Matrix()):
+            if(o.matrix_world != Matrix.Identity(4)):
                 log("apply transformation..", 1)
-                vs, ns = apply_matrix(vs, ns, o.matrix_world.copy())
-        
+                vs, ns = apply_matrix(o.matrix_world.copy(), vs, ns, )
         if(pcv.export_convert_axes):
             log("convert axes..", 1)
             axis_forward = '-Z'
             axis_up = 'Y'
             cm = axis_conversion(to_forward=axis_forward, to_up=axis_up).to_4x4()
-            vs, ns = apply_matrix(vs, ns, cm)
+            vs, ns = apply_matrix(cm, vs, ns, )
+        
+        # TODO: make whole PCV data type agnostic, load anything, keep original, convert to what is needed for display (float32), use original for export if not set to use viewport/edited data. now i am forcing float32 for x, y, z, nx, ny, nz and uint8 for red, green, blue. 99% of ply files i've seen is like that, but specification is not that strict (read again the best resource: http://paulbourke.net/dataformats/ply/ )
+        
+        # somehow along the way i am getting double dtype, so correct that
+        vs = vs.astype(np.float32)
+        if(normals):
+            ns = ns.astype(np.float32)
+        if(colors):
+            # cs = cs.astype(np.float32)
+            
+            if(pcv.export_use_viewport):
+                # viewport colors are in float32 now, back to uint8 colors, loaded data should be in uint8, so no need for conversion
+                cs = cs.astype(np.float32)
+                cs = cs * 255
+                cs = cs.astype(np.uint8)
         
         log("write..", 1)
         
-        if(pcv.export_use_viewport):
-            vs = vs.astype(np.float32)
-            ns = ns.astype(np.float32)
-            cs = cs.astype(np.float32)
-            # back to uint8 colors
-            cs = cs * 255
-            cs = cs.astype(np.uint8)
-            l = len(vs)
-            dt = [('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('nx', '<f4'), ('ny', '<f4'), ('nz', '<f4'), ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
-            a = np.empty(l, dtype=dt, )
-            a['x'] = vs[:, 0]
-            a['y'] = vs[:, 1]
-            a['z'] = vs[:, 2]
+        # combine back to points, using original dtype
+        dt = (('x', vs[0].dtype.str, ),
+              ('y', vs[1].dtype.str, ),
+              ('z', vs[2].dtype.str, ), )
+        if(normals):
+            dt += (('nx', ns[0].dtype.str, ),
+                   ('ny', ns[1].dtype.str, ),
+                   ('nz', ns[2].dtype.str, ), )
+        if(colors):
+            dt += (('red', cs[0].dtype.str, ),
+                   ('green', cs[1].dtype.str, ),
+                   ('blue', cs[2].dtype.str, ), )
+        log("dtype: {}".format(dt), 1)
+        
+        l = len(vs)
+        dt = list(dt)
+        a = np.empty(l, dtype=dt, )
+        a['x'] = vs[:, 0]
+        a['y'] = vs[:, 1]
+        a['z'] = vs[:, 2]
+        if(normals):
             a['nx'] = ns[:, 0]
             a['ny'] = ns[:, 1]
             a['nz'] = ns[:, 2]
+        if(colors):
             a['red'] = cs[:, 0]
             a['green'] = cs[:, 1]
             a['blue'] = cs[:, 2]
-        else:
-            # combine back to points, using original dtype
-            dt = (('x', vs[0].dtype.str, ),
-                  ('y', vs[1].dtype.str, ),
-                  ('z', vs[2].dtype.str, ), )
-            if(normals):
-                dt += (('nx', ns[0].dtype.str, ),
-                       ('ny', ns[1].dtype.str, ),
-                       ('nz', ns[2].dtype.str, ), )
-            if(colors):
-                dt += (('red', cs[0].dtype.str, ),
-                       ('green', cs[1].dtype.str, ),
-                       ('blue', cs[2].dtype.str, ), )
-            l = len(vs)
-            dt = list(dt)
-            a = np.empty(l, dtype=dt, )
-            a['x'] = vs[:, 0]
-            a['y'] = vs[:, 1]
-            a['z'] = vs[:, 2]
-            if(normals):
-                a['nx'] = ns[:, 0]
-                a['ny'] = ns[:, 1]
-                a['nz'] = ns[:, 2]
-            if(colors):
-                a['red'] = cs[:, 0]
-                a['green'] = cs[:, 1]
-                a['blue'] = cs[:, 2]
         
         w = BinPlyPointCloudWriter(self.filepath, a, )
         
@@ -4839,45 +6547,30 @@ class PCV_OT_filter_project(Operator):
         if(o is None):
             raise Exception()
         
-        # FIXME: something is not right with this.. it would be nice to have it working
-        # def apply_matrix(vs, ns, m, ):
-        #     l = len(vs)
-        #     mw = np.array(m.inverted(), dtype=np.float, )
-        #     mwrot = np.array(m.inverted().decompose()[1].to_matrix().to_4x4(), dtype=np.float, )
-        #     a = np.ones((l, 4), vs.dtype)
-        #     a[:, :-1] = vs
-        #     a = np.dot(a, mw)
-        #     a = np.float32(a)
-        #     vs = a[:, :-1]
-        #     if(ns is not None):
-        #         a = np.ones((l, 4), ns.dtype)
-        #         a[:, :-1] = ns
-        #         a = np.dot(a, mwrot)
-        #         a = np.float32(a)
-        #         ns = a[:, :-1]
-        #     return vs, ns
-        
-        def apply_matrix(vs, ns, matrix, ):
-            matrot = matrix.decompose()[1].to_matrix().to_4x4()
-            dtv = vs.dtype
-            dtn = ns.dtype
-            rvs = np.zeros(vs.shape, dtv)
-            rns = np.zeros(ns.shape, dtn)
-            for i in range(len(vs)):
-                co = matrix @ Vector(vs[i])
-                no = matrot @ Vector(ns[i])
-                rvs[i] = np.array(co.to_tuple(), dtv)
-                rns[i] = np.array(no.to_tuple(), dtn)
-            return rvs, rns
-        
         c = PCVManager.cache[pcv.uuid]
         vs = c['vertices']
         ns = c['normals']
         cs = c['colors']
         
         # apply parent matrix to points
+        def apply_matrix(m, vs, ns=None, ):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(ns is not None):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
+            return vs, ns
+        
         m = c['object'].matrix_world.copy()
-        vs, ns = apply_matrix(vs, ns, m)
+        vs, ns = apply_matrix(m, vs, ns, )
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
         
         # combine
         l = len(vs)
@@ -5157,10 +6850,11 @@ class PCV_OT_filter_project(Operator):
         # unapply parent matrix to points
         m = c['object'].matrix_world.copy()
         m = m.inverted()
-        vs, ns = apply_matrix(vs, ns, m)
+        vs, ns = apply_matrix(m, vs, ns, )
+        vs = vs.astype(np.float32)
+        ns = ns.astype(np.float32)
         
         # cleanup
-        
         if(pcv.filter_project_colorize):
             bm.free()
             # owner.to_mesh_clear()
@@ -5453,6 +7147,8 @@ class PCV_OT_edit_start(Operator):
         view_layer.objects.active = o
         # and set edit mode
         bpy.ops.object.mode_set(mode='EDIT')
+        # set vertex select mode..
+        bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='VERT', )
         
         o.point_cloud_visualizer.edit_is_edit_uuid = pcv.uuid
         o.point_cloud_visualizer.edit_is_edit_mesh = True
@@ -6754,6 +8450,1205 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_clip_planes_from_bbox(Operator):
+    bl_idname = "point_cloud_visualizer.clip_planes_from_bbox"
+    bl_label = "Set Clip Planes From Object Bounding Box"
+    bl_description = "Set clip planes from object bounding box"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        
+        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        if(bbo is not None):
+            ok = True
+        
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        
+        mw = bbo.matrix_world
+        vs = [mw @ Vector(v) for v in bbo.bound_box]
+        
+        # 0 front left down
+        # 1 front left up
+        # 2 back left up
+        # 3 back left down
+        # 4 front right down
+        # 5 front right up
+        # 6 back right up
+        # 7 back right down
+        #          2-----------6
+        #         /           /|
+        #       1-----------5  |
+        #       |           |  |
+        #       |           |  |
+        #       |  3        |  7
+        #       |           | /
+        #       0-----------4
+        
+        fs = (
+            (0, 4, 5, 1),  # front
+            (3, 2, 6, 7),  # back
+            (1, 5, 6, 2),  # top
+            (0, 3, 7, 4),  # bottom
+            (0, 1, 2, 3),  # left
+            (4, 7, 6, 5),  # right
+        )
+        
+        quads = [[vs[fs[i][j]] for j in range(4)] for i in range(6)]
+        ns = [mathutils.geometry.normal(quads[i]) for i in range(6)]
+        for i in range(6):
+            # FIXME: if i need to do this, it is highly probable i have something wrong.. somewhere..
+            ns[i].negate()
+        
+        ds = []
+        for i in range(6):
+            v = quads[i][0]
+            n = ns[i]
+            d = mathutils.geometry.distance_point_to_plane(Vector(), v, n)
+            ds.append(d)
+        
+        a = [ns[i].to_tuple() + (ds[i], ) for i in range(6)]
+        pcv.clip_plane0 = a[0]
+        pcv.clip_plane1 = a[1]
+        pcv.clip_plane2 = a[2]
+        pcv.clip_plane3 = a[3]
+        pcv.clip_plane4 = a[4]
+        pcv.clip_plane5 = a[5]
+        
+        pcv.clip_shader_enabled = True
+        pcv.clip_plane0_enabled = True
+        pcv.clip_plane1_enabled = True
+        pcv.clip_plane2_enabled = True
+        pcv.clip_plane3_enabled = True
+        pcv.clip_plane4_enabled = True
+        pcv.clip_plane5_enabled = True
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_clip_planes_reset(Operator):
+    bl_idname = "point_cloud_visualizer.clip_planes_reset"
+    bl_label = "Reset Clip Planes"
+    bl_description = "Reset all clip planes"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        
+        # bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        # if(bbo is not None):
+        #     ok = True
+        
+        ok = True
+        
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        pcv.clip_planes_from_bbox_object = ''
+        
+        z = (0.0, 0.0, 0.0, 0.0, )
+        pcv.clip_plane0 = z
+        pcv.clip_plane1 = z
+        pcv.clip_plane2 = z
+        pcv.clip_plane3 = z
+        pcv.clip_plane4 = z
+        pcv.clip_plane5 = z
+        
+        pcv.clip_shader_enabled = False
+        pcv.clip_plane0_enabled = False
+        pcv.clip_plane1_enabled = False
+        pcv.clip_plane2_enabled = False
+        pcv.clip_plane3_enabled = False
+        pcv.clip_plane4_enabled = False
+        pcv.clip_plane5_enabled = False
+        
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_init(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_init"
+    bl_label = "Initialize"
+    bl_description = "Initialize Instance Visualizer"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.init()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_deinit"
+    bl_label = "Deinitialize"
+    bl_description = "Deinitialize Instance Visualizer"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.deinit()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_reset(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_reset"
+    bl_label = "Reset"
+    bl_description = "Reset active object particle systems visualizations"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.reset(context.object, )
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_reset_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_reset_all"
+    bl_label = "Reset All"
+    bl_description = "Reset all particle systems visualizations on all objects"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.reset_all()
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_update(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_update"
+    bl_label = "Update"
+    bl_description = "Update point cloud visualization by particle system UUID"
+    
+    uuid: StringProperty(name="UUID", default='', )
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.update(context.object, self.uuid, )
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_update_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_update_all"
+    bl_label = "Update All"
+    bl_description = "Update all point cloud visualizations for active object"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV2Manager.update_all(context.object, )
+        return {'FINISHED'}
+
+
+class PCVIV2_OT_dev_transform_normals(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_dev_transform_normals"
+    bl_label = "dev_transform_normals"
+    bl_description = ""
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        
+        # sample target object
+        to = bpy.data.objects.get(pcv.dev_transform_normals_target_object)
+        sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, to, count=1000, colorize='CONSTANT', constant_color=(1.0, 0.0, 0.0), )
+        vs = sampler.vs
+        ns = sampler.ns
+        cs = sampler.cs
+        
+        # target and emitter matrices
+        m = to.matrix_world
+        m = o.matrix_world.inverted() @ m
+        
+        # transform vertices
+        vs.shape = (-1, 3)
+        vs = np.c_[vs, np.ones(vs.shape[0])]
+        vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+        vs.shape = (-1, 3)
+        
+        # transform normals
+        _, r, _ = m.decompose()
+        m = r.to_matrix().to_4x4()
+        
+        ns.shape = (-1, 3)
+        ns = np.c_[ns, np.ones(ns.shape[0])]
+        ns = np.dot(m, ns.T)[0:3].T.reshape((-1))
+        ns.shape = (-1, 3)
+        
+        # for n in ns:
+        #     print(sum(n ** 2) ** 0.5)
+        
+        # fixed sizes
+        sz = np.full(len(vs), 3, dtype=np.int, )
+        
+        # draw
+        c = PCVIV2Control(o)
+        c.draw(vs, ns, cs, sz, )
+        
+        return {'FINISHED'}
+
+
+class PCVIV2Manager():
+    initialized = False
+    cache = {}
+    
+    use_extra_handlers = True
+    undo_redo_catalogue = {}
+    psys_existence = {}
+    
+    pre_save_state = {}
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        log("init", prefix='>>>', )
+        # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
+        bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
+        
+        if(cls.use_extra_handlers):
+            # undo/redo handling
+            bpy.app.handlers.redo_pre.append(cls.redo_pre)
+            bpy.app.handlers.redo_post.append(cls.redo_post)
+            bpy.app.handlers.undo_pre.append(cls.undo_pre)
+            bpy.app.handlers.undo_post.append(cls.undo_post)
+            # psys removal handling
+            bpy.app.handlers.depsgraph_update_post.append(cls.psys_existence_post)
+        
+        bpy.app.handlers.save_pre.append(cls.save_handler_pre)
+        bpy.app.handlers.save_post.append(cls.save_handler_post)
+        
+        cls.initialized = True
+        cls.uuid_handler(None)
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        log("deinit", prefix='>>>', )
+        # bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
+        
+        if(cls.use_extra_handlers):
+            # undo/redo handling
+            bpy.app.handlers.redo_pre.remove(cls.redo_pre)
+            bpy.app.handlers.redo_post.remove(cls.redo_post)
+            bpy.app.handlers.undo_pre.remove(cls.undo_pre)
+            bpy.app.handlers.undo_post.remove(cls.undo_post)
+            # psys removal handling
+            bpy.app.handlers.depsgraph_update_post.remove(cls.psys_existence_post)
+        
+        cls.initialized = False
+    
+    @classmethod
+    def uuid_handler(cls, scene, ):
+        if(not cls.initialized):
+            return
+        # log("uuid_handler", prefix='>>>', )
+        dps = bpy.data.particles
+        for ps in dps:
+            pcviv = ps.pcv_instance_visualizer
+            if(pcviv.uuid == ""):
+                log("uuid_handler: found psys without uuid", 1, prefix='>>>', )
+                pcviv.uuid = str(uuid.uuid1())
+                # if psys is added outside of 3dview
+                cls._redraw_view_3d()
+    
+    @classmethod
+    def psys_existence_post(cls, scene, ):
+        log("existence post", prefix='>>>', )
+        
+        # NOTE: this is run on every update that happen in blender, even on something completely unrelated to pcv, pcviv or particles, this might slow down everything
+        
+        ls = []
+        for pset in bpy.data.particles:
+            pcviv = pset.pcv_instance_visualizer
+            if(pcviv.uuid != ""):
+                ls.append((pcviv.uuid, pset, ))
+        
+        for u, pset in ls:
+            if(u in cls.cache.keys()):
+                # was in cache, so it should draw, unless psys was removed, or its object
+                # so check for objects with psys with that pset
+                ok = False
+                for o in bpy.data.objects:
+                    for psys in o.particle_systems:
+                        if(psys.settings == pset):
+                            ok = True
+                if(not ok):
+                    del cls.cache[u]
+                    # now i should run update on object, but how to find which one was it?
+                    if(u in cls.psys_existence.keys()):
+                        onm = cls.psys_existence[u]
+                        o = bpy.data.objects.get(onm)
+                        if(o is not None):
+                            # object still exist
+                            cls.update_all(o)
+        
+        cls.psys_existence = {}
+        for o in bpy.data.objects:
+            for i, psys in enumerate(o.particle_systems):
+                u = psys.settings.pcv_instance_visualizer.uuid
+                if(u in cls.cache.keys()):
+                    cls.psys_existence[u] = o.name
+    
+    @classmethod
+    def save_handler_pre(cls, scene, ):
+        # store by object name which is used as instance visualizer
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            if(pcv.instance_visualizer_active_hidden_value):
+                cls.pre_save_state[o.name] = True
+                pcv.instance_visualizer_active_hidden_value = False
+    
+    @classmethod
+    def save_handler_post(cls, scene, ):
+        # revert pre save changes..
+        for n, v in cls.pre_save_state.items():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                pcv = o.point_cloud_visualizer
+                pcv.instance_visualizer_active_hidden_value = v
+    
+    @classmethod
+    def undo_pre(cls, scene, ):
+        log("undo/redo pre", prefix='>>>', )
+        
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            for i, psys in enumerate(o.particle_systems):
+                pset = psys.settings
+                pcviv = pset.pcv_instance_visualizer
+                u = pcviv.uuid
+                if(u in cls.cache.keys()):
+                    if(o.name not in cls.undo_redo_catalogue.keys()):
+                        cls.undo_redo_catalogue[o.name] = {}
+                    cls.undo_redo_catalogue[o.name][pset.name] = u
+    
+    @classmethod
+    def undo_post(cls, scene, ):
+        log("undo/redo post", prefix='>>>', )
+        
+        for onm, psnms in cls.undo_redo_catalogue.items():
+            o = bpy.data.objects.get(onm)
+            if(o is not None):
+                dirty = False
+                # ok, object still exists, unless it was object rename that was undone.. huh? now what?
+                for psnm, u in psnms.items():
+                    pset = bpy.data.particles.get(psnm)
+                    if(pset is not None):
+                        found = False
+                        for psys in o.particle_systems:
+                            if(psys.settings == pset):
+                                found = True
+                                break
+                        if(found):
+                            # all is ok
+                            pass
+                        else:
+                            # psys is gone, we should remove it
+                            dirty = True
+                    else:
+                        # pset is there, but psys is gone, we should remove it
+                        dirty = True
+                
+                if(dirty):
+                    cls.update_all(o)
+            else:
+                # object is gone, we should remove it
+                # this is handled by PCV, no object - no draw
+                pass
+        
+        cls.undo_redo_catalogue = {}
+    
+    @classmethod
+    def redo_pre(cls, scene, ):
+        log("undo/redo pre", prefix='>>>', )
+        cls.undo_pre(scene)
+    
+    @classmethod
+    def redo_post(cls, scene, ):
+        log("undo/redo post", prefix='>>>', )
+        cls.undo_post(scene)
+    
+    @classmethod
+    def reset_all(cls):
+        # if(not cls.initialized):
+        #     return
+        
+        log("reset_all", prefix='>>>', )
+        cls.deinit()
+        
+        for o in bpy.data.objects:
+            pcv = o.point_cloud_visualizer
+            pcv.instance_visualizer_active_hidden_value = False
+            pcv.dev_minimal_shader_variable_size_enabled = False
+            pcv.pcviv_debug_draw = ''
+            for i, psys in enumerate(o.particle_systems):
+                pset = psys.settings
+                pcviv = pset.pcv_instance_visualizer
+                pcviv.uuid = ""
+                pcviv.draw = True
+                pcviv.debug_update = ""
+                
+                # NOTE: maybe store these somewhere, but these are defaults, so makes sense too
+                # NOTE: switch to BOUNDS to keep viewport alive
+                if(pset.render_type == 'COLLECTION'):
+                    for co in pset.instance_collection.objects:
+                        # co.display_type = 'TEXTURED'
+                        co.display_type = 'BOUNDS'
+                elif(pset.render_type == 'OBJECT'):
+                    # pset.instance_object.display_type = 'TEXTURED'
+                    pset.instance_object.display_type = 'BOUNDS'
+                pset.display_method = 'RENDER'
+            
+            c = PCVIV2Control(o)
+            c.reset()
+        
+        cls.cache = {}
+    
+    @classmethod
+    def reset(cls, o, ):
+        # if(not cls.initialized):
+        #     return
+        
+        log("reset", prefix='>>>', )
+        cls.deinit()
+        
+        pcv = o.point_cloud_visualizer
+        pcv.instance_visualizer_active_hidden_value = False
+        pcv.dev_minimal_shader_variable_size_enabled = False
+        pcv.pcviv_debug_draw = ''
+        keys = []
+        for i, psys in enumerate(o.particle_systems):
+            pset = psys.settings
+            pcviv = pset.pcv_instance_visualizer
+            keys.append(pcviv.uuid)
+            pcviv.uuid = ""
+            pcviv.draw = True
+            pcviv.debug_update = ""
+            
+            # NOTE: maybe store these somewhere, but these are defaults, so makes sense too
+            # NOTE: switch to BOUNDS to keep viewport alive
+            if(pset.render_type == 'COLLECTION'):
+                for co in pset.instance_collection.objects:
+                    # co.display_type = 'TEXTURED'
+                    co.display_type = 'BOUNDS'
+            elif(pset.render_type == 'OBJECT'):
+                # pset.instance_object.display_type = 'TEXTURED'
+                pset.instance_object.display_type = 'BOUNDS'
+            pset.display_method = 'RENDER'
+        
+        c = PCVIV2Control(o)
+        c.reset()
+        
+        # delete just reseted keys from cache
+        for k in keys:
+            if(k in cls.cache):
+                del cls.cache[k]
+        # # initialize back if there are some keys in cache to keep other objects with visualizations
+        # if(len(cls.cache.keys()) > 0):
+        #     cls.init()
+        
+        # always initialize back after single object reset
+        cls.init()
+    
+    @classmethod
+    def update(cls, o, uuid, skip_render=False, ):
+        if(not cls.initialized):
+            return
+        
+        pcv = o.point_cloud_visualizer
+        pcv.instance_visualizer_active_hidden_value = True
+        
+        log("update", prefix='>>>', )
+        
+        if(uuid in cls.cache.keys()):
+            log("update: is cached, setting dirty..", 1, prefix='>>>', )
+            cls.cache[uuid]['dirty'] = True
+        else:
+            found = False
+            for i, psys in enumerate(o.particle_systems):
+                pcviv = psys.settings.pcv_instance_visualizer
+                if(pcviv.uuid == uuid):
+                    found = True
+                    break
+            if(not found):
+                raise Exception('PCVIV2Manager.update, uuid {} not found in particle systems on object: {}'.format(uuid, o.name))
+            
+            log("update: psys not in cache, adding..", 1, prefix='>>>', )
+            # not yet in cache, we should fix that
+            ci = {'uuid': uuid,
+                  # we just started, so it's always dirty, yeah baby..
+                  'dirty': True,
+                  'draw': pcviv.draw,
+                  # 'draw': True,
+                  'vs': None,
+                  'ns': None,
+                  'cs': None,
+                  'sz': None, }
+            cls.cache[uuid] = ci
+        
+        if(not skip_render):
+            cls.render(o)
+    
+    @classmethod
+    def update_all(cls, o, ):
+        if(not cls.initialized):
+            return
+        
+        log("update_all", prefix='>>>', )
+        
+        ls = []
+        for i, psys in enumerate(o.particle_systems):
+            pcviv = psys.settings.pcv_instance_visualizer
+            ls.append(pcviv.uuid)
+        for u in ls:
+            cls.update(o, u, True, )
+        
+        cls.render(o)
+    
+    @classmethod
+    def draw_update(cls, o, uuid, do_draw, ):
+        if(not cls.initialized):
+            return
+        
+        log("draw_update", prefix='>>>', )
+        
+        found = False
+        for k, v in cls.cache.items():
+            if(k == uuid):
+                found = True
+                break
+        
+        if(not found):
+            # if not found, it should be first time called..
+            log("draw_update: uuid not found in cache, updating..", 1, prefix='>>>', )
+            # return
+            cls.update(o, uuid, )
+            return
+        
+        ci = cls.cache[uuid]['draw'] = do_draw
+        # cls.update(uuid)
+        cls.render(o)
+    
+    @classmethod
+    def generate_psys(cls, o, psys_slot, max_points, color_source, color_constant, use_face_area, use_material_factors, ):
+        log("generate_psys", prefix='>>>', )
+        
+        # FIXME: this should be created just once and passed to next call in the same update.. possible optimization?
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        o = o.evaluated_get(depsgraph)
+        # why can particle systems have the same name? WHY? NOTHING else works like that in blender
+        # psys = o.particle_systems[psys.name]
+        psys = o.particle_systems[psys_slot]
+        settings = psys.settings
+        
+        if(settings.render_type == 'COLLECTION'):
+            collection = settings.instance_collection
+            cos = collection.objects
+            fragments = []
+            fragments_indices = {}
+            for i, co in enumerate(cos):
+                no_geometry = False
+                if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                    # self.report({'ERROR'}, "Object does not have geometry data.")
+                    # return {'CANCELLED'}
+                    # NOTE: handle no mesh objects by generating single vertex in object origin (0,0,0)
+                    no_geometry = True
+                if(no_geometry):
+                    fragments.append((
+                        np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, ),
+                        np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, ),
+                        np.array(((1.0, 0.0, 1.0, ), ), dtype=np.float32, ),
+                    ), )
+                    fragments_indices[co.name] = (i, co, )
+                else:
+                    # extract points
+                    # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+                    # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+                    sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
+                    # store
+                    fragments.append((sampler.vs, sampler.ns, sampler.cs, ))
+                    # FIXME: better not to access data by object name, find something different
+                    fragments_indices[co.name] = (i, co, )
+            
+            # process all instances, transform fragment and store
+            all_frags = []
+            # loop over instances
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                # if it is from psys
+                if(object_instance.particle_system == psys):
+                    # and it is instance
+                    if(object_instance.is_instance):
+                        # get matrix
+                        m = object_instance.matrix_world
+                        # unapply emitter matrix
+                        m = o.matrix_world.inverted() @ m
+                        # get correct fragment
+                        i, _ = fragments_indices[obj.name]
+                        fvs, fns, fcs = fragments[i]
+                        # transform
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        # transform also normals
+                        _, rot, _ = m.decompose()
+                        rmat = rot.to_matrix().to_4x4()
+                        fns.shape = (-1, 3)
+                        fns = np.c_[fns, np.ones(fns.shape[0])]
+                        fns = np.dot(rmat, fns.T)[0:3].T.reshape((-1))
+                        fns.shape = (-1, 3)
+                        # store
+                        all_frags.append((fvs, fns, fcs, ))
+            
+            # join all frags
+            if(len(all_frags) == 0):
+                # vs = []
+                # ns = []
+                # cs = []
+                vs = np.zeros(0, dtype=np.float32, )
+                ns = np.zeros(0, dtype=np.float32, )
+                cs = np.zeros(0, dtype=np.float32, )
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                ns = np.concatenate([i[1] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[2] for i in all_frags], axis=0, )
+            
+        elif(settings.render_type == 'OBJECT'):
+            co = settings.instance_object
+            if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                self.report({'ERROR'}, "Object does not have geometry data.")
+                return {'CANCELLED'}
+            # extract points
+            # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
+            # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
+            sampler = PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, use_face_area=use_face_area, use_material_factors=use_material_factors, )
+            ofvs = sampler.vs
+            ofns = sampler.ns
+            ofcs = sampler.cs
+            
+            all_frags = []
+            for object_instance in depsgraph.object_instances:
+                obj = object_instance.object
+                if(object_instance.particle_system == psys):
+                    if(object_instance.is_instance):
+                        m = object_instance.matrix_world
+                        m = o.matrix_world.inverted() @ m
+                        fvs = ofvs[:]
+                        fvs.shape = (-1, 3)
+                        fvs = np.c_[fvs, np.ones(fvs.shape[0])]
+                        fvs = np.dot(m, fvs.T)[0:3].T.reshape((-1))
+                        fvs.shape = (-1, 3)
+                        _, rot, _ = m.decompose()
+                        rmat = rot.to_matrix().to_4x4()
+                        fns = ofns[:]
+                        fns.shape = (-1, 3)
+                        fns = np.c_[fns, np.ones(fns.shape[0])]
+                        fns = np.dot(rmat, fns.T)[0:3].T.reshape((-1))
+                        fns.shape = (-1, 3)
+                        all_frags.append((fvs, fns, ofcs, ))
+            
+            if(len(all_frags) == 0):
+                vs = np.zeros(0, dtype=np.float32, )
+                ns = np.zeros(0, dtype=np.float32, )
+                cs = np.zeros(0, dtype=np.float32, )
+            else:
+                vs = np.concatenate([i[0] for i in all_frags], axis=0, )
+                ns = np.concatenate([i[1] for i in all_frags], axis=0, )
+                cs = np.concatenate([i[2] for i in all_frags], axis=0, )
+            
+        else:
+            # just generate pink points
+            l = len(psys.particles)
+            vs = np.zeros((l * 3), dtype=np.float32, )
+            psys.particles.foreach_get('location', vs, )
+            vs.shape = (l, 3)
+            
+            m = o.matrix_world.inverted()
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            
+            ns = np.zeros((l * 3), dtype=np.float32, )
+            # NOTE: what should i consider as normal in particles? rotation? velocity? sometimes is rotation just identity quaternion, do i know nothing about basics? or just too tired? maybe both..
+            psys.particles.foreach_get('velocity', ns, )
+            _, rot, _ = m.decompose()
+            rmat = rot.to_matrix().to_4x4()
+            ns.shape = (-1, 3)
+            ns = np.c_[ns, np.ones(ns.shape[0])]
+            ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+            ns.shape = (-1, 3)
+            
+            cs = np.column_stack((np.full(l, 1.0, dtype=np.float32, ),
+                                  np.full(l, 0.0, dtype=np.float32, ),
+                                  np.full(l, 1.0, dtype=np.float32, ), ))
+        
+        return vs, ns, cs
+    
+    @classmethod
+    def render(cls, o, ):
+        # if(not cls.initialized):
+        #     return
+        
+        log("render", prefix='>>>', )
+        
+        def pre_generate(o, psys, ):
+            dts = None
+            dt = None
+            psys_collection = None
+            psys_object = None
+            settings = psys.settings
+            if(settings.render_type == 'COLLECTION'):
+                psys_collection = settings.instance_collection
+                dts = []
+                for co in psys_collection.objects:
+                    dts.append((co, co.display_type, ))
+                    co.display_type = 'BOUNDS'
+            elif(settings.render_type == 'OBJECT'):
+                psys_object = settings.instance_object
+                dt = psys_object.display_type
+                psys_object.display_type = 'BOUNDS'
+            settings.display_method = 'RENDER'
+            
+            mod = None
+            mview = None
+            for m in o.modifiers:
+                if(m.type == 'PARTICLE_SYSTEM'):
+                    if(m.particle_system == psys):
+                        mod = m
+                        mview = m.show_viewport
+                        m.show_viewport = True
+                        break
+            
+            return dts, dt, psys_collection, psys_object, mod, mview
+        
+        def post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, ):
+            settings = psys.settings
+            settings.display_method = 'NONE'
+            if(settings.render_type == 'COLLECTION'):
+                for co, dt in dts:
+                    co.display_type = dt
+            elif(settings.render_type == 'OBJECT'):
+                psys_object.display_type = dt
+            mod.show_viewport = mview
+        
+        a = []
+        for i, psys in enumerate(o.particle_systems):
+            _t = time.time()
+            
+            # pcv = o.point_cloud_visualizer
+            pcviv = psys.settings.pcv_instance_visualizer
+            if(pcviv.uuid not in cls.cache.keys()):
+                continue
+            
+            ci = cls.cache[pcviv.uuid]
+            if(ci['dirty']):
+                log("render: psys is dirty", 1, prefix='>>>', )
+                
+                dts, dt, psys_collection, psys_object, mod, mview = pre_generate(o, psys, )
+                vs, ns, cs = cls.generate_psys(o, i, pcviv.max_points, pcviv.color_source, pcviv.color_constant, pcviv.use_face_area, pcviv.use_material_factors, )
+                post_generate(psys, dts, dt, psys_collection, psys_object, mod, mview, )
+                ci['vs'] = vs
+                ci['ns'] = ns
+                ci['cs'] = cs
+                
+                # FIXME: PCV handles different shaders in a kinda messy way, would be nice to rewrite PCVManager.render to be more flexible, get rid of basic shader auto-creation, store extra shaders in the same way as default one, get rid of booleans for enabling extra shaders and make it to enum, etc.. big task, but it will make next customization much easier and simpler..
+                # sz = np.full(len(vs), pcviv.point_size, dtype=np.int8, )
+                sz = np.full(len(vs), pcviv.point_size, dtype=np.int, )
+                ci['sz'] = sz
+                
+                szf = np.full(len(vs), pcviv.point_size_f, dtype=np.float32, )
+                ci['szf'] = szf
+                
+                ci['dirty'] = False
+            
+            if(ci['draw']):
+                log("render: psys is marked to draw", 1, prefix='>>>', )
+                
+                a.append((ci['vs'], ci['ns'], ci['cs'], ci['sz'], ci['szf'], ))
+            
+            _d = datetime.timedelta(seconds=time.time() - _t)
+            pcviv.debug_update = "last update completed in {}".format(_d)
+        
+        _t = time.time()
+        vs = []
+        ns = []
+        cs = []
+        sz = []
+        szf = []
+        av = []
+        an = []
+        ac = []
+        az = []
+        azf = []
+        for v, n, c, s, f in a:
+            if(len(v) == 0):
+                # skip systems with zero particles
+                continue
+            av.append(v)
+            an.append(n)
+            ac.append(c)
+            az.append(s)
+            azf.append(f)
+        if(len(av) > 0):
+            vs = np.concatenate(av, axis=0, )
+            ns = np.concatenate(an, axis=0, )
+            cs = np.concatenate(ac, axis=0, )
+            sz = np.concatenate(az, axis=0, )
+            szf = np.concatenate(azf, axis=0, )
+        
+        log("render: drawing..", 1, prefix='>>>', )
+        c = PCVIV2Control(o)
+        c.draw(vs, ns, cs, sz, szf, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        pcv = o.point_cloud_visualizer
+        pcv.pcviv_debug_draw = "last draw completed in {}".format(_d)
+    
+    @classmethod
+    def _redraw_view_3d(cls):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
+
+
+class PCVIV2Control(PCVControl):
+    def __init__(self, o, ):
+        super(PCVIV2Control, self, ).__init__(o, )
+        # pcv = o.point_cloud_visualizer
+        # pcv.dev_minimal_shader_variable_size_enabled = True
+    
+    def draw(self, vs=None, ns=None, cs=None, sz=None, szf=None, ):
+        o = self.o
+        pcv = o.point_cloud_visualizer
+        
+        # pcv.dev_minimal_shader_variable_size_enabled = True
+        # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+        # pcv.dev_rich_billboard_point_cloud_enabled = True
+        
+        # FIXME: this is also stupid
+        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            pass
+        else:
+            # NOTE: this is what will be default draw type, should i put preferences for it somewhere?
+            # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            
+            # lets go with the best one
+            pcv.dev_rich_billboard_point_cloud_enabled = True
+        
+        # check if object has been used before, i.e. has uuid and uuid item is in cache
+        if(pcv.uuid != "" and pcv.runtime):
+            # was used or blend was saved after it was used and uuid is saved from last time, check cache
+            if(pcv.uuid in PCVManager.cache):
+                # cache item is found, object has been used before
+                self._update(vs, ns, cs, sz, szf, )
+                return
+        # otherwise setup as new
+        
+        u = str(uuid.uuid1())
+        # use that as path, some checks wants this not empty
+        filepath = u
+        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
+        n = len(vs)
+        
+        # TODO: validate also sz array
+        
+        # build cache dict
+        d = {}
+        d['uuid'] = u
+        d['filepath'] = filepath
+        d['points'] = points
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        d['colors_original'] = cs_orig
+        
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_length'] = l
+        d['current_display_length'] = l
+        # d['illumination'] = pcv.illumination
+        d['illumination'] = False
+        
+        # if(pcv.dev_minimal_shader_variable_size_enabled):
+        #     shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        d['ready'] = True
+        d['draw'] = False
+        d['kill'] = False
+        d['object'] = o
+        d['name'] = o.name
+        
+        d['extra'] = {}
+        if(pcv.dev_minimal_shader_variable_size_enabled):
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            # TODO: do the same for the other shader until i decide which is better..
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD'] = extra
+        
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD_NO_DEPTH'] = extra
+        
+        # d['extra_data'] = {
+        #     'sizes': sz,
+        #     'sizesf': szf,
+        # }
+        
+        # set properties
+        pcv.uuid = u
+        pcv.filepath = filepath
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        pcv.runtime = True
+        
+        PCVManager.add(d)
+        
+        # mark to draw
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        self._redraw()
+    
+    def _update(self, vs, ns, cs, sz, szf, ):
+        o = self.o
+        pcv = o.point_cloud_visualizer
+        
+        # pcv.dev_minimal_shader_variable_size_enabled = True
+        # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+        # pcv.dev_rich_billboard_point_cloud_enabled = True
+        
+        # FIXME: this is also stupid
+        if(pcv.dev_minimal_shader_variable_size_enabled or pcv.dev_minimal_shader_variable_size_and_depth_enabled or pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            pass
+        else:
+            # NOTE: this is what will be default draw type, should i put preferences for it somewhere?
+            # pcv.dev_minimal_shader_variable_size_and_depth_enabled = True
+            
+            # lets go with the best one
+            pcv.dev_rich_billboard_point_cloud_enabled = True
+        
+        # validate/prepare input data
+        vs, ns, cs, points, has_normals, has_colors = self._prepare(vs, ns, cs)
+        n = len(vs)
+        
+        d = PCVManager.cache[pcv.uuid]
+        d['points'] = points
+        
+        # kill normals, might not be no longer valid, it will be recreated later
+        if('vertex_normals' in d.keys()):
+            del d['vertex_normals']
+        
+        # but because colors i just stored in uint8, store them also as provided to enable reload operator
+        cs_orig = np.column_stack((cs[:, 0], cs[:, 1], cs[:, 2], np.ones(n), ))
+        cs_orig = cs_orig.astype(np.float32)
+        d['colors_original'] = cs_orig
+        
+        d['stats'] = n
+        d['vertices'] = vs
+        d['colors'] = cs
+        d['normals'] = ns
+        d['length'] = n
+        dp = pcv.display_percent
+        l = int((n / 100) * dp)
+        if(dp >= 99):
+            l = n
+        d['display_length'] = l
+        d['current_display_length'] = l
+        # d['illumination'] = pcv.illumination
+        d['illumination'] = False
+        # if(pcv.illumination):
+        #     shader = GPUShader(PCVShaders.vertex_shader_illumination, PCVShaders.fragment_shader_illumination)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
+        # else:
+        #     shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
+        batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
+        d['shader'] = shader
+        d['batch'] = batch
+        
+        pcv.has_normals = has_normals
+        pcv.has_vcols = has_colors
+        
+        d['extra'] = {}
+        if(pcv.dev_minimal_shader_variable_size_enabled):
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE'] = extra
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            # TODO: do the same for the other shader until i decide which is better..
+            e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['MINIMAL_VARIABLE_SIZE_AND_DEPTH'] = extra
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD'] = extra
+        
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            # FIXME: this is getting ridiculous
+            e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
+            e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
+            extra = {
+                'shader': e_shader,
+                'batch': e_batch,
+                'sizes': sz,
+                'sizesf': szf,
+                'length': l,
+            }
+            d['extra']['RICH_BILLBOARD_NO_DEPTH'] = extra
+        
+        # d['extra_data'] = {
+        #     'sizes': sz,
+        #     'sizesf': szf,
+        # }
+        
+        c = PCVManager.cache[pcv.uuid]
+        c['draw'] = True
+        
+        self._redraw()
+
+
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -6779,6 +9674,12 @@ class PCV_PT_panel(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
+        
+        if(pcv.instance_visualizer_active_hidden_value):
+            r = sub.row()
+            r.alert = True
+            r.prop(pcv, 'instance_visualizer_active', toggle=True, icon='ERROR', )
+            sub.separator()
         
         # edit mode, main pcv object panel
         if(pcv.edit_initialized):
@@ -6922,11 +9823,19 @@ class PCV_PT_panel(Panel):
         
         pcv = context.object.point_cloud_visualizer
         ok = False
+        zero_length = False
         for k, v in PCVManager.cache.items():
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
                         ok = True
+                    if(len(v['vertices']) == 0):
+                        zero_length = True
+        
+        if(ok):
+            if(not pcv.has_normals):
+                if(not zero_length):
+                    sub.label(text="Missing vertex normals.", icon='ERROR', )
         
         c = sub.column()
         r = c.row(align=True)
@@ -6935,7 +9844,7 @@ class PCV_PT_panel(Panel):
         # r.prop(pcv, 'illumination_edit', toggle=True, icon_only=True, icon='SETTINGS', )
         if(ok):
             if(not pcv.has_normals):
-                c.label(text="Missing vertex normals.", icon='ERROR', )
+                # c.label(text="Missing vertex normals.", icon='ERROR', )
                 c.enabled = False
         else:
             c.enabled = False
@@ -6982,7 +9891,12 @@ class PCV_PT_panel(Panel):
         c.enabled = ok
         r = c.row(align=True)
         r.prop(pcv, 'dev_depth_enabled', toggle=True, )
-        r.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        # r.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        cc = r.column(align=True)
+        cc.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
+        if(ok):
+            if(not pcv.has_normals):
+                cc.enabled = False
         r.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
         
         # r = c.row(align=True)
@@ -7445,6 +10359,64 @@ class PCV_PT_filter_color_adjustment(Panel):
         c.enabled = PCV_OT_filter_merge.poll(context)
 
 
+class PCV_PT_clip(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Clip"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.prop(pcv, 'clip_shader_enabled', toggle=True, text='Enable Clipping Planes Shader', )
+        
+        a = l.column()
+        c = a.column(align=True)
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane0_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane0_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane0', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane1_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane1_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane1', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane2_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane2_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane2', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane3_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane3_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane3', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane4_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane4_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane4', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane5_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane5_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane5', )
+        
+        c = a.column(align=True)
+        c.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.clip_planes_from_bbox')
+        r.operator('point_cloud_visualizer.clip_planes_reset', text='', icon='X', )
+        
+        a.enabled = pcv.clip_shader_enabled
+
+
 class PCV_PT_edit(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -7676,7 +10648,8 @@ class PCV_PT_development(Panel):
     def draw_header(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        l.label(text='', icon='SETTINGS', )
+        # l.label(text='', icon='SETTINGS', )
+        l.label(text='', icon='EXPERIMENTAL', )
     
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
@@ -7710,18 +10683,546 @@ class PCV_PT_development(Panel):
                         e = True
         
         c = sub.column()
-        c.prop(pcv, 'dev_selection_shader_display', toggle=True, )
-        if(pcv.dev_selection_shader_display):
-            r = c.row()
-            r.prop(pcv, 'dev_selection_shader_color', text="", )
-        c.enabled = e
-        sub.separator()
         
+        c.prop(pcv, 'dev_minimal_shader_enabled', toggle=True, text="Minimal Shader", )
+        
+        c.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Minimal Shader With Variable Size", )
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Minimal Shader With Variable Size And Depth", )
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_billboard_point_cloud_enabled', toggle=True, text='BIllboard Shader', )
+        if(pcv.dev_billboard_point_cloud_enabled):
+            cc.prop(pcv, 'dev_billboard_point_cloud_size')
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_rich_billboard_point_cloud_enabled', toggle=True, text='Rich BIllboard Shader', )
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
+            cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
+            cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
+            cc.prop(pcv, 'dev_rich_billboard_depth_blend')
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_phong_shader_enabled', toggle=True, text='Phong Shader', )
+        if(pcv.dev_phong_shader_enabled):
+            cc.prop(pcv, 'dev_phong_shader_ambient_strength')
+            cc.prop(pcv, 'dev_phong_shader_specular_strength')
+            cc.prop(pcv, 'dev_phong_shader_specular_exponent')
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'clip_shader_enabled', toggle=True, text='Clip', )
+        if(pcv.clip_shader_enabled):
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane0_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane0_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane0', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane1_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane1_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane1', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane2_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane2_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane2', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane3_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane3_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane3', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane4_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane4_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane4', )
+            r = cc.row(align=True)
+            r.prop(pcv, 'clip_plane5_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane5_enabled else 'HIDE_ON', )
+            r.prop(pcv, 'clip_plane5', )
+            cc.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+            cc.operator('point_cloud_visualizer.clip_planes_from_bbox')
+        
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
+        if(pcv.dev_selection_shader_display):
+            r = cc.row(align=True)
+            r.prop(pcv, 'dev_selection_shader_color', text="", )
+        
+        sub.separator()
         sub.label(text="Generate Volume:")
         c = sub.column(align=True)
         c.prop(pcv, 'generate_number_of_points')
         c.prop(pcv, 'generate_seed')
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
+        
+        sub.separator()
+        
+        """
+        c.separator()
+        
+        c.label(text="new ui for shaders")
+        c.separator()
+        
+        r = c.row(align=True)
+        s = r.split(factor=0.25, align=True, )
+        s.label(text='Shader:')
+        s = s.split(factor=0.75, align=True, )
+        r = s.row(align=True)
+        r.prop(pcv, 'shader', text='', )
+        s = s.split(factor=0.25, align=True, )
+        
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
+            cc.enabled = False
+
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEPTH', )):
+            cc.enabled = False
+
+        cc = s.column(align=True)
+        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
+        
+        c.separator()
+        c.separator()
+        
+        r = c.row(align=True)
+        r.prop(pcv, 'shader', expand=True, )
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
+            cc.enabled = False
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
+        if(pcv.shader not in ('DEPTH', )):
+            cc.enabled = False
+        
+        cc = r.column(align=True)
+        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
+        
+        if(pcv.shader_illumination):
+            if(pcv.shader in ('DEFAULT', 'DEPTH', )):
+                c.label(text='shader illumination options..')
+        
+        if(pcv.shader_options_show):
+            if(pcv.shader in ('DEPTH', )):
+                c.label(text='shader options..')
+        
+        if(pcv.shader_normal_lines):
+            c.label(text='shader normal lines options..')
+        
+        c.separator()
+        """
+        
+        sub.label(text="normals transform")
+        c = sub.column()
+        c.prop_search(pcv, 'dev_transform_normals_target_object', context.scene, 'objects')
+        c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
+
+
+class PCVIV2RuntimeSettings():
+    enabled = False
+
+
+class PCVIV2_PT_panel(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Point Cloud Instance Visualizer"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        # if(not debug_mode()):
+        #     return False
+        
+        if(not PCVIV2RuntimeSettings.enabled):
+            return False
+        
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='MOD_PARTICLE_INSTANCE', )
+    
+    def draw(self, context):
+        """
+        def prop_name(cls, prop, colon=False, ):
+            for p in cls.bl_rna.properties:
+                if(p.identifier == prop):
+                    if(colon):
+                        return "{}:".format(p.name)
+                    return p.name
+            return ''
+        
+        def third_label_two_thirds_prop(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, text='', )
+        
+        def third_label_two_thirds_prop_search(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_search_aligned(cls, prop, cls2, prop2, uil, ):
+            f = 0.33
+            r = uil.row(align=True)
+            s = r.split(factor=f, align=True)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0, align=True)
+            r = s.row(align=True)
+            r.prop_search(cls, prop, cls2, prop2, text='', )
+        
+        def third_label_two_thirds_prop_enum_expand(cls, prop, uil, ):
+            f = 0.33
+            r = uil.row()
+            s = r.split(factor=f)
+            s.label(text=prop_name(cls, prop, True, ))
+            s = s.split(factor=1.0)
+            r = s.row()
+            r.prop(cls, prop, expand=True, )
+        """
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        if(not PCVIV2Manager.initialized):
+            
+            r = c.row()
+            r.alignment = 'CENTER'
+            r.label(text='Not initialized..', icon='ERROR', )
+            c.separator()
+            
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_init')
+            # if(not debug_mode()):
+            #     if(PCVIV2Manager.initialized):
+            #         r.enabled = False
+            
+        else:
+            
+            if(debug_mode()):
+                r = c.row(align=True)
+                r.operator('point_cloud_visualizer.pcviv_init')
+                c.separator()
+            
+            if(len(o.particle_systems) == 0):
+                b = c.box()
+                b.label(text='No Particle Systems..', icon='ERROR', )
+            
+            for psys in o.particle_systems:
+                pcviv = psys.settings.pcv_instance_visualizer
+                b = c.box()
+                
+                if(not pcviv.subpanel_opened):
+                    r = b.row()
+                    rr = r.row(align=True)
+                    # twice, because i want clicking on psys name to be possible
+                    rr.prop(pcviv, 'subpanel_opened', icon='TRIA_DOWN' if pcviv.subpanel_opened else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+                    rr.prop(pcviv, 'subpanel_opened', icon='PARTICLES', icon_only=True, emboss=False, text=psys.settings.name, )
+                    rr = r.row()
+                    # rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    rr.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
+                    # update, alert when dirty. in fact it's just before first draw
+                    ccc = rr.column(align=True)
+                    rrr = ccc.row(align=True)
+                    if(pcviv.draw):
+                        alert = False
+                        if(pcviv.uuid in PCVIV2Manager.cache.keys()):
+                            if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
+                                alert = True
+                        else:
+                            alert = True
+                        rrr.alert = alert
+                    else:
+                        rrr.enabled = False
+                    rrr.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    cccc = rrr.row(align=True)
+                    cccc.alert = False
+                    # cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACESEL', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACE_MAPS', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_material_factors', icon_only=True, icon='MATERIAL', toggle=True, text='', )
+                else:
+                    r = b.row(align=True)
+                    # twice, because i want clicking on psys name to be possible
+                    r.prop(pcviv, 'subpanel_opened', icon='TRIA_DOWN' if pcviv.subpanel_opened else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+                    r.prop(pcviv, 'subpanel_opened', icon='PARTICLES', icon_only=True, emboss=False, text=psys.settings.name, )
+                    # options
+                    cc = b.column(align=True)
+                    cc.prop(pcviv, 'max_points')
+                    if(pcv.dev_rich_billboard_point_cloud_enabled or pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+                        cc.prop(pcviv, 'point_size_f')
+                    else:
+                        cc.prop(pcviv, 'point_size')
+                    _r = cc.row(align=True)
+                    if(pcviv.color_source == 'CONSTANT'):
+                        _s = _r.split(factor=0.75, align=True, )
+                        _s.prop(pcviv, 'color_source', )
+                        _s = _s.split(factor=1.0, align=True, )
+                        _s.prop(pcviv, 'color_constant', text='', )
+                        
+                    else:
+                        _r.prop(pcviv, 'color_source', )
+                    # update
+                    cc = b.column()
+                    r = cc.row()
+                    # r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcviv.draw else 'HIDE_ON', )
+                    r.prop(pcviv, 'draw', text='', toggle=True, icon_only=True, icon='RESTRICT_VIEW_OFF' if pcviv.draw else 'RESTRICT_VIEW_ON', )
+                    ccc = r.column(align=True)
+                    rrr = ccc.row(align=True)
+                    if(pcviv.draw):
+                        alert = False
+                        if(pcviv.uuid in PCVIV2Manager.cache.keys()):
+                            if(PCVIV2Manager.cache[pcviv.uuid]['dirty']):
+                                # if in cache and is dirty
+                                alert = True
+                        else:
+                            # or not in cache at all, ie. not processed yet
+                            alert = True
+                        rrr.alert = alert
+                    else:
+                        rrr.enabled = False
+                    rrr.operator('point_cloud_visualizer.pcviv_update').uuid = pcviv.uuid
+                    cccc = rrr.row(align=True)
+                    cccc.alert = False
+                    # cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACESEL', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_face_area', icon_only=True, icon='FACE_MAPS', toggle=True, text='', )
+                    cccc.prop(pcviv, 'use_material_factors', icon_only=True, icon='MATERIAL', toggle=True, text='', )
+                    # if(debug_mode()):
+                    #     if(pcviv.debug_update == ''):
+                    #         cc.label(text='(debug: {})'.format('n/a', ))
+                    #     else:
+                    #         cc.label(text='(debug: {})'.format(pcviv.debug_update, ))
+                
+                if(debug_mode()):
+                    if(pcviv.debug_update == ''):
+                        b.label(text='(debug: {})'.format('n/a', ))
+                    else:
+                        b.label(text='(debug: {})'.format(pcviv.debug_update, ))
+            
+            c.separator()
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_update_all')
+            r.operator('point_cloud_visualizer.pcviv_reset')
+            
+            c.separator()
+            r = c.row()
+            r.alignment = 'RIGHT'
+            r.label(text='Powered by: Point Cloud Visualizer')
+
+
+class PCVIV2_UL_materials(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, ):
+        pcvivgp = item.pcv_instance_visualizer
+        
+        r = layout.row(align=True)
+        s = r.split(factor=0.5, align=True, )
+        s.label(text=item.name, icon='MATERIAL', )
+        s = s.split(factor=0.8, align=True, )
+        s.prop(pcvivgp, 'factor', text='', )
+        s = s.split(factor=1.0, align=True, )
+        s.prop(item, 'diffuse_color', text='', )
+
+
+class PCVIV2_PT_generator(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Generator Options"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        return True
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        # c.label(text="Material Point Probability:")
+        c.label(text="Point probability per material:")
+        c.template_list("PCVIV2_UL_materials", "", bpy.data, "materials", pcv, "pcviv_material_list_active_index")
+
+
+class PCVIV2_PT_display(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Display Options"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        return True
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.label(text="Shader:")
+        r = c.row(align=True)
+        r.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Basic", )
+        r.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_enabled', toggle=True, text="Depth", )
+        r.prop(pcv, 'dev_rich_billboard_point_cloud_no_depth_enabled', toggle=True, text="Billboard", )
+        r.prop(pcv, 'dev_rich_billboard_point_cloud_enabled', toggle=True, text="Depth Billboard", )
+        if(pcv.dev_minimal_shader_variable_size_and_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_brightness')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_contrast')
+            cc.prop(pcv, 'dev_minimal_shader_variable_size_and_depth_blend')
+        if(pcv.dev_rich_billboard_point_cloud_no_depth_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
+        if(pcv.dev_rich_billboard_point_cloud_enabled):
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_rich_billboard_point_cloud_size')
+            cc = c.column(align=True)
+            cc.prop(pcv, 'dev_rich_billboard_depth_brightness')
+            cc.prop(pcv, 'dev_rich_billboard_depth_contrast')
+            cc.prop(pcv, 'dev_rich_billboard_depth_blend')
+
+
+class PCVIV2_PT_debug(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCVIV Debug"
+    bl_parent_id = "PCVIV2_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(not PCVIV2Manager.initialized):
+            return False
+        
+        if(debug_mode()):
+            return True
+        
+        return False
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        b = c.box()
+        c = b.column()
+        
+        c.separator()
+        if(pcv.pcviv_debug_draw != ''):
+            c.label(text='(debug: {})'.format(pcv.pcviv_debug_draw, ))
+            c.separator()
+        
+        r = c.row(align=True)
+        # r.operator('point_cloud_visualizer.pcviv_reset')
+        r.operator('point_cloud_visualizer.pcviv_deinit')
+        r.operator('point_cloud_visualizer.pcviv_reset_all')
+        c.separator()
+        
+        r = c.row()
+        r.prop(pcv, 'pcviv_debug_panel_show_info', icon='TRIA_DOWN' if pcv.pcviv_debug_panel_show_info else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="Debug Info")
+        if(pcv.pcviv_debug_panel_show_info):
+            cc = c.column()
+            cc.label(text="object: '{}'".format(o.name))
+            cc.label(text="psystem(s): {}".format(len(o.particle_systems)))
+            cc.scale_y = 0.5
+            
+            c.separator()
+            
+            tab = '        '
+            
+            cc = c.column()
+            cc.label(text="PCVIV2Manager:")
+            cc.label(text="{}initialized: {}".format(tab, PCVIV2Manager.initialized))
+            cc.label(text="{}cache: {} item(s)".format(tab, len(PCVIV2Manager.cache.keys())))
+            cc.scale_y = 0.5
+            
+            c.separator()
+            tab = '    '
+            ci = 0
+            for k, v in PCVIV2Manager.cache.items():
+                b = c.box()
+                cc = b.column()
+                cc.scale_y = 0.5
+                cc.label(text='item: {}'.format(ci))
+                ci += 1
+                for l, w in v.items():
+                    if(type(w) == dict):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w.keys())))
+                    elif(type(w) == np.ndarray or type(w) == list):
+                        cc.label(text='{}{}: {} item(s)'.format(tab, l, len(w)))
+                    else:
+                        cc.label(text='{}{}: {}'.format(tab, l, w))
+        
+        # and some development shortcuts..
+        c.separator()
+        c.operator('script.reload', text='debug: reload scripts', )
 
 
 class PCV_PT_debug(Panel):
@@ -7825,12 +11326,170 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
+class PCV_PT_debug_utils(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Debug Utils"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(debug_mode()):
+                return True
+        return False
+    
+    def draw_header(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        l.label(text='', icon='SETTINGS', )
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.operator('script.reload')
+
+
+class PCVIV2_properties(PropertyGroup):
+    # to identify object, key for storing cloud in cache, etc.
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    
+    def _draw_update(self, context, ):
+        PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
+    
+    # draw cloud enabled/disabled
+    draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
+    # user can set maximum number of points drawn per instance
+    max_points: IntProperty(name="Max. Points Per Instance", default=1000, min=1, max=1000000, description="Maximum number of points per instance", )
+    # user can set size of points, but it will be only used when minimal shader is active
+    point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
+    # rich billboard shader size
+    point_size_f: FloatProperty(name="Scale", default=1.0, min=0.0, max=10.0, description="Point scale (shader size * scale)", precision=6, )
+    
+    color_source: EnumProperty(name="Color", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                    ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
+                                                    ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", )
+    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    
+    def _method_update(self, context, ):
+        if(not self.use_face_area and not self.use_material_factors):
+            self.use_face_area = True
+    
+    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
+    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
+    
+    # helper property, draw minimal ui or draw all props
+    subpanel_opened: BoolProperty(default=False, options={'HIDDEN', }, )
+    
+    # store info how long was last update, generate and store to cache
+    debug_update: StringProperty(default="", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.ParticleSettings.pcv_instance_visualizer = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.ParticleSettings.pcv_instance_visualizer
+
+
+class PCVIV2_generator_properties(PropertyGroup):
+    factor: FloatProperty(name="Factor", default=0.5, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Material.pcv_instance_visualizer = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Material.pcv_instance_visualizer
+
+
 class PCV_properties(PropertyGroup):
     filepath: StringProperty(name="PLY File", default="", description="", )
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
+    def _instance_visualizer_active_get(self, ):
+        return self.instance_visualizer_active_hidden_value
+    
+    def _instance_visualizer_active_set(self, value, ):
+        pass
+    
+    # for setting value, there are handlers for save, pre which sets to False, and post which sets back to True if it was True before, instance visualizer have to be activated at runtime and this value should not be saved, this way it works ok.. if only there was a way to specify which properties should not save, and/or save only as default value..
+    instance_visualizer_active_hidden_value: BoolProperty(default=False, options={'HIDDEN', }, )
+    # for display, read-only
+    instance_visualizer_active: BoolProperty(name="Instance Visualizer Active", default=False, get=_instance_visualizer_active_get, set=_instance_visualizer_active_set, )
+    
+    """
+    def _shader_items():
+        # closure - keep a reference to the list
+        items = None
+        
+        def func(self, context, ):
+            items = [
+                # # user selectable shaders
+                
+                # basic shader, round shape, unaltered colors
+                ('DEFAULT', 'Default', "", '', 2 ** 0, ),
+                # # default with illumination on top
+                # ('ILLUMINATION', 'Illumination', "", '', 2 ** 1, ),
+                # color by depth
+                ('DEPTH', 'Depth', "", '', 2 ** 2, ),
+                # # depth with illumination on top, maybe join illuminated and non-illuminated variants somehow together
+                # ('DEPTH_ILLUMINATION', 'Depth With Illumination', "", '', 2 ** 3, ),
+                # color by normal
+                ('NORMAL', 'Normal', "", '', 2 ** 4, ),
+                # color by position
+                ('POSITION', 'Position', "", '', 2 ** 5, ),
+                
+                # # internal shaders, used only under certain conditions or development shaders
+                
+                # # this is internal shader active only when color adjustment filter is active
+                # ('COLOR_ADJUSTMENT', 'Color Adjustment', "", '', 2 ** 6, ),
+                # # basically this is the same as Default, only without point shape rounding, there is not much use for it apart from that it is slightly faster to draw
+                # ('MINIMAL', 'Minimal', "", '', 2 ** 7, ),
+                # # this is meant to be used only with instance visualizer, there is not much to do in regular ply files
+                # ('MINIMAL_VARIABLE', 'Minimal With Variable Size', "", '', 2 ** 8, ),
+                # # not ready for production yet
+                # ('BOUNDING_BOX', 'Bounding Box', "", '', 2 ** 9, ),
+                # # this is extra drawn on top while using remove color filter
+                # ('SELECTION', 'Selection', "", '', 2 ** 10, ),
+            ]
+            return items
+        
+        return func
+    
+    def _shader_update(self, context, ):
+        pass
+    """
+    """
+    shader_items = [
+        ('DEFAULT', 'Default', "", ),
+        ('DEPTH', 'Depth', "", ),
+        ('NORMAL', 'Normal', "", ),
+        ('POSITION', 'Position', "", ),
+    ]
+    # FIXMENOT: would be nice to have this initialized at least to 'DEFAULT' if '' and PCVManager is initialized, so i don't need to handle situations if(shader == ''): do like it's 'DEFAULT'
+    # NOTTODO: split illumination to its own BoolProperty, and enable only when possible
+    # FIXMENOT: it looks like i don't need dynamic enum, items that might be dynamic are not user selectable anyway.
+    # shader: EnumProperty(name="Shader", items=_shader_items(), update=_shader_update, description="Shader to draw points with", )
+    shader: EnumProperty(name="Shader", items=shader_items, default='DEFAULT', description="Shader to draw points with", )
+    shader_illumination: BoolProperty(name="Illumination", default=False, description="Enable extra illumination on point cloud", )
+    shader_options_show: BoolProperty(name="Shader Options", default=False, description="Show shader options", )
+    shader_normal_lines: BoolProperty(name="Normals", default=False, description="Show normals as lines", )
+    """
+    
     runtime: BoolProperty(default=False, options={'HIDDEN', }, )
     
+    # TODO: add some prefix to global props, like global_size, global_display_percent, .. leave unprefixed only essentials, like uuid, runtime, ..
     point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
     alpha_radius: FloatProperty(name="Radius", default=1.0, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Adjust point circular discard radius", )
     
@@ -7872,6 +11531,7 @@ class PCV_properties(PropertyGroup):
     render_resolution_linked: BoolProperty(name="Resolution Linked", description="Link resolution settings to scene", default=True, update=_render_resolution_linked_update, )
     
     has_normals: BoolProperty(default=False, options={'HIDDEN', }, )
+    # TODO: rename to 'has_colors'
     has_vcols: BoolProperty(default=False, options={'HIDDEN', }, )
     illumination: BoolProperty(name="Illumination", description="Enable extra illumination on point cloud", default=False, )
     illumination_edit: BoolProperty(name="Edit", description="Edit illumination properties", default=False, )
@@ -8003,6 +11663,16 @@ class PCV_properties(PropertyGroup):
         if(self.dev_depth_enabled):
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -8011,6 +11681,16 @@ class PCV_properties(PropertyGroup):
         if(self.dev_normal_colors_enabled):
             self.dev_depth_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -8019,6 +11699,16 @@ class PCV_properties(PropertyGroup):
         if(self.dev_position_colors_enabled):
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
             self.override_default_shader = True
         else:
             self.override_default_shader = False
@@ -8036,6 +11726,7 @@ class PCV_properties(PropertyGroup):
     # dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="", update=_update_override_default_shader, )
     dev_position_colors_enabled: BoolProperty(name="Position", default=False, description="Enable position debug shader", update=_update_dev_position, )
     
+    # NOTE: icon for bounding box 'SHADING_BBOX' ?
     dev_bbox_enabled: BoolProperty(name="Bounding Box", default=False, description="", )
     dev_bbox_color: FloatVectorProperty(name="Color", description="", default=(0.7, 0.7, 0.7), min=0, max=1, subtype='COLOR', size=3, )
     dev_bbox_size: FloatProperty(name="Size", description="", default=0.3, min=0.1, max=0.9, subtype='FACTOR', )
@@ -8052,6 +11743,16 @@ class PCV_properties(PropertyGroup):
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
+            
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
             self.illumination = False
             self.override_default_shader = True
         else:
@@ -8067,8 +11768,211 @@ class PCV_properties(PropertyGroup):
     color_adjustment_shader_value: FloatProperty(name="Value", description="formula: color.v += value", default=0.0, min=-1.0, max=1.0, )
     color_adjustment_shader_invert: BoolProperty(name="Invert", description="formula: color = 1.0 - color", default=False, )
     
+    def _update_minimal_shader(self, context, ):
+        if(self.dev_minimal_shader_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    def _update_minimal_shader_variable_size(self, context, ):
+        if(self.dev_minimal_shader_variable_size_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_minimal_shader_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader", update=_update_minimal_shader, )
+    dev_minimal_shader_variable_size_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size", update=_update_minimal_shader_variable_size, )
+    
+    def _update_minimal_shader_variable_size_with_depth(self, context, ):
+        if(self.dev_minimal_shader_variable_size_and_depth_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_minimal_shader_variable_size_and_depth_enabled: BoolProperty(name="Enabled", default=False, description="Enable minimal shader with variable size with depth", update=_update_minimal_shader_variable_size_with_depth, )
+    dev_minimal_shader_variable_size_and_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
+    dev_minimal_shader_variable_size_and_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
+    dev_minimal_shader_variable_size_and_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
+    
+    def _update_dev_billboard_point_cloud_enabled(self, context, ):
+        if(self.dev_billboard_point_cloud_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_billboard_point_cloud_enabled: BoolProperty(name="Enabled", default=False, description="Enable Billboard Shader", update=_update_dev_billboard_point_cloud_enabled, )
+    dev_billboard_point_cloud_size: FloatProperty(name="Size", default=0.002, min=0.0001, max=0.2, description="", precision=6, )
+    
+    def _update_dev_rich_billboard_point_cloud_enabled(self, context):
+        if(self.dev_rich_billboard_point_cloud_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_rich_billboard_point_cloud_enabled: BoolProperty(name="Enabled", default=False, description="Enable Rich Billboard Shader", update=_update_dev_rich_billboard_point_cloud_enabled, )
+    dev_rich_billboard_point_cloud_size: FloatProperty(name="Size", default=0.01, min=0.0001, max=1.0, description="", precision=6, )
+    dev_rich_billboard_depth_brightness: FloatProperty(name="Brightness", default=0.25, min=-10.0, max=10.0, description="Depth shader color brightness", )
+    dev_rich_billboard_depth_contrast: FloatProperty(name="Contrast", default=0.5, min=-10.0, max=10.0, description="Depth shader color contrast", )
+    dev_rich_billboard_depth_blend: FloatProperty(name="Blend", default=0.75, min=0.0, max=1.0, subtype='FACTOR', description="Depth shader blending with original colors", )
+    
+    def _update_dev_rich_billboard_point_cloud_no_depth_enabled(self, context):
+        if(self.dev_rich_billboard_point_cloud_no_depth_enabled):
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_rich_billboard_point_cloud_no_depth_enabled: BoolProperty(name="Enabled", default=False, description="Enable Rich Billboard Shader Without Depth", update=_update_dev_rich_billboard_point_cloud_no_depth_enabled, )
+    
+    def _update_dev_phong_shader_enabled(self, context):
+        if(self.dev_phong_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    dev_phong_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_update_dev_phong_shader_enabled, )
+    dev_phong_shader_ambient_strength: FloatProperty(name="ambient_strength", default=0.5, min=0.0, max=1.0, description="", )
+    dev_phong_shader_specular_strength: FloatProperty(name="specular_strength", default=0.5, min=0.0, max=1.0, description="", )
+    dev_phong_shader_specular_exponent: FloatProperty(name="specular_exponent", default=8.0, min=1.0, max=512.0, description="", )
+    
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
+    
+    # store info how long was last draw call, ie get points from cache, join, draw
+    pcviv_debug_draw: StringProperty(default="", )
+    pcviv_debug_panel_show_info: BoolProperty(default=False, options={'HIDDEN', }, )
+    # have to provide prop for indexing, not needed for anything in this case
+    pcviv_material_list_active_index: IntProperty(name="Index", default=0, description="", options={'HIDDEN', }, )
+    
+    # testing / development stuff
+    dev_transform_normals_target_object: StringProperty(name="Object", default="", )
+    
+    # dev
+    def _clip_shader_enabled(self, context):
+        if(self.clip_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    clip_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_clip_shader_enabled, )
+    clip_plane0_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane1_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane2_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane3_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane4_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane5_enabled: BoolProperty(name="Enabled", default=False, description="", )
+    clip_plane0: FloatVectorProperty(name="Plane 0", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane1: FloatVectorProperty(name="Plane 1", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane2: FloatVectorProperty(name="Plane 2", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane3: FloatVectorProperty(name="Plane 3", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane4: FloatVectorProperty(name="Plane 4", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_plane5: FloatVectorProperty(name="Plane 5", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
+    clip_planes_from_bbox_object: StringProperty(name="Object", default="", description="", )
     
     @classmethod
     def register(cls):
@@ -8079,14 +11983,16 @@ class PCV_properties(PropertyGroup):
         del bpy.types.Object.point_cloud_visualizer
 
 
-def _update_panel_bl_category(self, context):
+def _update_panel_bl_category(self, context, ):
     _main_panel = PCV_PT_panel
     # NOTE: maybe generate those from 'classes' tuple, or, just don't forget to append new panel also here..
     _sub_panels = (
+        PCV_PT_clip,
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
-        PCV_PT_debug,
+        PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
+        PCV_PT_debug, PCV_PT_debug_utils,
     )
     try:
         p = _main_panel
@@ -8168,12 +12074,16 @@ class PCV_preferences(AddonPreferences):
 def watcher(scene):
     PCVSequence.deinit()
     PCVManager.deinit()
+    # # PCVIVManager.deinit()
+    # PCVIVManager.reset()
+    PCVIV2Manager.deinit()
 
 
 classes = (
+    PCVIV2_properties, PCVIV2_generator_properties, PCVIV2_UL_materials,
     PCV_properties, PCV_preferences,
     
-    PCV_PT_panel, PCV_PT_edit,
+    PCV_PT_panel, PCV_PT_clip, PCV_PT_edit,
     PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color, PCV_PT_filter_merge, PCV_PT_filter_color_adjustment,
     PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
     
@@ -8187,7 +12097,13 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCV_PT_debug, PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
+    PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
+    PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    
+    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset,
+    
+    PCV_PT_debug, PCV_PT_debug_utils,
+    PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
 
@@ -8201,6 +12117,7 @@ def register():
 def unregister():
     PCVSequence.deinit()
     PCVManager.deinit()
+    PCVIV2Manager.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
