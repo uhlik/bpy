@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 27),
+           "version": (0, 9, 28),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -8453,7 +8453,7 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
 class PCV_OT_clip_planes_from_bbox(Operator):
     bl_idname = "point_cloud_visualizer.clip_planes_from_bbox"
     bl_label = "Set Clip Planes From Object Bounding Box"
-    bl_description = "Apply color adjustments to points, reset and exit"
+    bl_description = "Set clip planes from object bounding box"
     
     @classmethod
     def poll(cls, context):
@@ -8536,6 +8536,57 @@ class PCV_OT_clip_planes_from_bbox(Operator):
         pcv.clip_plane3_enabled = True
         pcv.clip_plane4_enabled = True
         pcv.clip_plane5_enabled = True
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_clip_planes_reset(Operator):
+    bl_idname = "point_cloud_visualizer.clip_planes_reset"
+    bl_label = "Reset Clip Planes"
+    bl_description = "Reset all clip planes"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        
+        # bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        # if(bbo is not None):
+        #     ok = True
+        
+        ok = True
+        
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        pcv.clip_planes_from_bbox_object = ''
+        
+        z = (0.0, 0.0, 0.0, 0.0, )
+        pcv.clip_plane0 = z
+        pcv.clip_plane1 = z
+        pcv.clip_plane2 = z
+        pcv.clip_plane3 = z
+        pcv.clip_plane4 = z
+        pcv.clip_plane5 = z
+        
+        pcv.clip_shader_enabled = False
+        pcv.clip_plane0_enabled = False
+        pcv.clip_plane1_enabled = False
+        pcv.clip_plane2_enabled = False
+        pcv.clip_plane3_enabled = False
+        pcv.clip_plane4_enabled = False
+        pcv.clip_plane5_enabled = False
         
         return {'FINISHED'}
 
@@ -10308,6 +10359,64 @@ class PCV_PT_filter_color_adjustment(Panel):
         c.enabled = PCV_OT_filter_merge.poll(context)
 
 
+class PCV_PT_clip(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Clip"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        c.prop(pcv, 'clip_shader_enabled', toggle=True, text='Enable Clipping Planes Shader', )
+        
+        a = l.column()
+        c = a.column(align=True)
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane0_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane0_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane0', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane1_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane1_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane1', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane2_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane2_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane2', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane3_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane3_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane3', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane4_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane4_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane4', )
+        r = c.row(align=True)
+        r.prop(pcv, 'clip_plane5_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane5_enabled else 'HIDE_ON', )
+        r.prop(pcv, 'clip_plane5', )
+        
+        c = a.column(align=True)
+        c.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.clip_planes_from_bbox')
+        r.operator('point_cloud_visualizer.clip_planes_reset', text='', icon='X', )
+        
+        a.enabled = pcv.clip_shader_enabled
+
+
 class PCV_PT_edit(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -10711,6 +10820,10 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
 
 
+class PCVIV2RuntimeSettings():
+    enabled = False
+
+
 class PCVIV2_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -10723,6 +10836,9 @@ class PCVIV2_PT_panel(Panel):
     def poll(cls, context):
         # if(not debug_mode()):
         #     return False
+        
+        if(not PCVIV2RuntimeSettings.enabled):
+            return False
         
         o = context.active_object
         if(o is None):
@@ -11871,6 +11987,7 @@ def _update_panel_bl_category(self, context, ):
     _main_panel = PCV_PT_panel
     # NOTE: maybe generate those from 'classes' tuple, or, just don't forget to append new panel also here..
     _sub_panels = (
+        PCV_PT_clip,
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
@@ -11966,7 +12083,7 @@ classes = (
     PCVIV2_properties, PCVIV2_generator_properties, PCVIV2_UL_materials,
     PCV_properties, PCV_preferences,
     
-    PCV_PT_panel, PCV_PT_edit,
+    PCV_PT_panel, PCV_PT_clip, PCV_PT_edit,
     PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color, PCV_PT_filter_merge, PCV_PT_filter_color_adjustment,
     PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
     
@@ -11983,7 +12100,7 @@ classes = (
     PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
     PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
     
-    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox,
+    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset,
     
     PCV_PT_debug, PCV_PT_debug_utils,
     PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,

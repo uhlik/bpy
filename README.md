@@ -26,7 +26,7 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 
 ### General info
 
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.22.png)
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.28.png)
 
 ##### Basic Usage:
 
@@ -61,6 +61,25 @@ Works with any PLY file with 'x, y, z, nx, ny, nz, red, green, blue' vertex valu
 ### Shaders
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.23-shaders.jpg)
+
+### Clip
+
+Shader with 6 clipping planes. Planes can be enabled/disabled independently with eye icon, first 3 values are plane normal (x, y, z), last value is plane distance from origin. These can be set from different object bounding box, choose object from scene in `Object` and hit `Set Clip Planes From Object Bounding Box`, object can then be hidden/deleted, set values will stay until operator is executed again. `X` reset all the settings to their defaults.
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.28-clip-viewport.png)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.28-clip.png)
+
+* `Enable Clipping Planes Shader` - enable shader
+* `Plane 0` - plane 0 normal (x, y, z), plane 0 distance from origin
+* `Plane 1` - plane 1 normal (x, y, z), plane 1 distance from origin
+* `Plane 2` - plane 2 normal (x, y, z), plane 2 distance from origin
+* `Plane 3` - plane 3 normal (x, y, z), plane 3 distance from origin
+* `Plane 4` - plane 4 normal (x, y, z), plane 4 distance from origin
+* `Plane 5` - plane 5 normal (x, y, z), plane 5 distance from origin
+* `Object` - object to use as bounding box source
+* `Set Clip Planes From Object Bounding Box` - set planes from selected object bounding box
+* `X` - reset all the settings to their defaults
 
 ### Edit
 
@@ -326,6 +345,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.28 clipping planes from object bounding box, faster all numpy export, many minor fixes
 * 0.9.27 render supersampling and draw smooth circles
 * 0.9.26 color adjustment fixes
 * 0.9.25 color adjustment, faster boolean
