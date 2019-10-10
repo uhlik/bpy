@@ -2401,6 +2401,107 @@ class PCVShaders():
             fragColor = f_color * a;
         }
     '''
+    
+    billboard_phong_vs = '''
+        layout (location = 0) in vec3 position;
+        layout (location = 1) in vec3 normal;
+        layout (location = 2) in vec4 color;
+        
+        uniform mat4 model;
+        out vec3 g_position;
+        out vec3 g_normal;
+        out vec4 g_color;
+        
+        void main()
+        {
+            gl_Position = model * vec4(position, 1.0);
+            g_position = vec3(model * vec4(position, 1.0));
+            g_normal = mat3(transpose(inverse(model))) * normal;
+            g_color = color;
+        }
+    '''
+    billboard_phong_gs = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 48) out;
+        
+        in vec3 g_position[];
+        in vec3 g_normal[];
+        in vec4 g_color[];
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        uniform float size[];
+        out vec3 f_position;
+        out vec3 f_normal;
+        out vec4 f_color;
+        
+        vec2 disc_coords(float radius, int step, int steps)
+        {
+            const float PI = 3.1415926535897932384626433832795;
+            float angstep = 2 * PI / steps;
+            float x = sin(step * angstep) * radius;
+            float y = cos(step * angstep) * radius;
+            return vec2(x, y);
+        }
+        
+        void main()
+        {
+            f_position = g_position[0];
+            f_normal = g_normal[0];
+            f_color = g_color[0];
+            
+            float s = size[0];
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            float r = s / 2;
+            // 3 * 16 = max_vertices 48
+            int steps = 16;
+            for (int i = 0; i < steps; i++)
+            {
+                gl_Position = window_matrix * (pos);
+                EmitVertex();
+                
+                vec2 xyloc = disc_coords(r, i, steps);
+                gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+                EmitVertex();
+                
+                xyloc = disc_coords(r, i + 1, steps);
+                gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+                EmitVertex();
+                
+                EndPrimitive();
+            }
+        }
+    '''
+    billboard_phong_fs = '''
+        layout (location = 0) out vec4 frag_color;
+        
+        in vec3 f_position;
+        in vec3 f_normal;
+        in vec4 f_color;
+        uniform float alpha;
+        uniform vec3 light_position;
+        uniform vec3 light_color;
+        uniform vec3 view_position;
+        uniform float ambient_strength;
+        uniform float specular_strength;
+        uniform float specular_exponent;
+        
+        void main()
+        {
+            vec3 ambient = ambient_strength * light_color;
+            
+            vec3 nor = normalize(f_normal);
+            vec3 light_direction = normalize(light_position - f_position);
+            vec3 diffuse = max(dot(nor, light_direction), 0.0) * light_color;
+            
+            vec3 view_direction = normalize(view_position - f_position);
+            vec3 reflection_direction = reflect(-light_direction, nor);
+            float spec = pow(max(dot(view_direction, reflection_direction), 0.0), specular_exponent);
+            vec3 specular = specular_strength * spec * light_color;
+            
+            vec3 col = (ambient + diffuse + specular) * f_color.rgb;
+            frag_color = vec4(col, alpha);
+        }
+    '''
 
 
 class PCVManager():
@@ -3528,6 +3629,58 @@ class PCVManager():
                 bgl.glDisable(bgl.GL_CLIP_DISTANCE4)
             if(pcv.clip_plane5_enabled):
                 bgl.glDisable(bgl.GL_CLIP_DISTANCE5)
+        
+        # dev
+        if(pcv.billboard_phong_enabled):
+            vs = ci['vertices']
+            ns = ci['normals']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'BILLBOARD_PHONG'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader = GPUShader(PCVShaders.billboard_phong_vs, PCVShaders.billboard_phong_fs, geocode=PCVShaders.billboard_phong_gs, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['BILLBOARD_PHONG'] = d
+            
+            shader.bind()
+            
+            shader.uniform_float("model", o.matrix_world)
+            # shader.uniform_float("view", bpy.context.region_data.view_matrix)
+            # shader.uniform_float("projection", bpy.context.region_data.window_matrix)
+            
+            shader.uniform_float("view_matrix", bpy.context.region_data.view_matrix)
+            shader.uniform_float("window_matrix", bpy.context.region_data.window_matrix)
+            
+            shader.uniform_float("size", pcv.billboard_phong_size)
+            
+            shader.uniform_float("alpha", pcv.global_alpha)
+            
+            shader.uniform_float("light_position", bpy.context.region_data.view_matrix.inverted().translation)
+            shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+            shader.uniform_float("view_position", bpy.context.region_data.view_matrix.inverted().translation)
+            
+            shader.uniform_float("ambient_strength", pcv.billboard_phong_ambient_strength)
+            shader.uniform_float("specular_strength", pcv.billboard_phong_specular_strength)
+            shader.uniform_float("specular_exponent", pcv.billboard_phong_specular_exponent)
+            
+            batch.draw(shader)
         
         # and now back to some production stuff..
         
@@ -10740,6 +10893,14 @@ class PCV_PT_development(Panel):
             cc.operator('point_cloud_visualizer.clip_planes_from_bbox')
         
         cc = c.column(align=True)
+        cc.prop(pcv, 'billboard_phong_enabled', toggle=True, text='Billboard Phong', )
+        if(pcv.billboard_phong_enabled):
+            cc.prop(pcv, 'billboard_phong_size')
+            cc.prop(pcv, 'billboard_phong_ambient_strength')
+            cc.prop(pcv, 'billboard_phong_specular_strength')
+            cc.prop(pcv, 'billboard_phong_specular_exponent')
+        
+        cc = c.column(align=True)
         cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
         if(pcv.dev_selection_shader_display):
             r = cc.row(align=True)
@@ -11672,6 +11833,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11690,6 +11852,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11708,6 +11871,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11752,6 +11916,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -11782,6 +11947,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11801,6 +11967,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11823,6 +11990,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11847,6 +12015,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11869,6 +12038,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11894,6 +12064,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11916,6 +12087,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11954,6 +12126,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_enabled = False
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
+            self.billboard_phong_enabled = False
             
             self.override_default_shader = True
         else:
@@ -11973,6 +12146,33 @@ class PCV_properties(PropertyGroup):
     clip_plane4: FloatVectorProperty(name="Plane 4", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
     clip_plane5: FloatVectorProperty(name="Plane 5", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
     clip_planes_from_bbox_object: StringProperty(name="Object", default="", description="", )
+    
+    def _billboard_phong_enabled(self, context):
+        if(self.billboard_phong_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    billboard_phong_enabled: BoolProperty(name="Enabled", default=False, description="", update=_billboard_phong_enabled, )
+    billboard_phong_size: FloatProperty(name="Size", default=0.002, min=0.0001, max=0.2, description="", precision=6, )
+    billboard_phong_ambient_strength: FloatProperty(name="Ambient", default=0.5, min=0.0, max=1.0, description="", )
+    billboard_phong_specular_strength: FloatProperty(name="Specular", default=0.5, min=0.0, max=1.0, description="", )
+    billboard_phong_specular_exponent: FloatProperty(name="Hardness", default=8.0, min=1.0, max=512.0, description="", )
     
     @classmethod
     def register(cls):
