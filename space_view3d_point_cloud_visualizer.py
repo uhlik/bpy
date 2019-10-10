@@ -8744,6 +8744,114 @@ class PCV_OT_clip_planes_reset(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_clip_planes_from_camera_view(Operator):
+    bl_idname = "point_cloud_visualizer.clip_planes_from_camera_view"
+    bl_label = "Set Clip Planes From Camera View"
+    bl_description = "Set clip planes from active camera view"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        
+        # bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        # if(bbo is not None):
+        #     ok = True
+        
+        s = bpy.context.scene
+        o = s.camera
+        if(o):
+            ok = True
+        
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        
+        o = bpy.context.object
+        
+        s = bpy.context.scene
+        c = s.camera
+        cd = c.data
+        rx = s.render.resolution_x
+        ry = s.render.resolution_y
+        w = 0.5 * cd.sensor_width / cd.lens
+        if(rx > ry):
+            x = w
+            y = w * ry / rx
+        else:
+            x = w * rx / ry
+            y = w
+        
+        lr = Vector((x, -y, -1.0, ))
+        ur = Vector((x, y, -1.0, ))
+        ll = Vector((-x, -y, -1.0, ))
+        ul = Vector((-x, y, -1.0, ))
+        
+        z = Vector()
+        n0 = mathutils.geometry.normal((z, lr, ur))
+        n1 = mathutils.geometry.normal((z, ur, ul))
+        n2 = mathutils.geometry.normal((z, ul, ll))
+        n3 = mathutils.geometry.normal((z, ll, lr))
+        
+        n0.negate()
+        n1.negate()
+        n2.negate()
+        n3.negate()
+        
+        m = c.matrix_world
+        l, r, _ = m.decompose()
+        rm = r.to_matrix().to_4x4()
+        lrm = Matrix.Translation(l).to_4x4() @ rm
+        
+        omi = o.matrix_world.inverted()
+        _, r, _ = omi.decompose()
+        orm = r.to_matrix().to_4x4()
+        
+        n0 = orm @ rm @ n0
+        n1 = orm @ rm @ n1
+        n2 = orm @ rm @ n2
+        n3 = orm @ rm @ n3
+        
+        v0 = omi @ lrm @ lr
+        v1 = omi @ lrm @ ur
+        v2 = omi @ lrm @ ul
+        v3 = omi @ lrm @ ll
+        
+        d0 = mathutils.geometry.distance_point_to_plane(Vector(), v0, n0)
+        d1 = mathutils.geometry.distance_point_to_plane(Vector(), v1, n1)
+        d2 = mathutils.geometry.distance_point_to_plane(Vector(), v2, n2)
+        d3 = mathutils.geometry.distance_point_to_plane(Vector(), v3, n3)
+        
+        # TODO: add plane behind camera (not much needed anyway, but for consistency), but more important, add plane in clipping distance set on camera
+        
+        pcv.clip_plane0 = n0.to_tuple() + (d0, )
+        pcv.clip_plane1 = n1.to_tuple() + (d1, )
+        pcv.clip_plane2 = n2.to_tuple() + (d2, )
+        pcv.clip_plane3 = n3.to_tuple() + (d3, )
+        pcv.clip_plane4 = (0.0, 0.0, 0.0, 0.0, )
+        pcv.clip_plane5 = (0.0, 0.0, 0.0, 0.0, )
+        
+        pcv.clip_shader_enabled = True
+        pcv.clip_plane0_enabled = True
+        pcv.clip_plane1_enabled = True
+        pcv.clip_plane2_enabled = True
+        pcv.clip_plane3_enabled = True
+        pcv.clip_plane4_enabled = False
+        pcv.clip_plane5_enabled = False
+        
+        return {'FINISHED'}
+
+
 class PCVIV2_OT_init(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_init"
     bl_label = "Initialize"
@@ -10975,10 +11083,14 @@ class PCV_PT_development(Panel):
         c.separator()
         """
         
-        sub.label(text="normals transform")
+        sub.label(text="Numpy Vertices And Normals Transform")
         c = sub.column()
         c.prop_search(pcv, 'dev_transform_normals_target_object', context.scene, 'objects')
         c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
+        
+        sub.label(text="Clip To Active Camera Cone")
+        c = sub.column()
+        c.operator('point_cloud_visualizer.clip_planes_from_camera_view')
 
 
 class PCVIV2RuntimeSettings():
@@ -12300,7 +12412,7 @@ classes = (
     PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
     PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
     
-    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset,
+    PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset, PCV_OT_clip_planes_from_camera_view,
     
     PCV_PT_debug, PCV_PT_debug_utils,
     PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
