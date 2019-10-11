@@ -2620,7 +2620,7 @@ class PCVShaders():
             g_color = color;
         }
     '''
-    billboard_phong_gs = '''
+    billboard_phong_circles_gs = '''
         layout (points) in;
         layout (triangle_strip, max_vertices = 48) out;
         
@@ -2669,6 +2669,48 @@ class PCVShaders():
                 
                 EndPrimitive();
             }
+        }
+    '''
+    billboard_phong_fast_gs = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec3 g_position[];
+        in vec3 g_normal[];
+        in vec4 g_color[];
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        uniform float size[];
+        out vec3 f_position;
+        out vec3 f_normal;
+        out vec4 f_color;
+        
+        void main()
+        {
+            f_position = g_position[0];
+            f_normal = g_normal[0];
+            f_color = g_color[0];
+            
+            float s = size[0] / 2;
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
         }
     '''
     billboard_phong_fs = '''
@@ -3842,6 +3884,9 @@ class PCVManager():
                 t = 'BILLBOARD_PHONG'
                 for k, v in ci['extra'].items():
                     if(k == t):
+                        if(v['circles'] != pcv.billboard_phong_circles):
+                            use_stored = False
+                            break
                         if(v['length'] == l):
                             use_stored = True
                             batch = v['batch']
@@ -3849,13 +3894,17 @@ class PCVManager():
                             break
             
             if(not use_stored):
-                shader = GPUShader(PCVShaders.billboard_phong_vs, PCVShaders.billboard_phong_fs, geocode=PCVShaders.billboard_phong_gs, )
+                use_geocode = PCVShaders.billboard_phong_fast_gs
+                if(pcv.billboard_phong_circles):
+                    use_geocode = PCVShaders.billboard_phong_circles_gs
+                shader = GPUShader(PCVShaders.billboard_phong_vs, PCVShaders.billboard_phong_fs, geocode=use_geocode, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
                 
                 if('extra' not in ci.keys()):
                     ci['extra'] = {}
                 d = {'shader': shader,
                      'batch': batch,
+                     'circles': pcv.billboard_phong_circles,
                      'length': l, }
                 ci['extra']['BILLBOARD_PHONG'] = d
             
@@ -11237,6 +11286,7 @@ class PCV_PT_development(Panel):
         cc = c.column(align=True)
         cc.prop(pcv, 'billboard_phong_enabled', toggle=True, text='Billboard Phong', )
         if(pcv.billboard_phong_enabled):
+            cc.prop(pcv, 'billboard_phong_circles', toggle=True, )
             cc.prop(pcv, 'billboard_phong_size')
             cc.prop(pcv, 'billboard_phong_ambient_strength')
             cc.prop(pcv, 'billboard_phong_specular_strength')
@@ -12516,6 +12566,7 @@ class PCV_properties(PropertyGroup):
             self.override_default_shader = False
     
     billboard_phong_enabled: BoolProperty(name="Enabled", default=False, description="", update=_billboard_phong_enabled, )
+    billboard_phong_circles: BoolProperty(name="Circles (slower)", default=False, description="", )
     billboard_phong_size: FloatProperty(name="Size", default=0.002, min=0.0001, max=0.2, description="", precision=6, )
     billboard_phong_ambient_strength: FloatProperty(name="Ambient", default=0.5, min=0.0, max=1.0, description="", )
     billboard_phong_specular_strength: FloatProperty(name="Specular", default=0.5, min=0.0, max=1.0, description="", )
