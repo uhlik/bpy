@@ -383,6 +383,206 @@ class PCMeshInstancer():
             log("no mesh loops in mesh", 2, )
 
 
+class PCMeshInstancer2():
+    def __init__(self, name, vs, ns=None, cs=None, generator=None, matrix=None, size=0.01, with_normal_align=False, with_vertex_colors=False, ):
+        log("{}:".format(self.__class__.__name__), 0, )
+        
+        self.name = name
+        
+        self.vs = vs
+        self.has_normals = True
+        if(ns is None):
+            self.has_normals = False
+            with_normal_align = False
+        self.ns = ns
+        self.has_colors = True
+        if(cs is None):
+            self.has_colors = False
+            with_vertex_colors = False
+        self.cs = cs
+        
+        if(generator is None):
+            generator = PCMeshInstancerMeshGenerator()
+        self.generator = generator
+        if(matrix is None):
+            matrix = Matrix()
+        self.matrix = matrix
+        self.size = size
+        self.with_normal_align = with_normal_align
+        self.with_vertex_colors = with_vertex_colors
+        
+        self.uuid = uuid.uuid1()
+        
+        log("matrices..", 1)
+        self.calc_matrices()
+        log("mesh data..", 1)
+        self.calc_mesh()
+        log("make mesh..", 1)
+        self.make_mesh()
+        if(self.with_vertex_colors):
+            log("make colors..", 1)
+            self.make_colors()
+        log("done.", 1)
+    
+    def calc_matrices(self):
+        def rotation_to(a, b):
+            # http://stackoverflow.com/questions/1171849/finding-quaternion-representing-the-rotation-from-one-vector-to-another
+            # https://github.com/toji/gl-matrix/blob/f0583ef53e94bc7e78b78c8a24f09ed5e2f7a20c/src/gl-matrix/quat.js#L54
+            
+            a = a.normalized()
+            b = b.normalized()
+            q = Quaternion()
+            
+            tmpvec3 = Vector()
+            xUnitVec3 = Vector((1, 0, 0))
+            yUnitVec3 = Vector((0, 1, 0))
+            
+            dot = a.dot(b)
+            if(dot < -0.999999):
+                tmpvec3 = xUnitVec3.cross(a)
+                if(tmpvec3.length < 0.000001):
+                    tmpvec3 = yUnitVec3.cross(a)
+                tmpvec3.normalize()
+                q = Quaternion(tmpvec3, math.pi)
+            elif(dot > 0.999999):
+                q.x = 0
+                q.y = 0
+                q.z = 0
+                q.w = 1
+            else:
+                tmpvec3 = a.cross(b)
+                q.x = tmpvec3[0]
+                q.y = tmpvec3[1]
+                q.z = tmpvec3[2]
+                q.w = 1 + dot
+                q.normalize()
+            return q
+        
+        _, _, osv = self.matrix.decompose()
+        osm = Matrix(((osv.x, 0.0, 0.0, 0.0), (0.0, osv.y, 0.0, 0.0), (0.0, 0.0, osv.z, 0.0), (0.0, 0.0, 0.0, 1.0))).inverted()
+        
+        vs = self.vs
+        ns = self.ns
+        s = self.size
+        with_normal_align = self.with_normal_align
+        
+        matrices = np.zeros((len(vs), 4, 4), dtype=np.float, )
+        for i, co in enumerate(vs):
+            no = ns[i]
+            ml = Matrix.Translation(co).to_4x4()
+            if(with_normal_align):
+                q = rotation_to(Vector((0, 0, 1)), Vector(no))
+                mr = q.to_matrix().to_4x4()
+            else:
+                mr = Matrix.Rotation(0.0, 4, 'Z')
+            ms = Matrix(((s, 0.0, 0.0, 0.0), (0.0, s, 0.0, 0.0), (0.0, 0.0, s, 0.0), (0.0, 0.0, 0.0, 1.0)))
+            m = ml @ mr @ ms @ osm
+            matrices[i] = np.array(m, dtype=np.float, )
+        
+        self.matrices = matrices
+    
+    def calc_mesh(self):
+        matrices = self.matrices
+        
+        gv, _, gf = self.generator.generate()
+        me = bpy.data.meshes.new('tmp-{}'.format(self.uuid))
+        me.from_pydata(gv, [], gf)
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+        bm.to_mesh(me)
+        bm.free()
+        
+        gv = np.zeros((len(me.vertices) * 3), dtype=np.float, )
+        me.vertices.foreach_get("co", gv, )
+        gv.shape = (len(me.vertices), 3, )
+        gf = np.zeros((len(me.polygons) * 3), dtype=np.int, )
+        me.polygons.foreach_get("vertices", gf, )
+        gf.shape = (len(me.polygons), 3, )
+        
+        self.g_vs_chunk_length = len(gv)
+        self.g_fs_chunk_length = len(gf)
+        
+        zgv = gv[:]
+        zgv.shape = (-1, )
+        
+        vs = np.zeros((len(matrices) * len(gv) * 3), dtype=np.float, )
+        fs = np.zeros((len(matrices) * len(gf) * 3), dtype=np.int, )
+        
+        cos = np.zeros((len(me.vertices) * 3), dtype=np.float, )
+        fis = np.zeros((len(me.polygons) * 3), dtype=np.int, )
+        for i, m in enumerate(matrices):
+            # doesn't work when passing ndarray directly
+            me.transform(Matrix(m))
+            
+            me.vertices.foreach_get("co", cos)
+            vs[i * len(cos):(i * len(cos)) + len(cos)] = cos
+            me.polygons.foreach_get("vertices", fis, )
+            fis += (i * len(me.vertices), )
+            fs[i * len(fis):(i * len(fis)) + len(fis)] = fis
+            
+            me.vertices.foreach_set("co", zgv)
+        
+        self.g_vs = vs
+        self.g_fs = fs
+        
+        bpy.data.meshes.remove(me)
+    
+    def make_mesh(self):
+        me = bpy.data.meshes.new(self.name)
+        
+        # NOTE: remember that in future: from_pydata does NOT accept numpy arrays, https://developer.blender.org/T51585
+        # NOTE: so passing ndarray.tolist() to from_pydata is VERY slow, so recreate interesting bits from from_pydata implementation without using itertools
+        
+        vertices = self.g_vs
+        faces = self.g_fs
+        
+        vl = int(len(vertices) / 3)
+        fl = int(len(faces) / 3)
+        me.vertices.add(vl)
+        me.loops.add(fl * 3)
+        me.polygons.add(fl)
+        
+        face_lengths = np.full(fl, 3, dtype=np.int, )
+        loop_starts = np.arange(0, fl * 3, 3, dtype=np.int, )
+        
+        me.vertices.foreach_set("co", vertices)
+        me.polygons.foreach_set("loop_total", face_lengths)
+        me.polygons.foreach_set("loop_start", loop_starts)
+        me.polygons.foreach_set("vertices", faces)
+        
+        me.validate()
+        
+        so = bpy.context.scene.objects
+        for i in so:
+            i.select_set(False)
+        o = bpy.data.objects.new(self.name, me)
+        
+        view_layer = bpy.context.view_layer
+        collection = view_layer.active_layer_collection.collection
+        collection.objects.link(o)
+        o.select_set(True)
+        view_layer.objects.active = o
+        
+        o.matrix_world = self.matrix
+        
+        self.mesh = me
+        self.object = o
+    
+    def make_colors(self):
+        fl = self.g_fs_chunk_length
+        me = self.mesh
+        cs = self.cs
+        
+        indexes = np.indices((len(cs), ), dtype=np.int, )
+        cols = np.take(cs, indexes, axis=0, )
+        cols = cols.repeat(fl * 3, axis=1, )
+        cols.shape = (-1, )
+        
+        vc = me.vertex_colors.new()
+        vc.data.foreach_set("color", cols)
+
+
 class PCInstancer():
     def __init__(self, o, mesh_size, base_sphere_subdivisions, ):
         log("{}:".format(self.__class__.__name__), 0, )
@@ -6325,7 +6525,36 @@ class PCV_OT_convert(Operator):
             o.select_set(True)
             view_layer.objects.active = o
         else:
-            instancer = PCMeshInstancer(**d)
+            
+            if(pcv.mesh_use_instancer2):
+                # import cProfile
+                # import pstats
+                # import io
+                # pr = cProfile.Profile()
+                # pr.enable()
+                
+                d = {
+                    'name': n,
+                    'vs': vs,
+                    'ns': ns,
+                    'cs': cs,
+                    'generator': g,
+                    'matrix': Matrix(),
+                    'size': s,
+                    'with_normal_align': a,
+                    'with_vertex_colors': c,
+                }
+                instancer = PCMeshInstancer2(**d)
+                
+                # pr.disable()
+                # s = io.StringIO()
+                # sortby = 'cumulative'
+                # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+                # ps.print_stats()
+                # print(s.getvalue())
+            else:
+                instancer = PCMeshInstancer(**d)
+            
             o = instancer.object
         
         me = o.data
@@ -10325,7 +10554,12 @@ class PCV_PT_convert(Panel):
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
         
-        c.operator('point_cloud_visualizer.convert')
+        # c.operator('point_cloud_visualizer.convert')
+        
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.convert')
+        r.prop(pcv, 'mesh_use_instancer2', toggle=True, text='', icon='AUTO', )
+        
         c.enabled = PCV_OT_convert.poll(context)
 
 
@@ -11827,6 +12061,7 @@ class PCV_properties(PropertyGroup):
     mesh_all: BoolProperty(name="All", description="Convert all points", default=True, )
     mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
     mesh_base_sphere_subdivisions: IntProperty(name="Sphere Subdivisions", default=2, min=1, max=6, description="Particle instance (Ico Sphere) subdivisions, instance mesh can be change later", )
+    mesh_use_instancer2: BoolProperty(name="Use Faster Conversion", description="Faster (especially on icosphere) Numpy implementation, use if you don't mind all triangles in result", default=False, )
     
     export_use_viewport: BoolProperty(name="Use Viewport Points", default=True, description="When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file", )
     export_apply_transformation: BoolProperty(name="Apply Transformation", default=False, description="Apply parent object transformation to points", )
