@@ -2906,7 +2906,7 @@ class PCVManager():
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
-        # TODO: try to implement clip planes using an object bounding box
+        # TODO: replace all 'batch_for_shader' (2.80/scripts/modules/gpu_extras/batch.py) calls with something custom made and keep buffer cached. faster shader switching, less memory used, etc..
         
         ci = PCVManager.cache[uuid]
         
@@ -9111,6 +9111,7 @@ class PCV_OT_clip_planes_from_camera_view(Operator):
         d3 = mathutils.geometry.distance_point_to_plane(Vector(), v3, n3)
         
         # TODO: add plane behind camera (not much needed anyway, but for consistency), but more important, add plane in clipping distance set on camera
+        # TODO: ORTHO camera does not work
         
         pcv.clip_plane0 = n0.to_tuple() + (d0, )
         pcv.clip_plane1 = n1.to_tuple() + (d1, )
