@@ -6091,11 +6091,11 @@ class PCV_OT_render(Operator):
         return ok
     
     def execute(self, context):
+        _t = time.time()
+        
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
-        
-        # TODO: print out some time stamps
         
         scene = context.scene
         render = scene.render
@@ -6435,6 +6435,9 @@ class PCV_OT_render(Operator):
         # cleanup
         bpy.data.images.remove(image)
         
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        print("PCV: Frame completed in {}.".format(_d))
+        
         return {'FINISHED'}
 
 
@@ -6464,13 +6467,34 @@ class PCV_OT_render_animation(Operator):
             self.report({'ERROR'}, "No camera found.")
             return {'CANCELLED'}
         
-        # TODO: print each frame some stats, like, (frame number / total frames), some (frame time * num frames) = total animation estimate, render itself should print its benchmark by itself. log should be visible even when debug_mode is False
+        _t = time.time()
+        _table = []
+        _numf = (scene.frame_end + 1) - scene.frame_start
+        _log_format = 'PCV: Frame: {} ({}/{}) | Time: {} | Remaining: {}'
+        
+        def rm_ms(d):
+            return d - datetime.timedelta(microseconds=d.microseconds)
         
         fc = scene.frame_current
         for i in range(scene.frame_start, scene.frame_end + 1, 1):
+            
+            _tf = time.time()
+            
             scene.frame_set(i)
             bpy.ops.point_cloud_visualizer.render()
+            
+            _td = time.time() - _tf
+            _table.append(_td)
+            
+            print(_log_format.format(scene.frame_current, i, _numf,
+                                     rm_ms(datetime.timedelta(seconds=time.time() - _t)),
+                                     rm_ms(datetime.timedelta(seconds=(sum(_table) / i) * (_numf - i))), ))
+            
         scene.frame_set(fc)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        print("PCV: Animation completed in {}.".format(_d))
+        
         return {'FINISHED'}
 
 
