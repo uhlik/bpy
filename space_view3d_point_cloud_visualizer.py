@@ -6095,6 +6095,8 @@ class PCV_OT_render(Operator):
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
+        # TODO: print out some time stamps
+        
         scene = context.scene
         render = scene.render
         image_settings = render.image_settings
@@ -6461,6 +6463,8 @@ class PCV_OT_render_animation(Operator):
         if(scene.camera is None):
             self.report({'ERROR'}, "No camera found.")
             return {'CANCELLED'}
+        
+        # TODO: print each frame some stats, like, (frame number / total frames), some (frame time * num frames) = total animation estimate, render itself should print its benchmark by itself. log should be visible even when debug_mode is False
         
         fc = scene.frame_current
         for i in range(scene.frame_start, scene.frame_end + 1, 1):
