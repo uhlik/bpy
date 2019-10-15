@@ -2912,6 +2912,9 @@ class PCVManager():
         log("load and process completed in {}.".format(__d))
         log("-" * 50)
         
+        # with new file browser in 2.81, screen is not redrawn, so i have to do it manually..
+        cls._redraw()
+        
         return True
     
     @classmethod
@@ -4102,6 +4105,20 @@ class PCVManager():
                 'length': None,
                 'name': None,
                 'object': None, }
+    
+    @classmethod
+    def _redraw(cls):
+        # force redraw
+        
+        # for area in bpy.context.screen.areas:
+        #     if(area.type == 'VIEW_3D'):
+        #         area.tag_redraw()
+        
+        # seems like sometimes context is different, this should work..
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
 
 
 class PCVControl():
@@ -11003,6 +11020,15 @@ class PCV_PT_clip(Panel):
         r.operator('point_cloud_visualizer.clip_planes_reset', text='', icon='X', )
         
         a.enabled = pcv.clip_shader_enabled
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        l.enabled = ok
 
 
 class PCV_PT_edit(Panel):
@@ -12155,7 +12181,7 @@ class PCV_properties(PropertyGroup):
     mesh_all: BoolProperty(name="All", description="Convert all points", default=True, )
     mesh_percentage: FloatProperty(name="Subset", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Convert random subset of points by given percentage", )
     mesh_base_sphere_subdivisions: IntProperty(name="Sphere Subdivisions", default=2, min=1, max=6, description="Particle instance (Ico Sphere) subdivisions, instance mesh can be change later", )
-    mesh_use_instancer2: BoolProperty(name="Use Faster Conversion", description="Faster (especially on icosphere) Numpy implementation, use if you don't mind all triangles in result", default=False, )
+    mesh_use_instancer2: BoolProperty(name="Use Faster Conversion", description="Faster (especially with icosphere) Numpy implementation, use if you don't mind all triangles in result", default=False, )
     
     export_use_viewport: BoolProperty(name="Use Viewport Points", default=True, description="When checked, export points currently displayed in viewport or when unchecked, export data loaded from original ply file", )
     export_apply_transformation: BoolProperty(name="Apply Transformation", default=False, description="Apply parent object transformation to points", )
