@@ -2751,6 +2751,20 @@ class PCVManager():
     handle = None
     initialized = False
     
+    '''
+    @classmethod
+    def points_batch_for_shader(cls, shader, content, ):
+        for k, v in content.items():
+            vbo_len = len(v)
+            break
+        vbo_format = shader.format_calc()
+        vbo = GPUVertBuf(vbo_format, vbo_len, )
+        for k, v in content.items():
+            vbo.attr_fill(k, v, )
+        batch = GPUBatch(type='POINTS', buf=vbo, )
+        return vbo, batch
+    '''
+    
     @classmethod
     def load_ply_to_cache(cls, operator, context, ):
         pcv = context.object.point_cloud_visualizer
