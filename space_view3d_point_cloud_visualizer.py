@@ -6195,6 +6195,7 @@ class PCV_OT_render(Operator):
         # swap frame number
         output_path = swap_frame_number(output_path)
         
+        # TODO: on my machine, maximum size is 16384, is it max in general or just my hardware? check it, and add some warning, or hadle this: RuntimeError: gpu.offscreen.new(...) failed with 'GPUFrameBuffer: framebuffer status GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT somehow..
         offscreen = GPUOffScreen(width, height)
         offscreen.bind()
         try:
@@ -6382,8 +6383,8 @@ class PCV_OT_render(Operator):
         if(image_name not in bpy.data.images):
             bpy.data.images.new(image_name, width, height)
         image = bpy.data.images[image_name]
-        image.scale(width, height)
         image.pixels = [v / 255 for v in buffer]
+        # image.scale(width, height)
         
         if(pcv.render_supersampling > 1):
             width = int(width / pcv.render_supersampling)
