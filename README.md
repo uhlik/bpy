@@ -345,6 +345,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.29 fixes, render logging
 * 0.9.28 clipping planes from object bounding box, faster all numpy export, many minor fixes
 * 0.9.27 render supersampling and draw smooth circles
 * 0.9.26 color adjustment fixes
