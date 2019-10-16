@@ -11881,14 +11881,14 @@ class PCV_PT_debug(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         sub = l.column()
+        sub.operator('script.reload')
+        sub.separator()
         
-        sub.label(text="properties:")
         b = sub.box()
-        
         r = b.row()
         r.prop(pcv, 'debug_panel_show_properties', icon='TRIA_DOWN' if pcv.debug_panel_show_properties else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="properties")
         if(pcv.debug_panel_show_properties):
-            
             c = b.column()
             for k, p in pcv.bl_rna.properties.items():
                 v = 'n/a'
@@ -11903,86 +11903,68 @@ class PCV_PT_debug(Panel):
                 c.label(text="{}: {}".format(k, v))
             c.scale_y = 0.5
         
-        sub.label(text="manager:")
-        c = sub.column(align=True)
-        c.operator('point_cloud_visualizer.init')
-        c.operator('point_cloud_visualizer.deinit')
-        c.operator('point_cloud_visualizer.gc')
         b = sub.box()
-        c = b.column()
-        c.label(text="cache: {} item(s)".format(len(PCVManager.cache.items())))
-        c.label(text="handle: {}".format(PCVManager.handle))
-        c.label(text="initialized: {}".format(PCVManager.initialized))
-        c.scale_y = 0.5
+        r = b.row()
+        r.prop(pcv, 'debug_panel_show_manager', icon='TRIA_DOWN' if pcv.debug_panel_show_manager else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="manager")
+        if(pcv.debug_panel_show_manager):
+            c = b.column(align=True)
+            rr = c.row(align=True)
+            rr.operator('point_cloud_visualizer.init')
+            rr.operator('point_cloud_visualizer.deinit')
+            rr.operator('point_cloud_visualizer.gc')
+            bb = b.box()
+            c = bb.column()
+            c.label(text="cache: {} item(s)".format(len(PCVManager.cache.items())))
+            c.label(text="handle: {}".format(PCVManager.handle))
+            c.label(text="initialized: {}".format(PCVManager.initialized))
+            c.scale_y = 0.5
+            
+            if(len(PCVManager.cache)):
+                b.label(text="cache details:")
+                for k, v in PCVManager.cache.items():
+                    bb = b.box()
+                    r = bb.row()
+                    r.prop(pcv, 'debug_panel_show_cache_items', icon='TRIA_DOWN' if pcv.debug_panel_show_cache_items else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+                    r.label(text=k)
+                    if(pcv.debug_panel_show_cache_items):
+                        c = bb.column()
+                        c.scale_y = 0.5
+                        for ki, vi in sorted(v.items()):
+                            if(type(vi) == np.ndarray):
+                                c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
+                            elif(type(vi) == dict):
+                                c.label(text="{}: dict ({} items)".format(ki, len(vi.keys())))
+                                t = '    '
+                                for dk, dv in vi.items():
+                                    c.label(text="{}{}: {}".format(t, dk, dv))
+                            else:
+                                c.label(text="{}: {}".format(ki, vi))
         
-        if(len(PCVManager.cache)):
-            sub.label(text="cache details:")
-            for k, v in PCVManager.cache.items():
-                b = sub.box()
-                
-                r = b.row()
-                r.prop(pcv, 'debug_panel_show_cache_items', icon='TRIA_DOWN' if pcv.debug_panel_show_cache_items else 'TRIA_RIGHT', icon_only=True, emboss=False, )
-                r.label(text=k)
-                if(pcv.debug_panel_show_cache_items):
-                    c = b.column()
+        b = sub.box()
+        r = b.row()
+        r.prop(pcv, 'debug_panel_show_sequence', icon='TRIA_DOWN' if pcv.debug_panel_show_sequence else 'TRIA_RIGHT', icon_only=True, emboss=False, )
+        r.label(text="sequence")
+        if(pcv.debug_panel_show_sequence):
+            c = b.column(align=True)
+            rr = c.row(align=True)
+            rr.operator('point_cloud_visualizer.seq_init')
+            rr.operator('point_cloud_visualizer.seq_deinit')
+            bb = b.box()
+            c = bb.column()
+            c.label(text="cache: {} item(s)".format(len(PCVSequence.cache.items())))
+            c.label(text="initialized: {}".format(PCVSequence.initialized))
+            c.scale_y = 0.5
+            
+            if(len(PCVSequence.cache)):
+                b.label(text="cache details:")
+                for k, v in PCVSequence.cache.items():
+                    bb = b.box()
+                    c = bb.column()
                     c.scale_y = 0.5
-                    for ki, vi in sorted(v.items()):
-                        if(type(vi) == np.ndarray):
-                            c.label(text="{}: numpy.ndarray ({} items)".format(ki, len(vi)))
-                        else:
-                            c.label(text="{}: {}".format(ki, vi))
-        
-        sub.label(text="sequence:")
-        c = sub.column(align=True)
-        c.operator('point_cloud_visualizer.seq_init')
-        c.operator('point_cloud_visualizer.seq_deinit')
-        b = sub.box()
-        c = b.column()
-        c.label(text="cache: {} item(s)".format(len(PCVSequence.cache.items())))
-        c.label(text="initialized: {}".format(PCVSequence.initialized))
-        c.scale_y = 0.5
-        
-        if(len(PCVSequence.cache)):
-            sub.label(text="cache details:")
-            for k, v in PCVSequence.cache.items():
-                b = sub.box()
-                c = b.column()
-                c.scale_y = 0.5
-                c.label(text="{}: {}".format('uuid', v['uuid']))
-                c.label(text="{}: {}".format('pcv', v['pcv']))
-                c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
-
-
-class PCV_PT_debug_utils(Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Debug Utils"
-    bl_parent_id = "PCV_PT_panel"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        if(o is None):
-            return False
-        
-        if(o):
-            pcv = o.point_cloud_visualizer
-            if(debug_mode()):
-                return True
-        return False
-    
-    def draw_header(self, context):
-        pcv = context.object.point_cloud_visualizer
-        l = self.layout
-        l.label(text='', icon='SETTINGS', )
-    
-    def draw(self, context):
-        pcv = context.object.point_cloud_visualizer
-        l = self.layout
-        c = l.column()
-        c.operator('script.reload')
+                    c.label(text="{}: {}".format('uuid', v['uuid']))
+                    c.label(text="{}: {}".format('pcv', v['pcv']))
+                    c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
 
 
 class PCVIV2_properties(PropertyGroup):
@@ -12566,6 +12548,8 @@ class PCV_properties(PropertyGroup):
     dev_phong_shader_specular_exponent: FloatProperty(name="specular_exponent", default=8.0, min=1.0, max=512.0, description="", )
     
     debug_panel_show_properties: BoolProperty(default=False, options={'HIDDEN', }, )
+    debug_panel_show_manager: BoolProperty(default=False, options={'HIDDEN', }, )
+    debug_panel_show_sequence: BoolProperty(default=False, options={'HIDDEN', }, )
     debug_panel_show_cache_items: BoolProperty(default=False, options={'HIDDEN', }, )
     
     # store info how long was last draw call, ie get points from cache, join, draw
@@ -12660,7 +12644,7 @@ def _update_panel_bl_category(self, context, ):
         PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
         # PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
-        PCV_PT_debug, PCV_PT_debug_utils,
+        PCV_PT_debug,
     )
     try:
         p = _main_panel
@@ -12770,7 +12754,7 @@ classes = (
     
     PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset, PCV_OT_clip_planes_from_camera_view,
     
-    PCV_PT_debug, PCV_PT_debug_utils,
+    PCV_PT_debug,
     PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit,
 )
 
