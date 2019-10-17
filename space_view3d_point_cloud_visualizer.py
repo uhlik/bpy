@@ -6518,7 +6518,7 @@ class PCV_OT_render_animation(Operator):
             
             d = time.time() - t
             times.append(d)
-            print(log_format.format(scene.frame_current, i, num_frames,
+            print(log_format.format(scene.frame_current, i + 1, num_frames,
                                     rm_ms(datetime.timedelta(seconds=d)),
                                     rm_ms(datetime.timedelta(seconds=(sum(times) / len(times)) * (num_frames - i - 1)), ), ))
             
