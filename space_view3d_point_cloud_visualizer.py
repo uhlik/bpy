@@ -2744,6 +2744,48 @@ class PCVShaders():
             frag_color = vec4(col, alpha);
         }
     '''
+    
+    vertex_shader_simple_skip_point_vertices = '''
+        in vec3 position;
+        in vec4 color;
+        in int index;
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float point_size;
+        uniform float alpha_radius;
+        uniform float global_alpha;
+        uniform float skip_index;
+        out vec4 f_color;
+        out float f_alpha_radius;
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            
+            if(skip_index <= index){
+                gl_Position = vec4(2.0, 0.0, 0.0, 1.0);
+            }
+            
+            gl_PointSize = point_size;
+            f_color = vec4(color[0], color[1], color[2], global_alpha);
+            f_alpha_radius = alpha_radius;
+        }
+    '''
+    fragment_shader_simple_skip_point_vertices = '''
+        in vec4 f_color;
+        in float f_alpha_radius;
+        out vec4 fragColor;
+        void main()
+        {
+            float r = 0.0f;
+            float a = 1.0f;
+            vec2 cxy = 2.0f * gl_PointCoord - 1.0f;
+            r = dot(cxy, cxy);
+            if(r > f_alpha_radius){
+                discard;
+            }
+            fragColor = f_color * a;
+        }
+    '''
 
 
 class PCVManager():
@@ -3945,6 +3987,50 @@ class PCVManager():
             shader.uniform_float("ambient_strength", pcv.billboard_phong_ambient_strength)
             shader.uniform_float("specular_strength", pcv.billboard_phong_specular_strength)
             shader.uniform_float("specular_exponent", pcv.billboard_phong_specular_exponent)
+            
+            batch.draw(shader)
+        
+        # dev
+        if(pcv.skip_point_shader_enabled):
+            vs = ci['vertices']
+            cs = ci['colors']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'SKIP'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        use_stored = True
+                        batch = v['batch']
+                        shader = v['shader']
+                        break
+            
+            if(not use_stored):
+                indices = np.indices((len(vs), ), dtype=np.int, )
+                indices.shape = (-1, )
+                
+                shader = GPUShader(PCVShaders.vertex_shader_simple_skip_point_vertices, PCVShaders.fragment_shader_simple_skip_point_vertices, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "index": indices[:], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch, }
+                ci['extra']['SKIP'] = d
+            
+            shader.bind()
+            
+            shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            shader.uniform_float("object_matrix", o.matrix_world)
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            
+            sp = pcv.skip_point_percentage
+            l = int((len(vs) / 100) * sp)
+            if(sp >= 99):
+                l = len(vs)
+            shader.uniform_float("skip_index", l)
             
             batch.draw(shader)
         
@@ -11298,6 +11384,12 @@ class PCV_PT_development(Panel):
         
         c = sub.column()
         
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
+        if(pcv.dev_selection_shader_display):
+            r = cc.row(align=True)
+            r.prop(pcv, 'dev_selection_shader_color', text="", )
+        
         c.prop(pcv, 'dev_minimal_shader_enabled', toggle=True, text="Minimal Shader", )
         
         c.prop(pcv, 'dev_minimal_shader_variable_size_enabled', toggle=True, text="Minimal Shader With Variable Size", )
@@ -11363,12 +11455,12 @@ class PCV_PT_development(Panel):
             cc.prop(pcv, 'billboard_phong_specular_exponent')
         
         cc = c.column(align=True)
-        cc.prop(pcv, 'dev_selection_shader_display', toggle=True, )
-        if(pcv.dev_selection_shader_display):
-            r = cc.row(align=True)
-            r.prop(pcv, 'dev_selection_shader_color', text="", )
+        cc.prop(pcv, 'skip_point_shader_enabled', toggle=True, text='Skip Point Shader', )
+        if(pcv.skip_point_shader_enabled):
+            cc.prop(pcv, 'skip_point_percentage')
         
         sub.separator()
+        
         sub.label(text="Generate Volume:")
         c = sub.column(align=True)
         c.prop(pcv, 'generate_number_of_points')
@@ -12271,6 +12363,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_depth(self, context, ):
         if(self.dev_depth_enabled):
+            # FIXME: this is really getting ridiculous
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
             
@@ -12283,6 +12376,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12290,6 +12384,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_normal(self, context, ):
         if(self.dev_normal_colors_enabled):
+            # FIXME: this is really getting ridiculous
             self.dev_depth_enabled = False
             self.dev_position_colors_enabled = False
             
@@ -12302,6 +12397,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12309,6 +12405,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_position(self, context, ):
         if(self.dev_position_colors_enabled):
+            # FIXME: this is really getting ridiculous
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             
@@ -12321,6 +12418,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12353,6 +12451,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_color_adjustment(self, context, ):
         if(self.color_adjustment_shader_enabled):
+            # FIXME: this is really getting ridiculous
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
             self.dev_position_colors_enabled = False
@@ -12366,6 +12465,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.illumination = False
             self.override_default_shader = True
@@ -12384,6 +12484,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader(self, context, ):
         if(self.dev_minimal_shader_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12397,6 +12498,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12404,6 +12506,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader_variable_size(self, context, ):
         if(self.dev_minimal_shader_variable_size_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12417,6 +12520,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12427,6 +12531,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_minimal_shader_variable_size_with_depth(self, context, ):
         if(self.dev_minimal_shader_variable_size_and_depth_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12440,6 +12545,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12452,6 +12558,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_billboard_point_cloud_enabled(self, context, ):
         if(self.dev_billboard_point_cloud_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12465,6 +12572,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12475,6 +12583,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_rich_billboard_point_cloud_enabled(self, context):
         if(self.dev_rich_billboard_point_cloud_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12488,6 +12597,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12501,6 +12611,7 @@ class PCV_properties(PropertyGroup):
     
     def _update_dev_rich_billboard_point_cloud_no_depth_enabled(self, context):
         if(self.dev_rich_billboard_point_cloud_no_depth_enabled):
+            # FIXME: this is really getting ridiculous
             self.illumination = False
             self.dev_depth_enabled = False
             self.dev_normal_colors_enabled = False
@@ -12514,6 +12625,7 @@ class PCV_properties(PropertyGroup):
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12537,6 +12649,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.clip_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12578,6 +12691,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12614,6 +12728,7 @@ class PCV_properties(PropertyGroup):
             self.dev_rich_billboard_point_cloud_no_depth_enabled = False
             self.dev_phong_shader_enabled = False
             self.clip_shader_enabled = False
+            self.skip_point_shader_enabled = False
             
             self.override_default_shader = True
         else:
@@ -12625,6 +12740,31 @@ class PCV_properties(PropertyGroup):
     billboard_phong_ambient_strength: FloatProperty(name="Ambient", default=0.5, min=0.0, max=1.0, description="", )
     billboard_phong_specular_strength: FloatProperty(name="Specular", default=0.5, min=0.0, max=1.0, description="", )
     billboard_phong_specular_exponent: FloatProperty(name="Hardness", default=8.0, min=1.0, max=512.0, description="", )
+    
+    def _skip_point_shader_enabled(self, context):
+        if(self.skip_point_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    skip_point_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_skip_point_shader_enabled, )
+    skip_point_percentage: FloatProperty(name="Skip Percentage", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="", )
     
     @classmethod
     def register(cls):
