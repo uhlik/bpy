@@ -6499,30 +6499,30 @@ class PCV_OT_render_animation(Operator):
             self.report({'ERROR'}, "No camera found.")
             return {'CANCELLED'}
         
-        _t = time.time()
-        _table = []
-        _numf = (scene.frame_end + 1) - scene.frame_start
-        _log_format = 'PCV: Frame: {} ({}/{}) | Time: {} | Remaining: {}'
-        
         def rm_ms(d):
             return d - datetime.timedelta(microseconds=d.microseconds)
         
-        fc = scene.frame_current
-        for i in range(scene.frame_start, scene.frame_end + 1, 1):
+        user_frame = scene.frame_current
+        
+        _t = time.time()
+        log_format = 'PCV: Frame: {} ({}/{}) | Time: {} | Remaining: {}'
+        frames = [i for i in range(scene.frame_start, scene.frame_end + 1, 1)]
+        num_frames = len(frames)
+        times = []
+        
+        for i, n in enumerate(frames):
+            t = time.time()
             
-            _tf = time.time()
-            
-            scene.frame_set(i)
+            scene.frame_set(n)
             bpy.ops.point_cloud_visualizer.render()
             
-            _td = time.time() - _tf
-            _table.append(_td)
+            d = time.time() - t
+            times.append(d)
+            print(log_format.format(scene.frame_current, i, num_frames,
+                                    rm_ms(datetime.timedelta(seconds=d)),
+                                    rm_ms(datetime.timedelta(seconds=(sum(times) / len(times)) * (num_frames - i - 1)), ), ))
             
-            print(_log_format.format(scene.frame_current, i, _numf,
-                                     rm_ms(datetime.timedelta(seconds=time.time() - _t)),
-                                     rm_ms(datetime.timedelta(seconds=(sum(_table) / i) * (_numf - i))), ))
-            
-        scene.frame_set(fc)
+        scene.frame_set(user_frame)
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         print("PCV: Animation completed in {}.".format(_d))
