@@ -11459,6 +11459,13 @@ class PCV_PT_development(Panel):
         if(pcv.skip_point_shader_enabled):
             cc.prop(pcv, 'skip_point_percentage')
         
+        cc = c.column(align=True)
+        cc.prop(pcv, 'dev_bbox_enabled', toggle=True, text='Bounding Box', )
+        if(pcv.dev_bbox_enabled):
+            cc.prop(pcv, 'dev_bbox_color')
+            cc.prop(pcv, 'dev_bbox_size')
+            cc.prop(pcv, 'dev_bbox_alpha')
+        
         sub.separator()
         
         sub.label(text="Generate Volume:")
