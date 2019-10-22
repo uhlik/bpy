@@ -1038,7 +1038,26 @@ class PlyPointCloudReader():
     _supported_formats = ('binary_little_endian', 'binary_big_endian', 'ascii', )
     _supported_versions = ('1.0', )
     _byte_order = {'binary_little_endian': '<', 'binary_big_endian': '>', 'ascii': None, }
-    _types = {'char': 'c', 'uchar': 'B', 'short': 'h', 'ushort': 'H', 'int': 'i', 'uint': 'I', 'float': 'f', 'double': 'd', }
+    # _types = {'char': 'c', 'uchar': 'B', 'short': 'h', 'ushort': 'H', 'int': 'i', 'uint': 'I', 'float': 'f', 'double': 'd', }
+    _types = {
+        'char': 'b',
+        'uchar': 'B',
+        'int8': 'b',
+        'uint8': 'B',
+        'int16': 'h',
+        'uint16': 'H',
+        'short': 'h',
+        'ushort': 'H',
+        'int': 'i',
+        'int32': 'i',
+        'uint': 'I',
+        'uint32': 'I',
+        'float': 'f',
+        'float32': 'f',
+        'float64': 'd',
+        'double': 'd',
+        'string': 's',
+    }
     
     def __init__(self, path, ):
         log("{}:".format(self.__class__.__name__), 0)
