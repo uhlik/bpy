@@ -12698,6 +12698,7 @@ class PCV_properties(PropertyGroup):
     pcviv_material_list_active_index: IntProperty(name="Index", default=0, description="", options={'HIDDEN', }, )
     
     # testing / development stuff
+    # TODO: remake all object selections with PointerProperty to enable eyedropper
     dev_transform_normals_target_object: StringProperty(name="Object", default="", )
     
     # dev
