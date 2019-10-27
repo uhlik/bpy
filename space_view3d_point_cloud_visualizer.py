@@ -7116,12 +7116,10 @@ class PCV_OT_filter_project(Operator):
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
-                        # ok = True
-                        if(pcv.filter_project_object != ''):
-                            o = bpy.data.objects.get(pcv.filter_project_object)
-                            if(o is not None):
-                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
-                                    ok = True
+                        o = pcv.filter_project_object
+                        if(o is not None):
+                            if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                ok = True
         return ok
     
     def execute(self, context):
@@ -7138,7 +7136,7 @@ class PCV_OT_filter_project(Operator):
         log("preprocessing..", 1)
         
         pcv = context.object.point_cloud_visualizer
-        o = bpy.data.objects.get(pcv.filter_project_object)
+        o = pcv.filter_project_object
         
         if(o is None):
             raise Exception()
@@ -8067,12 +8065,10 @@ class PCV_OT_filter_boolean_intersect(Operator):
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
-                        # ok = True
-                        if(pcv.filter_boolean_object != ''):
-                            o = bpy.data.objects.get(pcv.filter_boolean_object)
-                            if(o is not None):
-                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
-                                    ok = True
+                        o = pcv.filter_boolean_object
+                        if(o is not None):
+                            if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                ok = True
         return ok
     
     def execute(self, context):
@@ -8080,7 +8076,7 @@ class PCV_OT_filter_boolean_intersect(Operator):
         _t = time.time()
         
         pcv = context.object.point_cloud_visualizer
-        o = bpy.data.objects.get(pcv.filter_boolean_object)
+        o = pcv.filter_boolean_object
         if(o is None):
             raise Exception()
         
@@ -8286,12 +8282,10 @@ class PCV_OT_filter_boolean_exclude(Operator):
             if(v['uuid'] == pcv.uuid):
                 if(v['ready']):
                     if(v['draw']):
-                        # ok = True
-                        if(pcv.filter_boolean_object != ''):
-                            o = bpy.data.objects.get(pcv.filter_boolean_object)
-                            if(o is not None):
-                                if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
-                                    ok = True
+                        o = pcv.filter_boolean_object
+                        if(o is not None):
+                            if(o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+                                ok = True
         return ok
     
     def execute(self, context):
@@ -8299,7 +8293,7 @@ class PCV_OT_filter_boolean_exclude(Operator):
         _t = time.time()
         
         pcv = context.object.point_cloud_visualizer
-        o = bpy.data.objects.get(pcv.filter_boolean_object)
+        o = pcv.filter_boolean_object
         if(o is None):
             raise Exception()
         
@@ -9059,13 +9053,7 @@ class PCV_OT_clip_planes_from_bbox(Operator):
         pcv = context.object.point_cloud_visualizer
         ok = False
         
-        # for k, v in PCVManager.cache.items():
-        #     if(v['uuid'] == pcv.uuid):
-        #         if(v['ready']):
-        #             if(v['draw']):
-        #                 ok = True
-        
-        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        bbo = pcv.clip_planes_from_bbox_object
         if(bbo is not None):
             ok = True
         
@@ -9073,7 +9061,7 @@ class PCV_OT_clip_planes_from_bbox(Operator):
     
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
-        bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
+        bbo = pcv.clip_planes_from_bbox_object
         
         mw = bbo.matrix_world
         vs = [mw @ Vector(v) for v in bbo.bound_box]
@@ -9147,18 +9135,6 @@ class PCV_OT_clip_planes_reset(Operator):
             return False
         
         pcv = context.object.point_cloud_visualizer
-        ok = False
-        
-        # for k, v in PCVManager.cache.items():
-        #     if(v['uuid'] == pcv.uuid):
-        #         if(v['ready']):
-        #             if(v['draw']):
-        #                 ok = True
-        
-        # bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
-        # if(bbo is not None):
-        #     ok = True
-        
         ok = True
         
         return ok
@@ -9166,7 +9142,7 @@ class PCV_OT_clip_planes_reset(Operator):
     def execute(self, context):
         pcv = context.object.point_cloud_visualizer
         
-        pcv.clip_planes_from_bbox_object = ''
+        pcv.clip_planes_from_bbox_object = None
         
         z = (0.0, 0.0, 0.0, 0.0, )
         pcv.clip_plane0 = z
@@ -9199,16 +9175,6 @@ class PCV_OT_clip_planes_from_camera_view(Operator):
         
         pcv = context.object.point_cloud_visualizer
         ok = False
-        
-        # for k, v in PCVManager.cache.items():
-        #     if(v['uuid'] == pcv.uuid):
-        #         if(v['ready']):
-        #             if(v['draw']):
-        #                 ok = True
-        
-        # bbo = bpy.data.objects.get(pcv.clip_planes_from_bbox_object)
-        # if(bbo is not None):
-        #     ok = True
         
         s = bpy.context.scene
         o = s.camera
@@ -9410,7 +9376,7 @@ class PCVIV2_OT_dev_transform_normals(Operator):
         pcv = o.point_cloud_visualizer
         
         # sample target object
-        to = bpy.data.objects.get(pcv.dev_transform_normals_target_object)
+        to = pcv.dev_transform_normals_target_object
         sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, to, count=1000, colorize='CONSTANT', constant_color=(1.0, 0.0, 0.0), )
         vs = sampler.vs
         ns = sampler.ns
@@ -10868,7 +10834,7 @@ class PCV_PT_filter_project(Panel):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
         c = l.column()
-        c.prop_search(pcv, 'filter_project_object', context.scene, 'objects')
+        c.prop(pcv, 'filter_project_object')
         
         a = c.column(align=True)
         a.prop(pcv, 'filter_project_search_distance')
@@ -11017,7 +10983,7 @@ class PCV_PT_filter_boolean(Panel):
         l = self.layout
         c = l.column()
         
-        c.prop_search(pcv, 'filter_boolean_object', context.scene, 'objects')
+        c.prop(pcv, 'filter_boolean_object')
         c.operator('point_cloud_visualizer.filter_boolean_intersect')
         c.operator('point_cloud_visualizer.filter_boolean_exclude')
         
@@ -11119,7 +11085,7 @@ class PCV_PT_clip(Panel):
         r.prop(pcv, 'clip_plane5', )
         
         c = a.column(align=True)
-        c.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+        c.prop(pcv, 'clip_planes_from_bbox_object')
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.clip_planes_from_bbox')
         r.operator('point_cloud_visualizer.clip_planes_reset', text='', icon='X', )
@@ -11461,7 +11427,7 @@ class PCV_PT_development(Panel):
             r = cc.row(align=True)
             r.prop(pcv, 'clip_plane5_enabled', text='', toggle=True, icon_only=True, icon='HIDE_OFF' if pcv.clip_plane5_enabled else 'HIDE_ON', )
             r.prop(pcv, 'clip_plane5', )
-            cc.prop_search(pcv, 'clip_planes_from_bbox_object', context.scene, 'objects')
+            cc.prop(pcv, 'clip_planes_from_bbox_object')
             cc.operator('point_cloud_visualizer.clip_planes_from_bbox')
         
         cc = c.column(align=True)
@@ -11557,7 +11523,7 @@ class PCV_PT_development(Panel):
         
         sub.label(text="Numpy Vertices And Normals Transform")
         c = sub.column()
-        c.prop_search(pcv, 'dev_transform_normals_target_object', context.scene, 'objects')
+        c.prop(pcv, 'dev_transform_normals_target_object')
         c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
         
         sub.label(text="Clip To Active Camera Cone")
@@ -12308,7 +12274,12 @@ class PCV_properties(PropertyGroup):
         if(not self.filter_project_negative and not self.filter_project_positive):
             self.filter_project_positive = True
     
-    filter_project_object: StringProperty(name="Object", default="", )
+    def _filter_project_object_poll(self, o, ):
+        if(o and o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+            return True
+        return False
+    
+    filter_project_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_filter_project_object_poll, )
     filter_project_search_distance: FloatProperty(name="Search Distance", default=0.1, min=0.0, max=10000.0, precision=3, subtype='DISTANCE', description="Maximum search distance in which to search for surface", )
     filter_project_positive: BoolProperty(name="Positive", description="Search along point normal forwards", default=True, update=_project_positive_radio_update, )
     filter_project_negative: BoolProperty(name="Negative", description="Search along point normal backwards", default=True, update=_project_negative_radio_update, )
@@ -12321,7 +12292,12 @@ class PCV_properties(PropertyGroup):
                                                                      ], default='UVTEX', description="Color source for projected point cloud", )
     filter_project_shift: FloatProperty(name="Shift", default=0.0, precision=3, subtype='DISTANCE', description="Shift points after projection above (positive) or below (negative) surface", )
     
-    filter_boolean_object: StringProperty(name="Object", default="", )
+    def _filter_boolean_object_poll(self, o, ):
+        if(o and o.type in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+            return True
+        return False
+    
+    filter_boolean_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_filter_boolean_object_poll, )
     
     edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
@@ -12698,8 +12674,12 @@ class PCV_properties(PropertyGroup):
     pcviv_material_list_active_index: IntProperty(name="Index", default=0, description="", options={'HIDDEN', }, )
     
     # testing / development stuff
-    # TODO: remake all object selections with PointerProperty to enable eyedropper
-    dev_transform_normals_target_object: StringProperty(name="Object", default="", )
+    def _dev_transform_normals_target_object_poll(self, o, ):
+        if(o and o.type in ('MESH', )):
+            return True
+        return False
+    
+    dev_transform_normals_target_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_dev_transform_normals_target_object_poll, )
     
     # dev
     def _clip_shader_enabled(self, context):
@@ -12737,7 +12717,13 @@ class PCV_properties(PropertyGroup):
     clip_plane3: FloatVectorProperty(name="Plane 3", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
     clip_plane4: FloatVectorProperty(name="Plane 4", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
     clip_plane5: FloatVectorProperty(name="Plane 5", default=(0.0, 0.0, 0.0, 0.0), subtype='NONE', size=4, description="", )
-    clip_planes_from_bbox_object: StringProperty(name="Object", default="", description="", )
+    
+    def _clip_planes_from_bbox_object_poll(self, o, ):
+        if(o and o.type in ('MESH', )):
+            return True
+        return False
+    
+    clip_planes_from_bbox_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_clip_planes_from_bbox_object_poll, )
     
     def _billboard_phong_enabled(self, context):
         if(self.billboard_phong_enabled):
