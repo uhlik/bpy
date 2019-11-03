@@ -160,6 +160,13 @@ Load another ply and merge with currently displayed. Hit `Merge With Other PLY`,
 
 * `Merge With Other PLY` - run operator
 
+##### Join
+
+Join current active point cloud with another on different object. Object transformations are applied to clouds to look the same as before joining.
+
+* `Object` - select object with another point cloud to join
+* `Join` - run operator
+
 ##### Color Adjustment
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-0.9.25-color-adjustment.png)
@@ -345,6 +352,7 @@ c.reset()
 
 ### Changelog:
 
+* 0.9.30 join filter, ui tweaks, fixes
 * 0.9.29 fixes, render logging
 * 0.9.28 clipping planes from object bounding box, faster all numpy export, many minor fixes
 * 0.9.27 render supersampling and draw smooth circles

@@ -19,7 +19,7 @@
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",
            "author": "Jakub Uhlik",
-           "version": (0, 9, 29),
+           "version": (0, 9, 30),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > Point Cloud Visualizer",
            "warning": "",
@@ -8049,6 +8049,102 @@ class PCV_OT_filter_merge(Operator):
         return {'FINISHED'}
 
 
+class PCV_OT_filter_join(Operator):
+    bl_idname = "point_cloud_visualizer.filter_join"
+    bl_label = "Join"
+    bl_description = "Join with another PCV instance cloud"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        pcv2 = None
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        o = pcv.filter_join_object
+                        if(o is not None):
+                            pcv2 = o.point_cloud_visualizer
+                break
+        if(pcv2 is not None):
+            for k, v in PCVManager.cache.items():
+                if(v['uuid'] == pcv2.uuid):
+                    if(v['ready']):
+                        ok = True
+                    break
+        return ok
+    
+    def execute(self, context):
+        pcv = context.object.point_cloud_visualizer
+        pcv2 = pcv.filter_join_object.point_cloud_visualizer
+        
+        c = PCVManager.cache[pcv.uuid]
+        c2 = PCVManager.cache[pcv2.uuid]
+        
+        ovs = c['vertices']
+        ons = c['normals']
+        ocs = c['colors']
+        nvs = c2['vertices']
+        nns = c2['normals']
+        ncs = c2['colors']
+        
+        def apply_matrix(m, vs, ns=None, ):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(ns is not None):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
+            return vs, ns
+        
+        nvs, nns = apply_matrix(pcv.filter_join_object.matrix_world, nvs, nns, )
+        nvs, nns = apply_matrix(context.object.matrix_world.inverted(), nvs, nns, )
+        
+        vs = np.concatenate((ovs, nvs, ))
+        ns = np.concatenate((ons, nns, ))
+        cs = np.concatenate((ocs, ncs, ))
+        
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if(addon_prefs.shuffle_points):
+            l = len(vs)
+            dt = [('x', '<f8'), ('y', '<f8'), ('z', '<f8'), ('nx', '<f8'), ('ny', '<f8'), ('nz', '<f8'), ('red', '<f8'), ('green', '<f8'), ('blue', '<f8'), ('alpha', '<f8'), ]
+            a = np.empty(l, dtype=dt, )
+            a['x'] = vs[:, 0]
+            a['y'] = vs[:, 1]
+            a['z'] = vs[:, 2]
+            a['nx'] = ns[:, 0]
+            a['ny'] = ns[:, 1]
+            a['nz'] = ns[:, 2]
+            a['red'] = cs[:, 0]
+            a['green'] = cs[:, 1]
+            a['blue'] = cs[:, 2]
+            a['alpha'] = cs[:, 3]
+            np.random.shuffle(a)
+            vs = np.column_stack((a['x'], a['y'], a['z'], ))
+            ns = np.column_stack((a['nx'], a['ny'], a['nz'], ))
+            cs = np.column_stack((a['red'], a['green'], a['blue'], a['alpha'], ))
+            vs = vs.astype(np.float32)
+            ns = ns.astype(np.float32)
+            cs = cs.astype(np.float32)
+        
+        PCVManager.update(pcv.uuid, vs, ns, cs, )
+        
+        c2['draw'] = False
+        context.area.tag_redraw()
+        
+        return {'FINISHED'}
+
+
 class PCV_OT_filter_boolean_intersect(Operator):
     bl_idname = "point_cloud_visualizer.filter_boolean_intersect"
     bl_label = "Intersect"
@@ -10956,6 +11052,46 @@ class PCV_PT_filter_merge(Panel):
         c.enabled = PCV_OT_filter_merge.poll(context)
 
 
+class PCV_PT_filter_join(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "Join"
+    bl_parent_id = "PCV_PT_filter"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.edit_is_edit_mesh):
+                return False
+            if(pcv.edit_initialized):
+                return False
+        return True
+    
+    def draw(self, context):
+        pcv = context.object.point_cloud_visualizer
+        l = self.layout
+        c = l.column()
+        
+        c.prop(pcv, 'filter_join_object')
+        c.operator('point_cloud_visualizer.filter_join')
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+                break
+        c.enabled = ok
+
+
 class PCV_PT_filter_boolean(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -12299,6 +12435,22 @@ class PCV_properties(PropertyGroup):
     
     filter_boolean_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_filter_boolean_object_poll, )
     
+    def _filter_join_object_poll(self, o, ):
+        ok = False
+        if(o):
+            pcv = o.point_cloud_visualizer
+            if(pcv.uuid != ''):
+                for k, v in PCVManager.cache.items():
+                    if(v['uuid'] == pcv.uuid):
+                        if(v['ready']):
+                            # if(v['draw']):
+                            #     ok = True
+                            ok = True
+                        break
+        return ok
+    
+    filter_join_object: PointerProperty(type=bpy.types.Object, name="Object", description="", poll=_filter_join_object_poll, )
+    
     edit_initialized: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_mesh: BoolProperty(default=False, options={'HIDDEN', }, )
     edit_is_edit_uuid: StringProperty(default="", options={'HIDDEN', }, )
@@ -12795,7 +12947,7 @@ def _update_panel_bl_category(self, context, ):
     _sub_panels = (
         PCV_PT_clip,
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
-        PCV_PT_filter_merge, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
+        PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
         # PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
         PCV_PT_debug,
@@ -12890,7 +13042,8 @@ classes = (
     PCV_properties, PCV_preferences,
     
     PCV_PT_panel, PCV_PT_clip, PCV_PT_edit,
-    PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color, PCV_PT_filter_merge, PCV_PT_filter_color_adjustment,
+    PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color, PCV_PT_filter_merge,
+    PCV_PT_filter_join, PCV_PT_filter_color_adjustment,
     PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
     
     PCV_OT_load, PCV_OT_draw, PCV_OT_erase, PCV_OT_render, PCV_OT_render_animation, PCV_OT_convert, PCV_OT_reload, PCV_OT_export,
@@ -12898,7 +13051,7 @@ classes = (
     PCV_OT_filter_project, PCV_OT_filter_merge, PCV_OT_filter_boolean_intersect, PCV_OT_filter_boolean_exclude,
     PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel,
     PCV_OT_sequence_preload, PCV_OT_sequence_clear, PCV_OT_generate_point_cloud, PCV_OT_reset_runtime,
-    PCV_OT_color_adjustment_shader_reset, PCV_OT_color_adjustment_shader_apply,
+    PCV_OT_color_adjustment_shader_reset, PCV_OT_color_adjustment_shader_apply, PCV_OT_filter_join,
     
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
