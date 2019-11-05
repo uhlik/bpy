@@ -25,7 +25,7 @@ import shutil
 import sys
 import numpy as np
 
-from .debug import log
+from .debug import log, debug_mode
 
 
 class BinPlyPointCloudReader():

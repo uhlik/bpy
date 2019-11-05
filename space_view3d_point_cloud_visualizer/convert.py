@@ -30,7 +30,7 @@ import bpy
 import bmesh
 from mathutils import Matrix, Vector, Quaternion, Color
 
-from .debug import log
+from .debug import log, debug_mode
 
 
 class PCMeshInstancerMeshGenerator():
