@@ -59,6 +59,9 @@ from bpy.types import AddonPreferences
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
+# TODO: split operators to logic / algorithm, or by type display, filter, etc..
+# TODO: instavis cleanup
+
 
 class PCV_preferences(AddonPreferences):
     bl_idname = __name__

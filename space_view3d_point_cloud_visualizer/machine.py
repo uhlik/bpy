@@ -34,7 +34,7 @@ from mathutils import Matrix, Vector, Quaternion, Color
 from bpy.app.handlers import persistent
 
 from .debug import log, debug_mode
-from . import io
+from . import ply_io
 from . import shaders
 
 
@@ -76,8 +76,8 @@ class PCVManager():
         # FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
         points = []
         try:
-            # points = io.BinPlyPointCloudReader(filepath).points
-            points = io.PlyPointCloudReader(filepath).points
+            # points = ply_io.BinPlyPointCloudReader(filepath).points
+            points = ply_io.PlyPointCloudReader(filepath).points
         except Exception as e:
             if(operator is not None):
                 operator.report({'ERROR'}, str(e))

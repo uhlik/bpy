@@ -46,7 +46,7 @@ import bgl
 
 from .debug import log, debug_mode
 from . import debug
-from . import io
+from . import ply_io
 from . import shaders
 from .machine import PCVManager, PCVSequence, preferences, PCVControl
 from . import convert
@@ -942,7 +942,7 @@ class PCV_OT_export(Operator, ExportHelper):
             a['green'] = cs[:, 1]
             a['blue'] = cs[:, 2]
         
-        w = io.BinPlyPointCloudWriter(self.filepath, a, )
+        w = ply_io.BinPlyPointCloudWriter(self.filepath, a, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -1954,7 +1954,7 @@ class PCV_OT_filter_merge(Operator):
         
         points = []
         try:
-            points = io.PlyPointCloudReader(filepath).points
+            points = ply_io.PlyPointCloudReader(filepath).points
         except Exception as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
@@ -2707,7 +2707,7 @@ class PCV_OT_sequence_preload(Operator):
                 p = os.path.join(dirpath, n)
                 points = []
                 try:
-                    points = io.PlyPointCloudReader(p).points
+                    points = ply_io.PlyPointCloudReader(p).points
                 except Exception as e:
                     self.report({'ERROR'}, str(e))
                 if(len(points) == 0):
