@@ -1,11 +1,11 @@
 .DS_Store
 
-*.so
+__pycache__
 
-io_mesh_fast_obj/__pycache__
 io_mesh_fast_obj/blender
 io_mesh_fast_obj/build
 io_mesh_fast_obj/*.cpp
+io_mesh_fast_obj/*.so
 
 .tm_properties
 
