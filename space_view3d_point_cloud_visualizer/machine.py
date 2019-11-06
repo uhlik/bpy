@@ -34,8 +34,8 @@ from mathutils import Matrix, Vector, Quaternion, Color
 from bpy.app.handlers import persistent
 
 from .debug import log, debug_mode
-from . import ply_io
-from . import shaders
+from . import io_ply
+# from . import shaders 
 
 
 def preferences():
@@ -76,8 +76,8 @@ class PCVManager():
         # FIXME ply loading might not work with all ply files, for example, file spec seems does not forbid having two or more blocks of vertices with different props, currently i load only first block of vertices. maybe construct some messed up ply and test how for example meshlab behaves
         points = []
         try:
-            # points = ply_io.BinPlyPointCloudReader(filepath).points
-            points = ply_io.PlyPointCloudReader(filepath).points
+            # points = io_ply.BinPlyPointCloudReader(filepath).points
+            points = io_ply.PlyPointCloudReader(filepath).points
         except Exception as e:
             if(operator is not None):
                 operator.report({'ERROR'}, str(e))
@@ -189,11 +189,11 @@ class PCVManager():
         ienabled = pcv.illumination
         d['illumination'] = ienabled
         if(ienabled):
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
         else:
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
         
@@ -278,12 +278,12 @@ class PCVManager():
             ns = ci['normals']
             l = ci['current_display_length']
             if(pcv.illumination):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
                 ci['illumination'] = True
             else:
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
                 ci['illumination'] = False
@@ -347,7 +347,7 @@ class PCVManager():
                 vs = ci['vertices'][:l]
                 ns = ci['normals'][:l]
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('normals')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('normals')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], }, )
                 
@@ -411,15 +411,15 @@ class PCVManager():
             
             if(not use_stored):
                 if(pcv.illumination):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_illumination')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_illumination')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
                 elif(pcv.dev_depth_false_colors):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_false_colors')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_false_colors')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
                 else:
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_simple')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_simple')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
                 
@@ -513,7 +513,7 @@ class PCVManager():
                             break
             
             if(not use_stored):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('normal_colors')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('normal_colors')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], })
                 
@@ -553,7 +553,7 @@ class PCVManager():
             
             if(not use_stored):
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('position_colors')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('position_colors')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
                 
@@ -579,7 +579,7 @@ class PCVManager():
             vs = ci['vertices']
             l = ci['current_display_length']
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('selection')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('selection')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], })
@@ -611,7 +611,7 @@ class PCVManager():
             
             if(not use_stored):
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('color_adjustment')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('color_adjustment')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -658,7 +658,7 @@ class PCVManager():
             
             if(not use_stored):
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('bbox')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('bbox')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": [(0.0, 0.0, 0.0, )], }, )
@@ -742,7 +742,7 @@ class PCVManager():
             
             if(not use_stored):
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -800,7 +800,7 @@ class PCVManager():
                             sizesf = ci['extra'][k]['sizesf']
                             break
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
@@ -861,7 +861,7 @@ class PCVManager():
                             sizesf = ci['extra'][k]['sizesf']
                             break
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size_and_depth')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size_and_depth')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sizes[:l], })
@@ -927,7 +927,7 @@ class PCVManager():
             
             if(not use_stored):
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple_billboard')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple_billboard')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 
                 # shader = GPUShader(PCVShaders.billboard_vertex, PCVShaders.billboard_fragment, geocode=PCVShaders.billboard_geometry_disc, )
@@ -986,7 +986,7 @@ class PCVManager():
                             sizesf = ci['extra'][k]['sizesf']
                             break
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_depth_and_size')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_depth_and_size')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
@@ -1073,7 +1073,7 @@ class PCVManager():
                             sizesf = ci['extra'][k]['sizesf']
                             break
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_no_depth_and_size')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_no_depth_and_size')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": sizesf[:l], })
@@ -1115,7 +1115,7 @@ class PCVManager():
                             break
             
             if(not use_stored):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('phong')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('phong')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
@@ -1172,7 +1172,7 @@ class PCVManager():
                             break
             
             if(not use_stored):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple_clip')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple_clip')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -1255,10 +1255,10 @@ class PCVManager():
                 # shader = GPUShader(PCVShaders.billboard_phong_vs, PCVShaders.billboard_phong_fs, geocode=use_geocode, )
                 
                 if(pcv.billboard_phong_circles):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('phong_billboard_circles')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('phong_billboard_circles')
                     shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 else:
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('phong_billboard')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('phong_billboard')
                     shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
@@ -1313,7 +1313,7 @@ class PCVManager():
                 indices = np.indices((len(vs), ), dtype=np.int, )
                 indices.shape = (-1, )
                 
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple_skip_point')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple_skip_point')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], "color": cs[:], "index": indices[:], })
@@ -1356,7 +1356,7 @@ class PCVManager():
                 pcv.filter_remove_color_selection = False
                 del ci['selection_indexes']
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('selection')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('selection')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:], })
@@ -1434,11 +1434,11 @@ class PCVManager():
         # setup new shaders
         ienabled = c['illumination']
         if(ienabled):
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:nl], "color": cs[:nl], "normal": ns[:nl], })
         else:
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:nl], "color": cs[:nl], })
         c['shader'] = shader
@@ -1700,11 +1700,11 @@ class PCVControl():
         d['current_display_length'] = l
         d['illumination'] = pcv.illumination
         if(pcv.illumination):
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
         else:
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
         d['shader'] = shader
@@ -1763,11 +1763,11 @@ class PCVControl():
         d['current_display_length'] = l
         d['illumination'] = pcv.illumination
         if(pcv.illumination):
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "normal": ns[:l], })
         else:
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
             shader = GPUShader(shader_data_vert, shader_data_frag)
             batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
         d['shader'] = shader
@@ -1832,3 +1832,55 @@ class PCVControl():
 def watcher(scene):
     PCVSequence.deinit()
     PCVManager.deinit()
+
+
+registry = {
+    'bbox': {'v': "bbox.vert", 'f': "bbox.frag", 'g': "bbox.geom", },
+    'billboard_with_depth_and_size': {'v': "billboard_with_depth_and_size.vert", 'f': "billboard_with_depth_and_size.frag", 'g': "billboard_with_depth_and_size.geom", },
+    'billboard_with_no_depth_and_size': {'v': "billboard_with_no_depth_and_size.vert", 'f': "billboard_with_no_depth_and_size.frag", 'g': "billboard_with_no_depth_and_size.geom", },
+    'color_adjustment': {'v': "color_adjustment.vert", 'f': "color_adjustment.frag", },
+    'depth_false_colors': {'v': "depth_false_colors.vert", 'f': "depth_false_colors.frag", },
+    'depth_illumination': {'v': "depth_illumination.vert", 'f': "depth_illumination.frag", },
+    'depth_simple': {'v': "depth_simple.vert", 'f': "depth_simple.frag", },
+    'illumination': {'v': "illumination.vert", 'f': "illumination.frag", },
+    'minimal_variable_size_and_depth': {'v': "minimal_variable_size_and_depth.vert", 'f': "minimal_variable_size_and_depth.frag", },
+    'minimal_variable_size': {'v': "minimal_variable_size.vert", 'f': "minimal_variable_size.frag", },
+    'minimal': {'v': "minimal.vert", 'f': "minimal.frag", },
+    'normal_colors': {'v': "normal_colors.vert", 'f': "normal_colors.frag", },
+    'normals': {'v': "normals.vert", 'f': "normals.frag", 'g': "normals.geom", },
+    'phong_billboard': {'v': "phong_billboard.vert", 'f': "phong_billboard.frag", 'g': "phong_billboard.geom", },
+    'phong_billboard_circles': {'v': "phong_billboard.vert", 'f': "phong_billboard.frag", 'g': "phong_billboard_circles.geom", },
+    'phong': {'v': "phong.vert", 'f': "phong.frag", },
+    'position_colors': {'v': "position_colors.vert", 'f': "position_colors.frag", },
+    'render_illumination_smooth': {'v': "render_illumination_smooth.vert", 'f': "render_illumination_smooth.frag", },
+    'render_simple_smooth': {'v': "render_simple_smooth.vert", 'f': "render_simple_smooth.frag", },
+    'selection': {'v': "selection.vert", 'f': "selection.frag", },
+    'simple_billboard': {'v': "simple_billboard.vert", 'f': "simple_billboard.frag", 'g': "simple_billboard.geom", },
+    'simple_billboard_disc': {'v': "simple_billboard.vert", 'f': "simple_billboard.frag", 'g': "simple_billboard_disc.geom", },
+    'simple_clip': {'v': "simple_clip.vert", 'f': "simple_clip.frag", },
+    'simple_skip_point': {'v': "simple_skip_point.vert", 'f': "simple_skip_point.frag", },
+    'simple': {'v': "simple.vert", 'f': "simple.frag", },
+}
+
+
+def load_shader_code(name):
+    if(name not in registry.keys()):
+        raise TypeError("Unknown shader requested..")
+    d = registry[name]
+    vf = d['v']
+    ff = d['f']
+    gf = None
+    if('g' in d.keys()):
+        gf = d['g']
+    
+    with open(os.path.join(os.path.dirname(__file__), 'shaders', vf), mode='r', encoding='utf-8') as f:
+        vs = f.read()
+    with open(os.path.join(os.path.dirname(__file__), 'shaders', ff), mode='r', encoding='utf-8') as f:
+        fs = f.read()
+    
+    gs = None
+    if(gf is not None):
+        with open(os.path.join(os.path.dirname(__file__), 'shaders', gf), mode='r', encoding='utf-8') as f:
+            gs = f.read()
+    
+    return vs, fs, gs

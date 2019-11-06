@@ -38,8 +38,8 @@ from gpu.types import GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
 
 from .debug import log, debug_mode
-from .machine import PCVManager, PCVControl
-from . import shaders
+from .machine import PCVManager, PCVControl, load_shader_code
+# from . import shaders
 
 
 class PCVIVSampler():
@@ -1610,7 +1610,7 @@ class PCVIV2Control(PCVControl):
         #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
         
         # shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-        shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
         shader = GPUShader(shader_data_vert, shader_data_frag)
         
         batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -1624,7 +1624,7 @@ class PCVIV2Control(PCVControl):
         
         d['extra'] = {}
         if(pcv.dev_minimal_shader_variable_size_enabled):
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag)
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
@@ -1640,7 +1640,7 @@ class PCVIV2Control(PCVControl):
             # TODO: do the same for the other shader until i decide which is better..
             # e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size_and_depth')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size_and_depth')
             e_shader = GPUShader(shader_data_vert, shader_data_frag)
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
@@ -1656,7 +1656,7 @@ class PCVIV2Control(PCVControl):
             # FIXME: this is getting ridiculous
             # e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_depth_and_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_depth_and_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
@@ -1673,7 +1673,7 @@ class PCVIV2Control(PCVControl):
             # FIXME: this is getting ridiculous
             # e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_no_depth_and_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_no_depth_and_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
@@ -1761,7 +1761,7 @@ class PCVIV2Control(PCVControl):
         #     batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
         
         # shader = GPUShader(PCVShaders.vertex_shader_simple, PCVShaders.fragment_shader_simple)
-        shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
         shader = GPUShader(shader_data_vert, shader_data_frag)
         
         batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "color": cs[:l], })
@@ -1775,7 +1775,7 @@ class PCVIV2Control(PCVControl):
         if(pcv.dev_minimal_shader_variable_size_enabled):
             # e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size, PCVShaders.fragment_shader_minimal_variable_size, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag)
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
@@ -1791,7 +1791,7 @@ class PCVIV2Control(PCVControl):
             # TODO: do the same for the other shader until i decide which is better..
             # e_shader = GPUShader(PCVShaders.vertex_shader_minimal_variable_size_and_depth, PCVShaders.fragment_shader_minimal_variable_size_and_depth, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('minimal_variable_size_and_depth')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('minimal_variable_size_and_depth')
             e_shader = GPUShader(shader_data_vert, shader_data_frag)
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "size": sz[:l], })
@@ -1807,7 +1807,7 @@ class PCVIV2Control(PCVControl):
             # FIXME: this is getting ridiculous
             # e_shader = GPUShader(PCVShaders.billboard_vertex_with_depth_and_size, PCVShaders.billboard_fragment_with_depth_and_size, geocode=PCVShaders.billboard_geometry_with_depth_and_size, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_depth_and_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_depth_and_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })
@@ -1824,7 +1824,7 @@ class PCVIV2Control(PCVControl):
             # FIXME: this is getting ridiculous
             # e_shader = GPUShader(PCVShaders.billboard_vertex_with_no_depth_and_size, PCVShaders.billboard_fragment_with_no_depth_and_size, geocode=PCVShaders.billboard_geometry_with_no_depth_and_size, )
             
-            shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('billboard_with_no_depth_and_size')
+            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('billboard_with_no_depth_and_size')
             e_shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
             
             e_batch = batch_for_shader(e_shader, 'POINTS', {"position": vs[:l], "color": cs[:l], "sizef": szf[:l], })

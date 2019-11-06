@@ -46,9 +46,9 @@ import bgl
 
 from .debug import log, debug_mode
 from . import debug
-from . import ply_io
-from . import shaders
-from .machine import PCVManager, PCVSequence, preferences, PCVControl
+from . import io_ply
+# from . import shaders
+from .machine import PCVManager, PCVSequence, preferences, PCVControl, load_shader_code
 from . import convert
 from . import sample
 
@@ -370,41 +370,41 @@ class PCV_OT_render(Operator):
             
             if(pcv.dev_depth_enabled):
                 if(pcv.illumination):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_illumination')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_illumination')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, })
                 elif(pcv.dev_depth_false_colors):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_false_colors')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_false_colors')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
                 else:
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('depth_simple')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('depth_simple')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
             elif(pcv.dev_normal_colors_enabled):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('normal_colors')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('normal_colors')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, })
             elif(pcv.dev_position_colors_enabled):
-                shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('position_colors')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('position_colors')
                 shader = GPUShader(shader_data_vert, shader_data_frag)
                 batch = batch_for_shader(shader, 'POINTS', {"position": vs, })
             elif(pcv.illumination):
                 if(use_smoothstep):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('render_illumination_smooth')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('render_illumination_smooth')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
                 else:
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('illumination')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('illumination')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, "normal": ns, })
             else:
                 if(use_smoothstep):
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('render_simple_smooth')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('render_simple_smooth')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
                 else:
-                    shader_data_vert, shader_data_frag, shader_data_geom = shaders.load('simple')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('simple')
                     shader = GPUShader(shader_data_vert, shader_data_frag)
                     batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
             
@@ -942,7 +942,7 @@ class PCV_OT_export(Operator, ExportHelper):
             a['green'] = cs[:, 1]
             a['blue'] = cs[:, 2]
         
-        w = ply_io.BinPlyPointCloudWriter(self.filepath, a, )
+        w = io_ply.BinPlyPointCloudWriter(self.filepath, a, )
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
@@ -1954,7 +1954,7 @@ class PCV_OT_filter_merge(Operator):
         
         points = []
         try:
-            points = ply_io.PlyPointCloudReader(filepath).points
+            points = io_ply.PlyPointCloudReader(filepath).points
         except Exception as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
@@ -2707,7 +2707,7 @@ class PCV_OT_sequence_preload(Operator):
                 p = os.path.join(dirpath, n)
                 points = []
                 try:
-                    points = ply_io.PlyPointCloudReader(p).points
+                    points = io_ply.PlyPointCloudReader(p).points
                 except Exception as e:
                     self.report({'ERROR'}, str(e))
                 if(len(points) == 0):

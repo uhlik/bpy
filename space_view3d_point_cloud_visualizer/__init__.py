@@ -30,8 +30,8 @@ bl_info = {"name": "Point Cloud Visualizer",
 if('bpy' in locals()):
     import importlib
     importlib.reload(debug)
-    importlib.reload(io)
-    importlib.reload(shaders)
+    importlib.reload(io_ply)
+    # importlib.reload(shaders)
     importlib.reload(machine)
     importlib.reload(props)
     importlib.reload(ui)
@@ -41,8 +41,8 @@ if('bpy' in locals()):
     importlib.reload(instavis)
 else:
     from . import debug
-    from . import io
-    from . import shaders
+    from . import io_ply
+    # from . import shaders
     from . import machine
     from . import props
     from . import ui
