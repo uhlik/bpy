@@ -20,6 +20,7 @@
 # author: Jakub Uhlik
 # (c) 2019 Jakub Uhlik
 
+import os
 import uuid
 import time
 import datetime
@@ -28,9 +29,11 @@ import numpy as np
 
 import bpy
 import bmesh
+from bpy.types import Operator
 from mathutils import Matrix, Vector, Quaternion, Color
 
 from .debug import log, debug_mode
+from .machine import PCVManager
 
 
 class PCMeshInstancerMeshGenerator():
@@ -858,3 +861,154 @@ class PCParticles():
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("completed in {}.".format(_d), 1)
+
+
+class PCV_OT_convert(Operator):
+    bl_idname = "point_cloud_visualizer.convert"
+    bl_label = "Convert"
+    bl_description = "Convert point cloud to mesh"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        pcv = context.object.point_cloud_visualizer
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        _t = time.time()
+        
+        scene = context.scene
+        pcv = context.object.point_cloud_visualizer
+        o = context.object
+        
+        cache = PCVManager.cache[pcv.uuid]
+        
+        l = cache['stats']
+        if(not pcv.mesh_all):
+            nump = l
+            mps = pcv.mesh_percentage
+            l = int((nump / 100) * mps)
+            if(mps >= 99):
+                l = nump
+        
+        vs = cache['vertices'][:l]
+        ns = cache['normals'][:l]
+        cs = cache['colors'][:l]
+        
+        points = []
+        for i in range(l):
+            c = tuple([int(255 * cs[i][j]) for j in range(3)])
+            points.append(tuple(vs[i]) + tuple(ns[i]) + c)
+        
+        def apply_matrix(points, matrix):
+            matrot = matrix.decompose()[1].to_matrix().to_4x4()
+            r = [None] * len(points)
+            for i, p in enumerate(points):
+                co = matrix @ Vector((p[0], p[1], p[2]))
+                no = matrot @ Vector((p[3], p[4], p[5]))
+                r[i] = (co.x, co.y, co.z, no.x, no.y, no.z, p[6], p[7], p[8])
+            return r
+        
+        _, t = os.path.split(pcv.filepath)
+        n, _ = os.path.splitext(t)
+        m = o.matrix_world.copy()
+        
+        points = apply_matrix(points, m)
+        
+        g = None
+        if(pcv.mesh_type in ('INSTANCER', 'PARTICLES', )):
+            # TODO: if normals are missing or align to normal is not required, make just vertices instead of triangles and use that as source for particles and instances, will be a bit faster
+            g = PCMeshInstancerMeshGenerator(mesh_type='TRIANGLE', )
+        else:
+            g = PCMeshInstancerMeshGenerator(mesh_type=pcv.mesh_type, )
+        
+        names = {'VERTEX': "{}-vertices",
+                 'TRIANGLE': "{}-triangles",
+                 'TETRAHEDRON': "{}-tetrahedrons",
+                 'CUBE': "{}-cubes",
+                 'ICOSPHERE': "{}-icospheres",
+                 'INSTANCER': "{}-instancer",
+                 'PARTICLES': "{}-particles", }
+        n = names[pcv.mesh_type].format(n)
+        
+        # hide the point cloud, 99% of time i go back, hide cloud and then go to conversion product again..
+        bpy.ops.point_cloud_visualizer.erase()
+        
+        s = pcv.mesh_size
+        a = pcv.mesh_normal_align
+        c = pcv.mesh_vcols
+        if(not pcv.has_normals):
+            a = False
+        if(not pcv.has_vcols):
+            c = False
+        d = {'name': n, 'points': points, 'generator': g, 'matrix': Matrix(),
+             'size': s, 'normal_align': a, 'vcols': c, }
+        if(pcv.mesh_type == 'VERTEX'):
+            # faster than instancer.. single vertices can't have normals and colors, so no need for instancer
+            bm = bmesh.new()
+            for p in points:
+                bm.verts.new(p[:3])
+            me = bpy.data.meshes.new(n)
+            bm.to_mesh(me)
+            bm.free()
+            o = bpy.data.objects.new(n, me)
+            view_layer = context.view_layer
+            collection = view_layer.active_layer_collection.collection
+            collection.objects.link(o)
+            bpy.ops.object.select_all(action='DESELECT')
+            o.select_set(True)
+            view_layer.objects.active = o
+        else:
+            
+            if(pcv.mesh_use_instancer2):
+                # import cProfile
+                # import pstats
+                # import io
+                # pr = cProfile.Profile()
+                # pr.enable()
+                
+                d = {
+                    'name': n,
+                    'vs': vs,
+                    'ns': ns,
+                    'cs': cs,
+                    'generator': g,
+                    'matrix': Matrix(),
+                    'size': s,
+                    'with_normal_align': a,
+                    'with_vertex_colors': c,
+                }
+                instancer = PCMeshInstancer2(**d)
+                
+                # pr.disable()
+                # s = io.StringIO()
+                # sortby = 'cumulative'
+                # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+                # ps.print_stats()
+                # print(s.getvalue())
+            else:
+                instancer = PCMeshInstancer(**d)
+            
+            o = instancer.object
+        
+        me = o.data
+        me.transform(m.inverted())
+        o.matrix_world = m
+        
+        if(pcv.mesh_type == 'INSTANCER'):
+            pci = PCInstancer(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
+        if(pcv.mesh_type == 'PARTICLES'):
+            pcp = PCParticles(o, pcv.mesh_size, pcv.mesh_base_sphere_subdivisions, )
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d))
+        
+        return {'FINISHED'}
