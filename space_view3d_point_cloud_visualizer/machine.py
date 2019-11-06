@@ -35,7 +35,6 @@ from bpy.app.handlers import persistent
 
 from .debug import log, debug_mode
 from . import io_ply
-# from . import shaders 
 
 
 def preferences():
