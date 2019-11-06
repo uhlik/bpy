@@ -44,7 +44,7 @@ if('bpy' in locals()):
     importlib.reload(edit)
     importlib.reload(render)
     importlib.reload(convert)
-    importlib.reload(sample)
+    importlib.reload(generate)
     importlib.reload(instavis)
 else:
     from . import debug
@@ -58,7 +58,7 @@ else:
     from . import edit
     from . import render
     from . import convert
-    from . import sample
+    from . import generate
     from . import instavis
 
 
@@ -81,13 +81,13 @@ classes = (
     ops.PCV_OT_load, ops.PCV_OT_draw, ops.PCV_OT_erase,
     ops.PCV_OT_reload, ops.PCV_OT_export,
     ops.PCV_OT_sequence_preload, ops.PCV_OT_sequence_clear,
-    ops.PCV_OT_generate_point_cloud,
     ops.PCV_OT_reset_runtime,
     ops.PCV_OT_clip_planes_from_bbox, ops.PCV_OT_clip_planes_reset, ops.PCV_OT_clip_planes_from_camera_view,
     
     convert.PCV_OT_convert,
     render.PCV_OT_render, render.PCV_OT_render_animation,
     edit.PCV_OT_edit_start, edit.PCV_OT_edit_update, edit.PCV_OT_edit_end, edit.PCV_OT_edit_cancel,
+    generate.PCV_OT_generate_point_cloud,
     
     filters.PCV_OT_filter_simplify, filters.PCV_OT_filter_remove_color, filters.PCV_OT_filter_remove_color_delete_selected,
     filters.PCV_OT_filter_remove_color_deselect, filters.PCV_OT_filter_project, filters.PCV_OT_filter_merge,
@@ -98,7 +98,7 @@ classes = (
     instavis.PCVIV2_OT_deinit, instavis.PCVIV2_OT_reset, instavis.PCVIV2_OT_reset_all, instavis.PCVIV2_OT_update, instavis.PCVIV2_OT_update_all,
     
     ui.PCV_PT_development,
-    ops.PCV_OT_generate_volume_point_cloud,
+    generate.PCV_OT_generate_volume_point_cloud,
     instavis.PCVIV2_OT_dev_transform_normals,
     
     ui.PCV_PT_debug,

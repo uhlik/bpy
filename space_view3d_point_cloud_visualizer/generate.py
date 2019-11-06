@@ -20,6 +20,8 @@
 # author: Jakub Uhlik
 # (c) 2019 Jakub Uhlik
 
+import time
+import datetime
 import math
 import numpy as np
 import sys
@@ -28,6 +30,7 @@ import statistics
 
 import bpy
 import bmesh
+from bpy.types import Operator
 from mathutils import Matrix, Vector, Quaternion, Color
 from mathutils.kdtree import KDTree
 from mathutils.geometry import barycentric_transform
@@ -35,6 +38,7 @@ from mathutils.interpolate import poly_3d_calc
 from mathutils.bvhtree import BVHTree
 
 from .debug import log, debug_mode, Progress
+from .machine import PCVManager, PCVControl
 
 
 class PCVTriangleSurfaceSampler():
@@ -860,3 +864,201 @@ class PCVRandomVolumeSampler():
         self.vs = vs[:]
         self.ns = ns[:]
         self.cs = cs[:]
+
+
+class PCV_OT_generate_point_cloud(Operator):
+    bl_idname = "point_cloud_visualizer.generate_from_mesh"
+    bl_label = "Generate"
+    bl_description = "Generate colored point cloud from mesh (or object convertible to mesh)"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        # pcv = context.object.point_cloud_visualizer
+        # if(pcv.uuid in PCVSequence.cache.keys()):
+        #     return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+        
+        return True
+    
+    def execute(self, context):
+        log("Generate From Mesh:", 0)
+        _t = time.time()
+        
+        o = context.object
+        
+        if(o.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
+            self.report({'ERROR'}, "Object does not have geometry data.")
+            return {'CANCELLED'}
+        
+        pcv = o.point_cloud_visualizer
+        
+        if(pcv.generate_source not in ('SURFACE', 'VERTICES', 'PARTICLES', )):
+            self.report({'ERROR'}, "Source not implemented.")
+            return {'CANCELLED'}
+        
+        n = pcv.generate_number_of_points
+        r = random.Random(pcv.generate_seed)
+        
+        if(pcv.generate_colors in ('CONSTANT', 'UVTEX', 'VCOLS', 'GROUP_MONO', 'GROUP_COLOR', )):
+            if(o.type in ('CURVE', 'SURFACE', 'FONT', ) and pcv.generate_colors != 'CONSTANT'):
+                self.report({'ERROR'}, "Object type does not support UV textures, vertex colors or vertex groups.")
+                return {'CANCELLED'}
+        else:
+            self.report({'ERROR'}, "Color generation not implemented.")
+            return {'CANCELLED'}
+        
+        if(o.type != 'MESH'):
+            vcols = None
+            uvtex = None
+            vgroup = None
+        else:
+            # all of following should return None is not available, at least for mesh object
+            vcols = o.data.vertex_colors.active
+            uvtex = o.data.uv_layers.active
+            vgroup = o.vertex_groups.active
+        
+        generate_constant_color = tuple([c ** (1 / 2.2) for c in pcv.generate_constant_color]) + (1.0, )
+        
+        if(pcv.generate_source == 'VERTICES'):
+            try:
+                sampler = PCVVertexSampler(context, o,
+                                           colorize=pcv.generate_colors,
+                                           constant_color=generate_constant_color,
+                                           vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+        elif(pcv.generate_source == 'SURFACE'):
+            if(pcv.generate_algorithm == 'WEIGHTED_RANDOM_IN_TRIANGLE'):
+                try:
+                    sampler = PCVTriangleSurfaceSampler(context, o, n, r,
+                                                        colorize=pcv.generate_colors,
+                                                        constant_color=generate_constant_color,
+                                                        vcols=vcols, uvtex=uvtex, vgroup=vgroup,
+                                                        exact_number_of_points=pcv.generate_exact_number_of_points, )
+                except Exception as e:
+                    self.report({'ERROR'}, str(e), )
+                    return {'CANCELLED'}
+            elif(pcv.generate_algorithm == 'POISSON_DISK_SAMPLING'):
+                try:
+                    sampler = PCVPoissonDiskSurfaceSampler(context, o, r, minimal_distance=pcv.generate_minimal_distance,
+                                                           sampling_exponent=pcv.generate_sampling_exponent,
+                                                           colorize=pcv.generate_colors,
+                                                           constant_color=generate_constant_color,
+                                                           vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+                except Exception as e:
+                    self.report({'ERROR'}, str(e), )
+                    return {'CANCELLED'}
+            else:
+                self.report({'ERROR'}, "Algorithm not implemented.")
+                return {'CANCELLED'}
+            
+        elif(pcv.generate_source == 'PARTICLES'):
+            try:
+                alive_only = True
+                if(pcv.generate_source_psys == 'ALL'):
+                    alive_only = False
+                sampler = PCVParticleSystemSampler(context, o, alive_only=alive_only,
+                                                   colorize=pcv.generate_colors,
+                                                   constant_color=generate_constant_color,
+                                                   vcols=vcols, uvtex=uvtex, vgroup=vgroup, )
+            except Exception as e:
+                self.report({'ERROR'}, str(e), )
+                return {'CANCELLED'}
+        else:
+            self.report({'ERROR'}, "Source type not implemented.")
+            return {'CANCELLED'}
+        
+        vs = sampler.vs
+        ns = sampler.ns
+        cs = sampler.cs
+        
+        log("generated {} points.".format(len(vs)), 1)
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        if(ok):
+            bpy.ops.point_cloud_visualizer.erase()
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        if(debug_mode()):
+            o.display_type = 'BOUNDS'
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}
+
+
+class PCV_OT_generate_volume_point_cloud(Operator):
+    bl_idname = "point_cloud_visualizer.generate_volume_from_mesh"
+    bl_label = "Generate Volume"
+    bl_description = "Generate colored point cloud in mesh (or object convertible to mesh) volume"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        
+        # pcv = context.object.point_cloud_visualizer
+        # if(pcv.uuid in PCVSequence.cache.keys()):
+        #     return False
+        # ok = False
+        # for k, v in PCVManager.cache.items():
+        #     if(v['uuid'] == pcv.uuid):
+        #         if(v['ready']):
+        #             if(v['draw']):
+        #                 ok = True
+        # return ok
+        
+        return True
+    
+    def execute(self, context):
+        log("Generate From Mesh:", 0)
+        _t = time.time()
+        
+        o = context.object
+        pcv = o.point_cloud_visualizer
+        n = pcv.generate_number_of_points
+        r = random.Random(pcv.generate_seed)
+        g = PCVRandomVolumeSampler(o, n, r, )
+        vs = g.vs
+        ns = g.ns
+        cs = g.cs
+        
+        log("generated {} points.".format(len(vs)), 1)
+        
+        ok = False
+        for k, v in PCVManager.cache.items():
+            if(v['uuid'] == pcv.uuid):
+                if(v['ready']):
+                    if(v['draw']):
+                        ok = True
+        if(ok):
+            bpy.ops.point_cloud_visualizer.erase()
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        if(debug_mode()):
+            o.display_type = 'BOUNDS'
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("completed in {}.".format(_d), 1)
+        
+        return {'FINISHED'}

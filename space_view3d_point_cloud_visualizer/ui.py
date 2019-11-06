@@ -35,6 +35,7 @@ from . import instavis
 from . import edit
 from . import render
 from . import convert
+from . import generate
 
 
 def update_panel_bl_category(self, context, ):
@@ -1098,7 +1099,7 @@ class PCV_PT_generate(Panel):
         c.operator('point_cloud_visualizer.generate_from_mesh')
         c.operator('point_cloud_visualizer.reset_runtime', text="Remove Generated", )
         
-        c.enabled = ops.PCV_OT_generate_point_cloud.poll(context)
+        c.enabled = generate.PCV_OT_generate_point_cloud.poll(context)
 
 
 class PCV_PT_development(Panel):
