@@ -31,22 +31,22 @@ if('bpy' in locals()):
     import importlib
     importlib.reload(debug)
     importlib.reload(io_ply)
-    # importlib.reload(shaders)
     importlib.reload(machine)
     importlib.reload(props)
     importlib.reload(ui)
     importlib.reload(ops)
+    importlib.reload(ops_filter)
     importlib.reload(convert)
     importlib.reload(sample)
     importlib.reload(instavis)
 else:
     from . import debug
     from . import io_ply
-    # from . import shaders
     from . import machine
     from . import props
     from . import ui
     from . import ops
+    from . import ops_filter
     from . import convert
     from . import sample
     from . import instavis
@@ -147,14 +147,6 @@ classes = (
     ops.PCV_OT_convert,
     ops.PCV_OT_reload,
     ops.PCV_OT_export,
-    ops.PCV_OT_filter_simplify,
-    ops.PCV_OT_filter_remove_color,
-    ops.PCV_OT_filter_remove_color_delete_selected,
-    ops.PCV_OT_filter_remove_color_deselect,
-    ops.PCV_OT_filter_project,
-    ops.PCV_OT_filter_merge,
-    ops.PCV_OT_filter_boolean_intersect,
-    ops.PCV_OT_filter_boolean_exclude,
     ops.PCV_OT_edit_start,
     ops.PCV_OT_edit_update,
     ops.PCV_OT_edit_end,
@@ -163,9 +155,18 @@ classes = (
     ops.PCV_OT_sequence_clear,
     ops.PCV_OT_generate_point_cloud,
     ops.PCV_OT_reset_runtime,
-    ops.PCV_OT_color_adjustment_shader_reset,
-    ops.PCV_OT_color_adjustment_shader_apply,
-    ops.PCV_OT_filter_join,
+    
+    ops_filter.PCV_OT_filter_simplify,
+    ops_filter.PCV_OT_filter_remove_color,
+    ops_filter.PCV_OT_filter_remove_color_delete_selected,
+    ops_filter.PCV_OT_filter_remove_color_deselect,
+    ops_filter.PCV_OT_filter_project,
+    ops_filter.PCV_OT_filter_merge,
+    ops_filter.PCV_OT_filter_boolean_intersect,
+    ops_filter.PCV_OT_filter_boolean_exclude,
+    ops_filter.PCV_OT_color_adjustment_shader_reset,
+    ops_filter.PCV_OT_color_adjustment_shader_apply,
+    ops_filter.PCV_OT_filter_join,
     
     ui.PCV_PT_development,
     ops.PCV_OT_generate_volume_point_cloud,

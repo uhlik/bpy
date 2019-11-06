@@ -30,6 +30,7 @@ from bpy.types import Panel
 from .debug import log, debug_mode
 from .machine import PCVManager, PCVSequence, preferences
 from . import ops
+from . import ops_filter
 from . import instavis
 
 
@@ -557,7 +558,7 @@ class PCV_PT_filter_simplify(Panel):
         
         c.operator('point_cloud_visualizer.filter_simplify')
         
-        c.enabled = ops.PCV_OT_filter_simplify.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_simplify.poll(context)
 
 
 class PCV_PT_filter_project(Panel):
@@ -611,7 +612,7 @@ class PCV_PT_filter_project(Panel):
         c.operator('point_cloud_visualizer.filter_project')
         
         # conditions are the same, also `filter_project_object` has to be set
-        c.enabled = ops.PCV_OT_filter_simplify.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_simplify.poll(context)
         
         if(pcv.filepath != '' and pcv.uuid != ''):
             if(not pcv.has_normals):
@@ -673,7 +674,7 @@ class PCV_PT_filter_remove_color(Panel):
         r.operator('point_cloud_visualizer.filter_remove_color_deselect', text="", icon='X', )
         cc.operator('point_cloud_visualizer.filter_remove_color_delete_selected')
         
-        c.enabled = ops.PCV_OT_filter_remove_color.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_remove_color.poll(context)
 
 
 class PCV_PT_filter_merge(Panel):
@@ -705,7 +706,7 @@ class PCV_PT_filter_merge(Panel):
         
         c.operator('point_cloud_visualizer.filter_merge')
         
-        c.enabled = ops.PCV_OT_filter_merge.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_merge.poll(context)
 
 
 class PCV_PT_filter_join(Panel):
@@ -779,7 +780,7 @@ class PCV_PT_filter_boolean(Panel):
         c.operator('point_cloud_visualizer.filter_boolean_intersect')
         c.operator('point_cloud_visualizer.filter_boolean_exclude')
         
-        c.enabled = ops.PCV_OT_filter_merge.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_merge.poll(context)
 
 
 class PCV_PT_filter_color_adjustment(Panel):
@@ -824,7 +825,7 @@ class PCV_PT_filter_color_adjustment(Panel):
         r.operator('point_cloud_visualizer.color_adjustment_shader_apply')
         cc.enabled = pcv.color_adjustment_shader_enabled
         
-        c.enabled = ops.PCV_OT_filter_merge.poll(context)
+        c.enabled = ops_filter.PCV_OT_filter_merge.poll(context)
 
 
 class PCV_PT_clip(Panel):
