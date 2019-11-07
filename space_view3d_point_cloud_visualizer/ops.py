@@ -35,7 +35,6 @@ from bpy_extras.io_utils import axis_conversion, ExportHelper
 import mathutils.geometry
 
 from .debug import log, debug_mode
-from . import debug
 from . import io_ply
 from .machine import PCVManager, PCVSequence, preferences, PCVControl, load_shader_code
 
