@@ -43,65 +43,6 @@ class PCV_properties(PropertyGroup):
     # for display, read-only
     instance_visualizer_active: BoolProperty(name="Instance Visualizer Active", default=False, get=_instance_visualizer_active_get, set=_instance_visualizer_active_set, )
     
-    """
-    def _shader_items():
-        # closure - keep a reference to the list
-        items = None
-        
-        def func(self, context, ):
-            items = [
-                # # user selectable shaders
-                
-                # basic shader, round shape, unaltered colors
-                ('DEFAULT', 'Default', "", '', 2 ** 0, ),
-                # # default with illumination on top
-                # ('ILLUMINATION', 'Illumination', "", '', 2 ** 1, ),
-                # color by depth
-                ('DEPTH', 'Depth', "", '', 2 ** 2, ),
-                # # depth with illumination on top, maybe join illuminated and non-illuminated variants somehow together
-                # ('DEPTH_ILLUMINATION', 'Depth With Illumination', "", '', 2 ** 3, ),
-                # color by normal
-                ('NORMAL', 'Normal', "", '', 2 ** 4, ),
-                # color by position
-                ('POSITION', 'Position', "", '', 2 ** 5, ),
-                
-                # # internal shaders, used only under certain conditions or development shaders
-                
-                # # this is internal shader active only when color adjustment filter is active
-                # ('COLOR_ADJUSTMENT', 'Color Adjustment', "", '', 2 ** 6, ),
-                # # basically this is the same as Default, only without point shape rounding, there is not much use for it apart from that it is slightly faster to draw
-                # ('MINIMAL', 'Minimal', "", '', 2 ** 7, ),
-                # # this is meant to be used only with instance visualizer, there is not much to do in regular ply files
-                # ('MINIMAL_VARIABLE', 'Minimal With Variable Size', "", '', 2 ** 8, ),
-                # # not ready for production yet
-                # ('BOUNDING_BOX', 'Bounding Box', "", '', 2 ** 9, ),
-                # # this is extra drawn on top while using remove color filter
-                # ('SELECTION', 'Selection', "", '', 2 ** 10, ),
-            ]
-            return items
-        
-        return func
-    
-    def _shader_update(self, context, ):
-        pass
-    """
-    """
-    shader_items = [
-        ('DEFAULT', 'Default', "", ),
-        ('DEPTH', 'Depth', "", ),
-        ('NORMAL', 'Normal', "", ),
-        ('POSITION', 'Position', "", ),
-    ]
-    # FIXMENOT: would be nice to have this initialized at least to 'DEFAULT' if '' and PCVManager is initialized, so i don't need to handle situations if(shader == ''): do like it's 'DEFAULT'
-    # NOTTODO: split illumination to its own BoolProperty, and enable only when possible
-    # FIXMENOT: it looks like i don't need dynamic enum, items that might be dynamic are not user selectable anyway.
-    # shader: EnumProperty(name="Shader", items=_shader_items(), update=_shader_update, description="Shader to draw points with", )
-    shader: EnumProperty(name="Shader", items=shader_items, default='DEFAULT', description="Shader to draw points with", )
-    shader_illumination: BoolProperty(name="Illumination", default=False, description="Enable extra illumination on point cloud", )
-    shader_options_show: BoolProperty(name="Shader Options", default=False, description="Show shader options", )
-    shader_normal_lines: BoolProperty(name="Normals", default=False, description="Show normals as lines", )
-    """
-    
     runtime: BoolProperty(default=False, options={'HIDDEN', }, )
     
     # TODO: add some prefix to global props, like global_size, global_display_percent, .. leave unprefixed only essentials, like uuid, runtime, ..
@@ -288,18 +229,7 @@ class PCV_properties(PropertyGroup):
     generate_minimal_distance: FloatProperty(name="Minimal Distance", default=0.1, precision=3, subtype='DISTANCE', description="Poisson Disk minimal distance between points, the smaller value, the slower calculation", )
     generate_sampling_exponent: IntProperty(name="Sampling Exponent", default=5, min=1, description="Poisson Disk presampling exponent, lower values are faster but less even, higher values are slower exponentially", )
     
-    # debug_shader: EnumProperty(name="Debug Shader", items=[('NONE', "None", ""),
-    #                                                        ('DEPTH', "Depth", ""),
-    #                                                        ('NORMAL', "Normal", ""),
-    #                                                        ('POSITION', "Position", ""),
-    #                                                        ], default='NONE', description="", )
     override_default_shader: BoolProperty(default=False, options={'HIDDEN', }, )
-    
-    # def _update_override_default_shader(self, context, ):
-    #     if(self.dev_depth_enabled or self.dev_normal_colors_enabled or self.dev_position_colors_enabled):
-    #         self.override_default_shader = True
-    #     else:
-    #         self.override_default_shader = False
     
     def _update_dev_depth(self, context, ):
         if(self.dev_depth_enabled):
@@ -384,7 +314,6 @@ class PCV_properties(PropertyGroup):
     dev_bbox_alpha: FloatProperty(name="Alpha", description="", default=0.7, min=0.0, max=1.0, subtype='FACTOR', )
     
     def _dev_sel_color_update(self, context, ):
-        # bpy.context.preferences.addons[__name__].preferences.selection_color = self.dev_selection_shader_color
         preferences().selection_color = self.dev_selection_shader_color
     
     dev_selection_shader_display: BoolProperty(name="Selection", default=False, description="", )
@@ -716,7 +645,6 @@ class PCV_properties(PropertyGroup):
             self.override_default_shader = False
     
     skip_point_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_skip_point_shader_enabled, )
-    # skip_point_percentage: FloatProperty(name="Skip Percentage", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="", )
     skip_point_percentage: FloatProperty(name="Skip Percentage", default=100.0, min=0.0, max=100.0, precision=3, description="", )
     
     @classmethod

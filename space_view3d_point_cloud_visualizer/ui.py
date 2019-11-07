@@ -80,7 +80,6 @@ def update_panel_bl_category(self, context, ):
 class PCV_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
     bl_label = "Point Cloud Visualizer"
     # bl_options = {'DEFAULT_CLOSED'}
@@ -287,33 +286,6 @@ class PCV_PT_panel(Panel):
             
             sub.separator()
         
-        # # other shaders
-        # e = ok
-        # c = sub.column()
-        # r = c.row(align=True)
-        # r.prop(pcv, 'dev_depth_enabled', toggle=True, )
-        # r.prop(pcv, 'dev_depth_edit', toggle=True, icon_only=True, icon='TOOL_SETTINGS', )
-        # if(pcv.dev_depth_edit):
-        #     cc = c.column(align=True)
-        #     cc.prop(pcv, 'dev_depth_brightness')
-        #     cc.prop(pcv, 'dev_depth_contrast')
-        #     c.prop(pcv, 'dev_depth_false_colors')
-        #     r = c.row(align=True)
-        #     r.prop(pcv, 'dev_depth_color_a', text="", )
-        #     r.prop(pcv, 'dev_depth_color_b', text="", )
-        #     r.enabled = pcv.dev_depth_false_colors
-        #
-        #     sub.separator()
-        # c.enabled = e
-        #
-        # c = sub.column()
-        # c.prop(pcv, 'dev_normal_colors_enabled', toggle=True, )
-        # c.enabled = e
-        #
-        # c = sub.column()
-        # c.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
-        # c.enabled = e
-        
         # other shaders
         c = sub.column()
         c.enabled = ok
@@ -326,9 +298,6 @@ class PCV_PT_panel(Panel):
             if(not pcv.has_normals):
                 cc.enabled = False
         r.prop(pcv, 'dev_position_colors_enabled', toggle=True, )
-        
-        # r = c.row(align=True)
-        # r.prop(pcv, 'debug_shader', expand=True, )
         
         if(pcv.dev_depth_enabled):
             cc = c.column(align=True)
@@ -344,21 +313,6 @@ class PCV_PT_panel(Panel):
             pass
         if(pcv.dev_position_colors_enabled):
             pass
-        
-        # r = c.row(align=True)
-        # r.prop(pcv, 'dev_bbox_enabled', toggle=True, icon='SHADING_BBOX', text="", icon_only=True, )
-        # if(pcv.dev_bbox_enabled):
-        #     r.prop(pcv, 'dev_bbox_color', text="", )
-        #     r = c.row(align=True)
-        #     r.prop(pcv, 'dev_bbox_size')
-        #     r.prop(pcv, 'dev_bbox_alpha')
-        
-        # c.prop(pcv, 'dev_bbox_enabled', toggle=True, )
-        # if(pcv.dev_bbox_enabled):
-        #     r = c.row()
-        #     r.prop(pcv, 'dev_bbox_color', text="", )
-        #     c.prop(pcv, 'dev_bbox_size')
-        #     c.prop(pcv, 'dev_bbox_alpha')
 
 
 class PCV_PT_render(Panel):
@@ -395,7 +349,6 @@ class PCV_PT_render(Panel):
         r = c.row()
         r.prop(pcv, 'render_smoothstep')
         ok = False
-        # if(not pcv.illumination and not pcv.override_default_shader):
         if(not pcv.override_default_shader):
             ok = True
         r.enabled = ok
@@ -491,8 +444,6 @@ class PCV_PT_convert(Panel):
         
         if(pcv.mesh_type == 'VERTEX'):
             cc.enabled = False
-        
-        # c.operator('point_cloud_visualizer.convert')
         
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.convert')
@@ -988,42 +939,18 @@ class PCV_PT_sequence(Panel):
                 return False
         return True
     
-    # def draw_header(self, context):
-    #     pcv = context.object.point_cloud_visualizer
-    #     l = self.layout
-    #     l.label(text='', icon='EXPERIMENTAL', )
-    
     def draw(self, context):
         pcv = context.object.point_cloud_visualizer
         l = self.layout
-        # c = l.column()
-        # c.prop(pcv, 'sequence_enabled')
-        # c.enabled = ops.PCV_OT_sequence_preload.poll(context)
         
         c = l.column()
-        
-        # c.label(text='Experimental', icon='ERROR', )
-        
         c.operator('point_cloud_visualizer.sequence_preload')
         if(pcv.uuid in PCVSequence.cache.keys()):
             c.label(text="Loaded {} item(s)".format(len(PCVSequence.cache[pcv.uuid]['data'])))
-            # c.enabled = pcv.sequence_enabled
         else:
             c.label(text="Loaded {} item(s)".format(0))
             c.enabled = ops.PCV_OT_sequence_preload.poll(context)
-        # c.enabled = pcv.sequence_enabled
-        
-        # c = l.column()
-        # c.prop(pcv, 'sequence_frame_duration')
-        # c.prop(pcv, 'sequence_frame_start')
-        # c.prop(pcv, 'sequence_frame_offset')
         c.prop(pcv, 'sequence_use_cyclic')
-        # c.enabled = False
-        # if(pcv.sequence_enabled):
-        #     c.enabled = True
-        # c.enabled = (ops.PCV_OT_sequence_preload.poll(context) and pcv.sequence_enabled)
-        # c.enabled = ops.PCV_OT_sequence_preload.poll(context)
-        # c.enabled = pcv.sequence_enabled
         c.operator('point_cloud_visualizer.sequence_clear')
         
         l.enabled = not pcv.runtime
@@ -1138,24 +1065,6 @@ class PCV_PT_development(Panel):
         l = self.layout
         sub = l.column()
         
-        # sub.label(text="Color Adjustment Shader:")
-        # c = sub.column(align=True)
-        # c.prop(pcv, 'color_adjustment_shader_enabled')
-        # cc = c.column(align=True)
-        # cc.prop(pcv, 'color_adjustment_shader_exposure')
-        # cc.prop(pcv, 'color_adjustment_shader_gamma')
-        # cc.prop(pcv, 'color_adjustment_shader_brightness')
-        # cc.prop(pcv, 'color_adjustment_shader_contrast')
-        # cc.prop(pcv, 'color_adjustment_shader_hue')
-        # cc.prop(pcv, 'color_adjustment_shader_saturation')
-        # cc.prop(pcv, 'color_adjustment_shader_value')
-        # cc.prop(pcv, 'color_adjustment_shader_invert')
-        # r = cc.row(align=True)
-        # r.operator('point_cloud_visualizer.color_adjustment_shader_reset')
-        # r.operator('point_cloud_visualizer.color_adjustment_shader_apply')
-        # cc.enabled = pcv.color_adjustment_shader_enabled
-        # sub.separator()
-        
         sub.label(text="Shaders:")
         e = False
         for k, v in PCVManager.cache.items():
@@ -1257,66 +1166,6 @@ class PCV_PT_development(Panel):
         c.operator('point_cloud_visualizer.generate_volume_from_mesh')
         
         sub.separator()
-        
-        """
-        c.separator()
-        
-        c.label(text="new ui for shaders")
-        c.separator()
-        
-        r = c.row(align=True)
-        s = r.split(factor=0.25, align=True, )
-        s.label(text='Shader:')
-        s = s.split(factor=0.75, align=True, )
-        r = s.row(align=True)
-        r.prop(pcv, 'shader', text='', )
-        s = s.split(factor=0.25, align=True, )
-        
-        cc = s.column(align=True)
-        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
-        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
-            cc.enabled = False
-
-        cc = s.column(align=True)
-        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
-        if(pcv.shader not in ('DEPTH', )):
-            cc.enabled = False
-
-        cc = s.column(align=True)
-        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
-        
-        c.separator()
-        c.separator()
-        
-        r = c.row(align=True)
-        r.prop(pcv, 'shader', expand=True, )
-        
-        cc = r.column(align=True)
-        cc.prop(pcv, 'shader_illumination', text='', icon='LIGHT', toggle=True, icon_only=True, )
-        if(pcv.shader not in ('DEFAULT', 'DEPTH', )):
-            cc.enabled = False
-        
-        cc = r.column(align=True)
-        cc.prop(pcv, 'shader_options_show', text='', icon='TOOL_SETTINGS', toggle=True, icon_only=True, )
-        if(pcv.shader not in ('DEPTH', )):
-            cc.enabled = False
-        
-        cc = r.column(align=True)
-        cc.prop(pcv, 'shader_normal_lines', text='', icon='SNAP_NORMAL', toggle=True, icon_only=True, )
-        
-        if(pcv.shader_illumination):
-            if(pcv.shader in ('DEFAULT', 'DEPTH', )):
-                c.label(text='shader illumination options..')
-        
-        if(pcv.shader_options_show):
-            if(pcv.shader in ('DEPTH', )):
-                c.label(text='shader options..')
-        
-        if(pcv.shader_normal_lines):
-            c.label(text='shader normal lines options..')
-        
-        c.separator()
-        """
         
         sub.label(text="Numpy Vertices And Normals Transform")
         c = sub.column()

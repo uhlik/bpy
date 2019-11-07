@@ -39,7 +39,6 @@ from gpu_extras.batch import batch_for_shader
 
 from .debug import log, debug_mode
 from .machine import PCVManager, PCVControl, load_shader_code
-# from . import shaders
 
 
 class PCVIVSampler():
