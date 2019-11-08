@@ -3,6 +3,7 @@ layout (location = 1) in vec3 normal;
 layout (location = 2) in vec4 color;
 
 uniform mat4 model;
+
 out vec3 g_position;
 out vec3 g_normal;
 out vec4 g_color;

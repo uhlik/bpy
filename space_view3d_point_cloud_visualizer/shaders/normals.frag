@@ -1,6 +1,7 @@
 layout(location = 0) out vec4 frag_color;
 
 uniform float global_alpha;
+
 in vec4 vertex_color;
 
 void main()

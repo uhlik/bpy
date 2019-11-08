@@ -4,9 +4,11 @@ layout (triangle_strip, max_vertices = 48) out;
 in vec3 g_position[];
 in vec3 g_normal[];
 in vec4 g_color[];
+
 uniform mat4 view_matrix;
 uniform mat4 window_matrix;
 uniform float size[];
+
 out vec3 f_position;
 out vec3 f_normal;
 out vec4 f_color;

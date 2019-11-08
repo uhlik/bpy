@@ -1,6 +1,8 @@
 uniform vec4 color;
 uniform float alpha_radius;
+
 out vec4 fragColor;
+
 void main()
 {
     float r = 0.0f;

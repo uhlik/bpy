@@ -1,9 +1,12 @@
 in float f_depth;
+
 uniform float brightness;
 uniform float contrast;
 uniform float alpha_radius;
 uniform float global_alpha;
+
 out vec4 fragColor;
+
 void main()
 {
     float r = 0.0f;

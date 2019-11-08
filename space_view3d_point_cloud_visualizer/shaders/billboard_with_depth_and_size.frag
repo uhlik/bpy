@@ -4,6 +4,7 @@ in vec4 fcolor;
 in float falpha;
 
 in float fdepth;
+
 uniform float brightness;
 uniform float contrast;
 uniform float blend;

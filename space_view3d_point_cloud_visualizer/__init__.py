@@ -99,7 +99,7 @@ classes = (
     
     ui.PCV_PT_development,
     generate.PCV_OT_generate_volume_point_cloud,
-    instavis.PCVIV2_OT_dev_transform_normals,
+    # instavis.PCVIV2_OT_dev_transform_normals,
     
     ui.PCV_PT_debug,
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,

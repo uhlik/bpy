@@ -1,8 +1,11 @@
 // uniform vec4 color;
 in vec3 f_color;
+
 uniform float alpha_radius;
 uniform float global_alpha;
+
 out vec4 fragColor;
+
 void main()
 {
     float r = 0.0f;

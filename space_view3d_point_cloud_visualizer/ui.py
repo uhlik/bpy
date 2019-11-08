@@ -1167,10 +1167,10 @@ class PCV_PT_development(Panel):
         
         sub.separator()
         
-        sub.label(text="Numpy Vertices And Normals Transform")
-        c = sub.column()
-        c.prop(pcv, 'dev_transform_normals_target_object')
-        c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
+        # sub.label(text="Numpy Vertices And Normals Transform")
+        # c = sub.column()
+        # c.prop(pcv, 'dev_transform_normals_target_object')
+        # c.operator('point_cloud_visualizer.pcviv_dev_transform_normals')
         
         sub.label(text="Clip To Active Camera Cone")
         c = sub.column()

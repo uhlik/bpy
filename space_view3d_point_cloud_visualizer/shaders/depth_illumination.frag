@@ -4,13 +4,16 @@ in vec3 f_light_direction;
 in vec3 f_light_intensity;
 in vec3 f_shadow_direction;
 in vec3 f_shadow_intensity;
+
 uniform float alpha_radius;
 uniform float global_alpha;
 uniform float brightness;
 uniform float contrast;
 uniform vec3 color_a;
 uniform vec3 color_b;
+
 out vec4 fragColor;
+
 void main()
 {
     float r = 0.0f;

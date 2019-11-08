@@ -3,6 +3,7 @@ layout (location = 0) out vec4 frag_color;
 in vec3 f_position;
 in vec3 f_normal;
 in vec4 f_color;
+
 uniform float alpha;
 uniform vec3 light_position;
 uniform vec3 light_color;

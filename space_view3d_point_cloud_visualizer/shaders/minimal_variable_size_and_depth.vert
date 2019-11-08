@@ -1,6 +1,7 @@
 in vec3 position;
 in vec4 color;
 in int size;
+
 uniform mat4 perspective_matrix;
 uniform mat4 object_matrix;
 uniform float global_alpha;

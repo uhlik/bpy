@@ -1,10 +1,12 @@
 in vec3 position;
 in vec4 color;
+
 uniform mat4 perspective_matrix;
 uniform mat4 object_matrix;
 uniform float point_size;
 uniform float alpha_radius;
 uniform float global_alpha;
+
 out vec4 f_color;
 out float f_alpha_radius;
 

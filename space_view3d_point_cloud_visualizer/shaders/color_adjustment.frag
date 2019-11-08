@@ -1,5 +1,6 @@
 in vec4 f_color;
 in float f_alpha_radius;
+
 out vec4 fragColor;
 
 in float f_exposure;

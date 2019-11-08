@@ -1,14 +1,17 @@
 in vec3 position;
 in vec4 color;
 in int index;
+
 uniform mat4 perspective_matrix;
 uniform mat4 object_matrix;
 uniform float point_size;
 uniform float alpha_radius;
 uniform float global_alpha;
 uniform float skip_index;
+
 out vec4 f_color;
 out float f_alpha_radius;
+
 void main()
 {
     gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);

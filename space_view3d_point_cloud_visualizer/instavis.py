@@ -41,6 +41,7 @@ from .debug import log, debug_mode
 from .machine import PCVManager, PCVControl, load_shader_code
 
 
+'''
 class PCVIVSampler():
     def __init__(self, context, o, target, rnd, percentage=1.0, triangulate=True, use_modifiers=True, source=None, colorize=None, constant_color=None, vcols=None, uvtex=None, vgroup=None, ):
         log("{}:".format(self.__class__.__name__), 0)
@@ -523,8 +524,10 @@ class PCVIVDraftFixedCountNumpySampler():
         self.vs = vs[:]
         self.ns = ns[:]
         self.cs = cs[:]
+'''
 
 
+'''
 class PCVIVDraftWeightedFixedCountNumpySampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, ):
         # log("{}:".format(self.__class__.__name__), 0)
@@ -619,6 +622,7 @@ class PCVIVDraftWeightedFixedCountNumpySampler():
         self.vs = vs[:]
         self.ns = ns[:]
         self.cs = cs[:]
+'''
 
 
 class PCVIVDraftWeightedFixedCountNumpyWeightedColorsSampler():
@@ -1479,6 +1483,7 @@ class PCVIV2_OT_update_all(Operator):
         return {'FINISHED'}
 
 
+'''
 class PCVIV2_OT_dev_transform_normals(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_dev_transform_normals"
     bl_label = "dev_transform_normals"
@@ -1531,6 +1536,7 @@ class PCVIV2_OT_dev_transform_normals(Operator):
         c.draw(vs, ns, cs, sz, )
         
         return {'FINISHED'}
+'''
 
 
 class PCVIV2Control(PCVControl):

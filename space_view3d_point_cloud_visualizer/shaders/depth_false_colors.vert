@@ -1,10 +1,13 @@
 in vec3 position;
+
 uniform mat4 perspective_matrix;
 uniform mat4 object_matrix;
 uniform vec3 center;
 uniform float point_size;
 uniform float maxdist;
+
 out float f_depth;
+
 void main()
 {
     gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0);
