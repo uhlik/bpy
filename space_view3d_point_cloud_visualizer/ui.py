@@ -1157,6 +1157,14 @@ class PCV_PT_development(Panel):
             cc.prop(pcv, 'dev_bbox_size')
             cc.prop(pcv, 'dev_bbox_alpha')
         
+        cc = c.column(align=True)
+        cc.prop(pcv, 'fresnel_shader_enabled', toggle=True, text='Fresnel', )
+        if(pcv.fresnel_shader_enabled):
+            cc.prop(pcv, 'fresnel_shader_sharpness')
+            rr = cc.row(align=True)
+            rr.prop(pcv, 'fresnel_shader_invert', toggle=True, )
+            rr.prop(pcv, 'fresnel_shader_colors', toggle=True, )
+        
         sub.separator()
         
         sub.label(text="Generate Volume:")

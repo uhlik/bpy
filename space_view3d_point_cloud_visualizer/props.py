@@ -647,6 +647,34 @@ class PCV_properties(PropertyGroup):
     skip_point_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_skip_point_shader_enabled, )
     skip_point_percentage: FloatProperty(name="Skip Percentage", default=100.0, min=0.0, max=100.0, precision=3, description="", )
     
+    def _fresnel_shader_enabled(self, context):
+        if(self.fresnel_shader_enabled):
+            # FIXME: this is really getting ridiculous
+            self.illumination = False
+            self.dev_depth_enabled = False
+            self.dev_normal_colors_enabled = False
+            self.dev_position_colors_enabled = False
+            self.color_adjustment_shader_enabled = False
+            self.dev_minimal_shader_enabled = False
+            self.dev_minimal_shader_variable_size_enabled = False
+            self.dev_minimal_shader_variable_size_and_depth_enabled = False
+            self.dev_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_enabled = False
+            self.dev_rich_billboard_point_cloud_no_depth_enabled = False
+            self.dev_phong_shader_enabled = False
+            self.clip_shader_enabled = False
+            self.billboard_phong_enabled = False
+            self.skip_point_shader_enabled = False
+            
+            self.override_default_shader = True
+        else:
+            self.override_default_shader = False
+    
+    fresnel_shader_enabled: BoolProperty(name="Enabled", default=False, description="", update=_fresnel_shader_enabled, )
+    fresnel_shader_sharpness: FloatProperty(name="Sharpness", default=0.2, min=0.0, max=1.0, precision=3, description="", )
+    fresnel_shader_invert: BoolProperty(name="Invert", default=False, description="", )
+    fresnel_shader_colors: BoolProperty(name="Colors", default=False, description="", )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.point_cloud_visualizer = PointerProperty(type=cls)

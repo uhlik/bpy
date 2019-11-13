@@ -1339,6 +1339,53 @@ class PCVManager():
             
             batch.draw(shader)
         
+        # dev
+        if(pcv.fresnel_shader_enabled):
+            vs = ci['vertices']
+            ns = ci['normals']
+            cs = ci['colors']
+            l = ci['current_display_length']
+            
+            use_stored = False
+            if('extra' in ci.keys()):
+                t = 'FRESNEL'
+                for k, v in ci['extra'].items():
+                    if(k == t):
+                        if(v['length'] == l):
+                            use_stored = True
+                            batch = v['batch']
+                            shader = v['shader']
+                            break
+            
+            if(not use_stored):
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('fresnel')
+                shader = GPUShader(shader_data_vert, shader_data_frag)
+                batch = batch_for_shader(shader, 'POINTS', {"position": vs[:l], "normal": ns[:l], "color": cs[:l], })
+                
+                if('extra' not in ci.keys()):
+                    ci['extra'] = {}
+                d = {'shader': shader,
+                     'batch': batch,
+                     'length': l, }
+                ci['extra']['FRESNEL'] = d
+            
+            shader.bind()
+            # shader.uniform_float("perspective_matrix", bpy.context.region_data.perspective_matrix)
+            # shader.uniform_float("object_matrix", o.matrix_world)
+            
+            shader.uniform_float("view", bpy.context.region_data.view_matrix)
+            shader.uniform_float("projection", bpy.context.region_data.window_matrix)
+            shader.uniform_float("model", o.matrix_world)
+            
+            shader.uniform_float("point_size", pcv.point_size)
+            shader.uniform_float("alpha_radius", pcv.alpha_radius)
+            shader.uniform_float("global_alpha", pcv.global_alpha)
+            shader.uniform_float("view_position", bpy.context.region_data.view_matrix.inverted().translation)
+            shader.uniform_float("fresnel_sharpness", pcv.fresnel_shader_sharpness)
+            shader.uniform_float("use_colors", float(pcv.fresnel_shader_colors))
+            shader.uniform_float("use_invert", float(pcv.fresnel_shader_invert))
+            batch.draw(shader)
+        
         # and now back to some production stuff..
         
         # draw selection as a last step bucause i clear depth buffer for it
@@ -1841,6 +1888,7 @@ registry = {
     'depth_false_colors': {'v': "depth_false_colors.vert", 'f': "depth_false_colors.frag", },
     'depth_illumination': {'v': "depth_illumination.vert", 'f': "depth_illumination.frag", },
     'depth_simple': {'v': "depth_simple.vert", 'f': "depth_simple.frag", },
+    'fresnel': {'v': "fresnel.vert", 'f': "fresnel.frag", },
     'illumination': {'v': "illumination.vert", 'f': "illumination.frag", },
     'minimal_variable_size_and_depth': {'v': "minimal_variable_size_and_depth.vert", 'f': "minimal_variable_size_and_depth.frag", },
     'minimal_variable_size': {'v': "minimal_variable_size.vert", 'f': "minimal_variable_size.frag", },
