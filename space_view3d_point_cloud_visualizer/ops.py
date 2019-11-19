@@ -501,8 +501,16 @@ class PCV_OT_sequence_preload(Operator):
                     if(not set(('red', 'green', 'blue')).issubset(points.dtype.names)):
                         cs = None
                     else:
-                        cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
-                        cs = cs.astype(np.float32)
+                        # cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+                        # cs = cs.astype(np.float32)
+                        
+                        r_f32 = points['red'].astype(np.float32)
+                        g_f32 = points['green'].astype(np.float32)
+                        b_f32 = points['blue'].astype(np.float32)
+                        r_f32 /= 255.0
+                        g_f32 /= 255.0
+                        b_f32 /= 255.0
+                        cs = np.column_stack((r_f32, g_f32, b_f32, np.ones(len(points), dtype=np.float32, ), ))
                     
                     cache.append({'index': i,
                                   'name': n,

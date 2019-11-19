@@ -135,21 +135,51 @@ class PCVManager():
             # preferences = bpy.context.preferences
             # addon_prefs = preferences.addons[__name__].preferences
             if(addon_prefs.convert_16bit_colors and points['red'].dtype == 'uint16'):
-                r8 = (points['red'] / 256).astype('uint8')
-                g8 = (points['green'] / 256).astype('uint8')
-                b8 = (points['blue'] / 256).astype('uint8')
+                # r8 = (points['red'] / 256).astype('uint8')
+                # g8 = (points['green'] / 256).astype('uint8')
+                # b8 = (points['blue'] / 256).astype('uint8')
+                # if(addon_prefs.gamma_correct_16bit_colors):
+                #     cs = np.column_stack(((r8 / 255) ** (1 / 2.2),
+                #                           (g8 / 255) ** (1 / 2.2),
+                #                           (b8 / 255) ** (1 / 2.2),
+                #                           np.ones(len(points), dtype=float, ), ))
+                # else:
+                #     cs = np.column_stack((r8 / 255, g8 / 255, b8 / 255, np.ones(len(points), dtype=float, ), ))
+                # cs = cs.astype(np.float32)
+                
+                r_f32 = points['red'].astype(np.float32)
+                g_f32 = points['green'].astype(np.float32)
+                b_f32 = points['blue'].astype(np.float32)
+                r_f32 /= 256.0
+                g_f32 /= 256.0
+                b_f32 /= 256.0
                 if(addon_prefs.gamma_correct_16bit_colors):
-                    cs = np.column_stack(((r8 / 255) ** (1 / 2.2),
-                                          (g8 / 255) ** (1 / 2.2),
-                                          (b8 / 255) ** (1 / 2.2),
-                                          np.ones(len(points), dtype=float, ), ))
+                    r_f32 /= 255.0
+                    g_f32 /= 255.0
+                    b_f32 /= 255.0
+                    r_f32 = r_f32 ** (1 / 2.2)
+                    g_f32 = g_f32 ** (1 / 2.2)
+                    b_f32 = b_f32 ** (1 / 2.2)
+                    cs = np.column_stack((r_f32, g_f32, b_f32, np.ones(len(points), dtype=np.float32, ), ))
                 else:
-                    cs = np.column_stack((r8 / 255, g8 / 255, b8 / 255, np.ones(len(points), dtype=float, ), ))
-                cs = cs.astype(np.float32)
+                    r_f32 /= 255.0
+                    g_f32 /= 255.0
+                    b_f32 /= 255.0
+                    cs = np.column_stack((r_f32, g_f32, b_f32, np.ones(len(points), dtype=np.float32, ), ))
+                
             else:
-                # 'uint8'
-                cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
-                cs = cs.astype(np.float32)
+                # # 'uint8'
+                # cs = np.column_stack((points['red'] / 255, points['green'] / 255, points['blue'] / 255, np.ones(len(points), dtype=float, ), ))
+                # cs = cs.astype(np.float32)
+                
+                r_f32 = points['red'].astype(np.float32)
+                g_f32 = points['green'].astype(np.float32)
+                b_f32 = points['blue'].astype(np.float32)
+                r_f32 /= 255.0
+                g_f32 /= 255.0
+                b_f32 /= 255.0
+                cs = np.column_stack((r_f32, g_f32, b_f32, np.ones(len(points), dtype=np.float32, ), ))
+                
         else:
             n = len(points)
             # preferences = bpy.context.preferences
