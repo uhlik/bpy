@@ -2932,7 +2932,12 @@ class PCVManager():
         d = PCVManager.new()
         d['filepath'] = filepath
         
-        d['points'] = points
+        preferences = bpy.context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+        if(addon_prefs.disable_points_cache):
+            d['points'] = None
+        else:
+            d['points'] = points
         
         d['uuid'] = u
         d['stats'] = len(vs)
@@ -6847,6 +6852,12 @@ class PCV_OT_export(Operator, ExportHelper):
         else:
             log("using original loaded points..", 1)
             # get original loaded points
+            
+            addon_prefs = bpy.context.preferences.addons[__name__].preferences
+            if(c['points'] is None and addon_prefs.disable_points_cache):
+                self.report({'ERROR'}, "Loaded points caching is disabled.")
+                return {'CANCELLED'}
+            
             points = c['points']
             # check for normals
             normals = True
@@ -11294,6 +11305,11 @@ class PCV_PT_export(Panel):
         l = self.layout
         c = l.column()
         c.prop(pcv, 'export_use_viewport')
+        
+        addon_prefs = bpy.context.preferences.addons[__name__].preferences
+        if(addon_prefs.disable_points_cache and not pcv.export_use_viewport):
+            c.label(text='Cache disabled', icon='ERROR', )
+        
         cc = c.column()
         cc.prop(pcv, 'export_visible_only')
         if(not pcv.export_use_viewport):
@@ -12991,6 +13007,7 @@ class PCV_preferences(AddonPreferences):
                                                    ('PCV', "PCV", ""), ], default='POINT_CLOUD_VISUALIZER', description="To have PCV in its own separate tab, choose one", update=_update_panel_bl_category, )
     category_custom: BoolProperty(name="Custom Tab Name", default=False, description="Check if you want to have PCV in custom named tab or in existing tab", update=_update_panel_bl_category, )
     category_custom_name: StringProperty(name="Name", default="View", description="Custom PCV tab name, if you choose one from already existing tabs it will append to that tab", update=_update_panel_bl_category, )
+    disable_points_cache: BoolProperty(name="Disable Loaded Points Cache", description="Do not leave copy of original loaded points in memory, disables some export features", default=False, )
     
     def draw(self, context):
         l = self.layout
@@ -13020,6 +13037,9 @@ class PCV_preferences(AddonPreferences):
         c.prop(self, "category_custom_name")
         if(not self.category_custom):
             c.enabled = False
+        
+        r = l.row()
+        r.prop(self, 'disable_points_cache')
     
     # @classmethod
     # def prefs(cls, context=None, ):
