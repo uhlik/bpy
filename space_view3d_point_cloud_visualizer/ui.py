@@ -1153,7 +1153,7 @@ class PCV_PT_development(Panel):
         cc = c.column(align=True)
         cc.prop(pcv, 'dev_bbox_enabled', toggle=True, text='Bounding Box', )
         if(pcv.dev_bbox_enabled):
-            cc.prop(pcv, 'dev_bbox_color')
+            cc.prop(pcv, 'dev_bbox_color', text="", )
             cc.prop(pcv, 'dev_bbox_size')
             cc.prop(pcv, 'dev_bbox_alpha')
         
