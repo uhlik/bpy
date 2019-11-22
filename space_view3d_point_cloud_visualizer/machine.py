@@ -64,6 +64,8 @@ class PCVManager():
     
     @classmethod
     def load_ply_to_cache(cls, operator, context, ):
+        # TODO: split this, it is used on a few places almost in identical form
+        
         pcv = context.object.point_cloud_visualizer
         filepath = pcv.filepath
         
@@ -215,6 +217,7 @@ class PCVManager():
         d['display_length'] = l
         d['current_display_length'] = l
         
+        # FIXME: put this to draw button, now user can't ser display percentage and with very large clouds may run out of memory
         ienabled = pcv.illumination
         d['illumination'] = ienabled
         if(ienabled):
@@ -249,6 +252,8 @@ class PCVManager():
     
     @classmethod
     def render(cls, uuid, ):
+        # TODO: split this, to bloated and messy, and also shader choosing logic is bad
+        
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
