@@ -46,6 +46,7 @@ if('bpy' in locals()):
     importlib.reload(convert)
     importlib.reload(generate)
     importlib.reload(instavis)
+    importlib.reload(instavis3)
 else:
     from . import debug
     from . import prefs
@@ -60,6 +61,7 @@ else:
     from . import convert
     from . import generate
     from . import instavis
+    from . import instavis3
 
 
 import bpy
