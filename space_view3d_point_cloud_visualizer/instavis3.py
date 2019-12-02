@@ -50,6 +50,10 @@ class PCVIV3Config():
     sampler_error_color = (1.0, 0.0, 1.0, )
 
 
+class PCVIV3Runtime():
+    pass
+
+
 class PCVIV3FacesSampler():
     def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
         if(colorize is None):
