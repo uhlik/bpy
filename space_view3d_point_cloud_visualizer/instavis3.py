@@ -78,13 +78,13 @@ class PCVIV3FacesSampler():
             if(len(target.data.materials) == 0):
                 # no materials, set to constant
                 colorize = 'CONSTANT'
-                constant_color = (1.0, 0.0, 1.0, )
+                constant_color = PCVIV3Config.sampler_error_color
             materials = target.data.materials
             if(None in materials[:]):
                 # if there is empty slot, abort it and set to constant
                 # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
                 colorize = 'CONSTANT'
-                constant_color = (1.0, 0.0, 1.0, )
+                constant_color = PCVIV3Config.sampler_error_color
         
         l = len(me.polygons)
         if(count == -1):
@@ -102,7 +102,7 @@ class PCVIV3FacesSampler():
         me.polygons.foreach_get('normal', normals, )
         normals.shape = (l, 3)
         
-        # TODO: following block can be skipped in some cases
+        # TODO: following block can be skipped in some cases, like when requested point count is greater or equal to polygon count
         choices = np.indices((l, ), dtype=np.int, )
         choices.shape = (l, )
         weights = np.zeros(l, dtype=np.float32, )
@@ -157,9 +157,9 @@ class PCVIV3FacesSampler():
             ns = a[:, 3:6]
             cs = a[:, 6:]
         
-        self.vs = vs[:]
-        self.ns = ns[:]
-        self.cs = cs[:]
+        self.vs = vs
+        self.ns = ns
+        self.cs = cs
 
 
 class PCVIV3VertsSampler():
@@ -171,7 +171,7 @@ class PCVIV3VertsSampler():
         me = target.data
         
         if(len(me.vertices) == 0):
-            # no polygons to generate from, use origin
+            # no vertices to generate from, use origin
             self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
             self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
             self.cs = np.array((PCVIV3Config.sampler_error_color, ), dtype=np.float32, )
@@ -216,6 +216,6 @@ class PCVIV3VertsSampler():
             ns = a[:, 3:6]
             cs = a[:, 6:]
         
-        self.vs = vs[:]
-        self.ns = ns[:]
-        self.cs = cs[:]
+        self.vs = vs
+        self.ns = ns
+        self.cs = cs
