@@ -105,6 +105,10 @@ classes = (
     
     ui.PCV_PT_debug,
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
+    
+    # instavis3 tests
+    instavis3.PCVIV3_OT_test_generator_speed, instavis3.PCVIV3_OT_test_generator_profile, instavis3.PCVIV3_OT_test_generator_draw,
+    instavis3.PCVIV3_PT_tests,
 )
 
 

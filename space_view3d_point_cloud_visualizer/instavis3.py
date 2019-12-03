@@ -219,3 +219,221 @@ class PCVIV3VertsSampler():
         self.vs = vs
         self.ns = ns
         self.cs = cs
+
+
+# tests..
+
+
+class PCVIV3_OT_test_generator_speed(Operator):
+    bl_idname = "point_cloud_visualizer.test_generator_speed"
+    bl_label = "test_generator_speed"
+    
+    def execute(self, context):
+        log(self.bl_idname)
+        
+        o = context.object
+        n = 100
+        
+        log('use all polygons/vertices', 1)
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'colorize': None,
+             'constant_color': None,
+             'use_face_area': None,
+             'use_material_factors': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3FacesSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'constant_color': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3VertsSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        count = 1000
+        log('use max {} polygons/vertices'.format(count), 1)
+        
+        d = {'context': context,
+             'target': o,
+             'count': count,
+             'seed': 0,
+             'colorize': None,
+             'constant_color': None,
+             'use_face_area': None,
+             'use_material_factors': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3FacesSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        d = {'context': context,
+             'target': o,
+             'count': count,
+             'seed': 0,
+             'constant_color': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3VertsSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        count = 100
+        log('use max {} polygons/vertices'.format(count), 1)
+        
+        d = {'context': context,
+             'target': o,
+             'count': count,
+             'seed': 0,
+             'colorize': None,
+             'constant_color': None,
+             'use_face_area': None,
+             'use_material_factors': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3FacesSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        d = {'context': context,
+             'target': o,
+             'count': count,
+             'seed': 0,
+             'constant_color': None, }
+        _t = time.time()
+        for i in range(n):
+            s = PCVIV3VertsSampler(**d)
+        _d = datetime.timedelta(seconds=time.time() - _t) / n
+        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_test_generator_profile(Operator):
+    bl_idname = "point_cloud_visualizer.test_generator_profile"
+    bl_label = "test_generator_profile"
+    
+    def execute(self, context):
+        log(self.bl_idname)
+        
+        o = context.object
+        n = 1000
+        
+        log('tests will run {} times'.format(n), 1)
+        
+        import cProfile
+        import pstats
+        import io
+        pr = cProfile.Profile()
+        pr.enable()
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'colorize': None,
+             'constant_color': (1.0, 0.0, 0.0),
+             'use_face_area': None,
+             'use_material_factors': None, }
+        for i in range(n):
+            p = PCVIV3FacesSampler(**d)
+        
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+        
+        import cProfile
+        import pstats
+        import io
+        pr = cProfile.Profile()
+        pr.enable()
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'constant_color': (0.0, 1.0, 0.0), }
+        for i in range(n):
+            v = PCVIV3VertsSampler(**d)
+        
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_test_generator_draw(Operator):
+    bl_idname = "point_cloud_visualizer.test_generator_draw"
+    bl_label = "test_generator_draw"
+    
+    def execute(self, context):
+        log(self.bl_idname)
+        
+        o = context.object
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'colorize': None,
+             'constant_color': (1.0, 0.0, 0.0),
+             'use_face_area': None,
+             'use_material_factors': None, }
+        p = PCVIV3FacesSampler(**d)
+        
+        d = {'context': context,
+             'target': o,
+             'count': -1,
+             'seed': 0,
+             'constant_color': (0.0, 1.0, 0.0), }
+        v = PCVIV3VertsSampler(**d)
+        
+        vs = np.concatenate((p.vs, v.vs, ), axis=0, )
+        ns = np.concatenate((p.ns, v.ns, ), axis=0, )
+        cs = np.concatenate((p.cs, v.cs, ), axis=0, )
+        
+        c = PCVControl(o)
+        c.draw(vs, ns, cs)
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_PT_tests(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCVIV3 Tests"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        l = self.layout
+        c = l.column()
+        c.operator('point_cloud_visualizer.test_generator_speed')
+        c.operator('point_cloud_visualizer.test_generator_profile')
+        c.operator('point_cloud_visualizer.test_generator_draw')

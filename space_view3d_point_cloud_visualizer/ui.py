@@ -36,6 +36,7 @@ from . import edit
 from . import render
 from . import convert
 from . import generate
+from . import instavis3
 
 
 def update_panel_bl_category(self, context, ):
@@ -50,6 +51,9 @@ def update_panel_bl_category(self, context, ):
         instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug,
         
         PCV_PT_debug,
+        
+        # instavis3 tests
+        instavis3.PCVIV3_PT_tests,
     )
     try:
         p = _main_panel
