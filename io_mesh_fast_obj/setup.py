@@ -5,6 +5,9 @@ from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Build import cythonize
 
+# import Cython.Compiler.Options
+# Cython.Compiler.Options.annotate = True
+
 name = "export_obj"
 include_dirs = ["blender/source/blender/makesdna",
                 "blender/source/blender/blenlib", ]
