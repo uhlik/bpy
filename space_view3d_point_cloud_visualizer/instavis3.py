@@ -221,7 +221,140 @@ class PCVIV3VertsSampler():
         self.cs = cs
 
 
-# tests..
+class PCVIV3Manager():
+    initialized = False
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        log("init", prefix='>>>', )
+        
+        # handlers here..
+        
+        bpy.app.handlers.load_pre.append(watcher)
+        cls.initialized = True
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        log("deinit", prefix='>>>', )
+        
+        # handlers here..
+        
+        bpy.app.handlers.load_pre.remove(watcher)
+        cls.initialized = False
+
+
+@persistent
+def watcher(scene):
+    PCVIV3Manager.deinit()
+
+
+class PCVIV3_psys_properties(PropertyGroup):
+    # this is going to be assigned during runtime by manager if it detects new psys creation on depsgraph update
+    uuid: StringProperty(default="", options={'HIDDEN', }, )
+    
+    def _draw_update(self, context, ):
+        # PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
+        pass
+    
+    draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.ParticleSettings.pcv_instance_visualizer3 = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.ParticleSettings.pcv_instance_visualizer3
+
+
+class PCVIV3_object_properties(PropertyGroup):
+    source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
+                                               ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
+                                               ], default='POLYGONS', description="Point cloud generation source", )
+    max_points_static: IntProperty(name="Max. Static Points", default=1000, min=1, max=100000, description="Maximum number of points per instance for static drawing", )
+    max_points_interactive: IntProperty(name="Max. Interactive Points", default=100, min=1, max=10000, description="Maximum number of points per instance for interactive drawing", )
+    
+    # NOTE: maybe don't use pixel points, they are faster, that's for sure, but in this case, billboard points give some depth sense..
+    point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
+    point_size_f: FloatProperty(name="Scale", default=1.0, min=0.0, max=10.0, description="Point scale (shader size * scale)", precision=6, )
+    
+    # TODO: i write it here again, solve empty material slots without material and therefore without any data to generate color from..
+    color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
+                                                           ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
+                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", )
+    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+    
+    def _method_update(self, context, ):
+        if(not self.use_face_area and not self.use_material_factors):
+            self.use_face_area = True
+    
+    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
+    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
+    
+    # # helper property, draw minimal ui or draw all props
+    # subpanel_opened: BoolProperty(default=False, options={'HIDDEN', }, )
+    # # store info how long was last update, generate and store to cache
+    # debug_update: StringProperty(default="", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Object.pcv_instance_visualizer3 = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Object.pcv_instance_visualizer3
+
+
+class PCVIV3_material_properties(PropertyGroup):
+    # this serves as material weight value for polygon point generator, higher value means that it is more likely for polygon to be used as point source
+    factor: FloatProperty(name="Factor", default=0.5, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Material.pcv_instance_visualizer3 = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Material.pcv_instance_visualizer3
+
+
+class PCVIV3_OT_init(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_init"
+    bl_label = "Initialize"
+    bl_description = "Initialize Instance Visualizer"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV3Manager.init()
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_deinit(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_deinit"
+    bl_label = "Deinitialize"
+    bl_description = "Deinitialize Instance Visualizer"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV3Manager.deinit()
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
 
 
 class PCVIV3_OT_test_generator_speed(Operator):
@@ -437,3 +570,6 @@ class PCVIV3_PT_tests(Panel):
         c.operator('point_cloud_visualizer.test_generator_speed')
         c.operator('point_cloud_visualizer.test_generator_profile')
         c.operator('point_cloud_visualizer.test_generator_draw')
+        c.separator()
+        c.operator('point_cloud_visualizer.pcviv3_init')
+        c.operator('point_cloud_visualizer.pcviv3_deinit')

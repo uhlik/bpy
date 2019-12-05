@@ -106,6 +106,11 @@ classes = (
     ui.PCV_PT_debug,
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
     
+    # instavis3 props
+    instavis3.PCVIV3_psys_properties, instavis3.PCVIV3_object_properties, instavis3.PCVIV3_material_properties,
+    # instavis3 ops
+    instavis3.PCVIV3_OT_init, instavis3.PCVIV3_OT_deinit,
+    
     # instavis3 tests
     instavis3.PCVIV3_OT_test_generator_speed, instavis3.PCVIV3_OT_test_generator_profile, instavis3.PCVIV3_OT_test_generator_draw,
     instavis3.PCVIV3_PT_tests,
@@ -123,6 +128,7 @@ def unregister():
     machine.PCVSequence.deinit()
     machine.PCVManager.deinit()
     instavis.PCVIV2Manager.deinit()
+    instavis3.PCVIV3Manager.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
