@@ -261,6 +261,8 @@ class PCVIV3_psys_properties(PropertyGroup):
         pass
     
     draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
+    # this should be just safe limit, somewhere in advanced settigs
+    max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
     
     @classmethod
     def register(cls):
