@@ -48,7 +48,7 @@ def update_panel_bl_category(self, context, ):
         PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
         PCV_PT_development,
         
-        instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug,
+        # instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug,
         
         PCV_PT_debug,
         

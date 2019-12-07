@@ -71,7 +71,7 @@ import bpy
 
 
 classes = (
-    instavis.PCVIV2_properties, instavis.PCVIV2_generator_properties, instavis.PCVIV2_UL_materials,
+    # instavis.PCVIV2_properties, instavis.PCVIV2_generator_properties, instavis.PCVIV2_UL_materials,
     
     props.PCV_properties,
     prefs.PCV_preferences,
@@ -96,8 +96,8 @@ classes = (
     filters.PCV_OT_filter_boolean_intersect, filters.PCV_OT_filter_boolean_exclude, filters.PCV_OT_color_adjustment_shader_reset,
     filters.PCV_OT_color_adjustment_shader_apply, filters.PCV_OT_filter_join,
     
-    instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug, instavis.PCVIV2_OT_init,
-    instavis.PCVIV2_OT_deinit, instavis.PCVIV2_OT_reset, instavis.PCVIV2_OT_reset_all, instavis.PCVIV2_OT_update, instavis.PCVIV2_OT_update_all,
+    # instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug, instavis.PCVIV2_OT_init,
+    # instavis.PCVIV2_OT_deinit, instavis.PCVIV2_OT_reset, instavis.PCVIV2_OT_reset_all, instavis.PCVIV2_OT_update, instavis.PCVIV2_OT_update_all,
     
     ui.PCV_PT_development,
     generate.PCV_OT_generate_volume_point_cloud,
@@ -127,7 +127,7 @@ def register():
 def unregister():
     machine.PCVSequence.deinit()
     machine.PCVManager.deinit()
-    instavis.PCVIV2Manager.deinit()
+    # instavis.PCVIV2Manager.deinit()
     instavis3.PCVIV3Manager.deinit()
     
     for cls in reversed(classes):

@@ -79,12 +79,14 @@ class PCVIV3FacesSampler():
                 # no materials, set to constant
                 colorize = 'CONSTANT'
                 constant_color = PCVIV3Config.sampler_error_color
+                use_material_factors = False
             materials = target.data.materials
             if(None in materials[:]):
                 # if there is empty slot, abort it and set to constant
                 # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
                 colorize = 'CONSTANT'
                 constant_color = PCVIV3Config.sampler_error_color
+                use_material_factors = False
         
         l = len(me.polygons)
         if(count == -1):
@@ -121,7 +123,7 @@ class PCVIV3FacesSampler():
                 material_colors[i][0] = mc[0] ** (1 / 2.2)
                 material_colors[i][1] = mc[1] ** (1 / 2.2)
                 material_colors[i][2] = mc[2] ** (1 / 2.2)
-                material_factors[i] = m.pcv_instance_visualizer.factor
+                material_factors[i] = m.pcv_instance_visualizer3.factor
         
         if(use_material_factors):
             material_weights = np.take(material_factors, material_indices, axis=0, )
@@ -369,88 +371,82 @@ class PCVIV3_OT_test_generator_speed(Operator):
         o = context.object
         n = 100
         
-        log('use all polygons/vertices', 1)
+        def run_test_polygons(d):
+            _t = time.time()
+            for i in range(n):
+                s = PCVIV3FacesSampler(**d)
+            _d = datetime.timedelta(seconds=time.time() - _t) / n
+            return _d
         
-        d = {'context': context,
-             'target': o,
-             'count': -1,
-             'seed': 0,
-             'colorize': None,
-             'constant_color': None,
-             'use_face_area': None,
-             'use_material_factors': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3FacesSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        def run_test_vertices(d):
+            _t = time.time()
+            for i in range(n):
+                s = PCVIV3VertsSampler(**d)
+            _d = datetime.timedelta(seconds=time.time() - _t) / n
+            return _d
         
-        d = {'context': context,
-             'target': o,
-             'count': -1,
-             'seed': 0,
-             'constant_color': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3VertsSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        w = 170
         
-        count = 1000
-        log('use max {} polygons/vertices'.format(count), 1)
+        log('{}'.format('-' * (w + 4)), 1)
+        log('polygons: ', 1)
         
-        d = {'context': context,
-             'target': o,
-             'count': count,
-             'seed': 0,
-             'colorize': None,
-             'constant_color': None,
-             'use_face_area': None,
-             'use_material_factors': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3FacesSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        d = {'context': context, 'target': o, 'count': -1, 'seed': 0, 'colorize': None, 'constant_color': None, 'use_face_area': None, 'use_material_factors': None, }
         
-        d = {'context': context,
-             'target': o,
-             'count': count,
-             'seed': 0,
-             'constant_color': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3VertsSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        counts = [-1, 1000, 100, ]
         
-        count = 100
-        log('use max {} polygons/vertices'.format(count), 1)
+        def run_variable_counts_with_arguments(d):
+            for c in counts:
+                d['count'] = c
+                r = run_test_polygons(d)
+                h = 'count: {}, colorize: {}, constant_color: {}, use_face_area: {}, use_material_factors: {}'.format(d['count'], d['colorize'], d['constant_color'], d['use_face_area'], d['use_material_factors'])
+                log('{:>{w}}'.format('{} >> {} >> {:.3f} ms'.format(h, r, r.microseconds / 1000), w=w, ), 2)
+            log('', 2)
         
-        d = {'context': context,
-             'target': o,
-             'count': count,
-             'seed': 0,
-             'colorize': None,
-             'constant_color': None,
-             'use_face_area': None,
-             'use_material_factors': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3FacesSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('polygons: average generation time from {} runs: {}'.format(n, _d), 2)
+        run_variable_counts_with_arguments(d)
+        d['colorize'] = 'VIEWPORT_DISPLAY_COLOR'
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = True
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = False
+        d['use_material_factors'] = True
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = True
+        d['use_material_factors'] = True
+        run_variable_counts_with_arguments(d)
         
-        d = {'context': context,
-             'target': o,
-             'count': count,
-             'seed': 0,
-             'constant_color': None, }
-        _t = time.time()
-        for i in range(n):
-            s = PCVIV3VertsSampler(**d)
-        _d = datetime.timedelta(seconds=time.time() - _t) / n
-        log('vertices: average generation time from {} runs: {}'.format(n, _d), 2)
+        d['constant_color'] = (0.1, 0.2, 0.3, )
+        run_variable_counts_with_arguments(d)
+        d['colorize'] = 'VIEWPORT_DISPLAY_COLOR'
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = True
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = False
+        d['use_material_factors'] = True
+        run_variable_counts_with_arguments(d)
+        d['use_face_area'] = True
+        d['use_material_factors'] = True
+        run_variable_counts_with_arguments(d)
+        
+        log('{}'.format('-' * (w + 4)), 1)
+        log('vertices: ', 1)
+        log('{}'.format('-' * (w + 4)), 1)
+        
+        d = {'context': context, 'target': o, 'count': -1, 'seed': 0, 'constant_color': None, }
+        
+        def run_variable_counts_with_arguments(d):
+            for c in counts:
+                d['count'] = c
+                r = run_test_vertices(d)
+                h = 'count: {}, constant_color: {}'.format(d['count'], d['constant_color'], )
+                log('{:>{w}}'.format('{} >> {} >> {:.3f} ms'.format(h, r, r.microseconds / 1000), w=w, ), 2)
+            log('', 2)
+        
+        run_variable_counts_with_arguments(d)
+        
+        d['constant_color'] = (0.1, 0.2, 0.3, )
+        run_variable_counts_with_arguments(d)
+        
+        log('{}'.format('-' * (w + 4)), 1)
         
         return {'FINISHED'}
 
