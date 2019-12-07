@@ -223,9 +223,18 @@ class PCVIV3VertsSampler():
         self.cs = cs
 
 
+def _pcv_pe_manager_update():
+    PCVIV3Manager.update()
+    return None
+
+
 class PCVIV3Manager():
     initialized = False
-    cache = {}
+    # cache = {}
+    
+    delay = 0.1
+    flag = False
+    override = False
     
     @classmethod
     def init(cls):
@@ -237,7 +246,11 @@ class PCVIV3Manager():
         # bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
         # bpy.app.handlers.depsgraph_update_post.append(cls.uuid_handler)
         
-        bpy.app.handlers.depsgraph_update_post.append(cls.update)
+        # cls.setup()
+        
+        # bpy.app.handlers.depsgraph_update_post.append(cls.update)
+        
+        bpy.app.handlers.depsgraph_update_post.append(cls.handler)
         
         bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
@@ -256,7 +269,8 @@ class PCVIV3Manager():
         # bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
         # bpy.app.handlers.depsgraph_update_post.remove(cls.uuid_handler)
         
-        bpy.app.handlers.depsgraph_update_post.remove(cls.update)
+        # bpy.app.handlers.depsgraph_update_post.remove(cls.update)
+        bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
         
         bpy.app.handlers.load_pre.remove(watcher)
         cls.initialized = False
@@ -309,6 +323,7 @@ class PCVIV3Manager():
             cls.update(scene, depsgraph, )
             cls._redraw_view_3d()
     
+    '''
     @classmethod
     def update(cls, scene, depsgraph, ):
         _t = time.time()
@@ -375,6 +390,111 @@ class PCVIV3Manager():
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         print(_d)
+    '''
+    
+    # @classmethod
+    # def setup(cls):
+    #     pass
+    
+    @classmethod
+    def update(cls, scene=None, depsgraph=None, ):
+        if(not cls.initialized):
+            return
+        if(cls.override):
+            return
+        
+        cls.override = True
+        
+        _t = time.time()
+        
+        # '''
+        def pre():
+            for o in bpy.data.objects:
+                if(len(o.particle_systems) > 0):
+                    for psys in o.particle_systems:
+                        pset = psys.settings
+                        if(pset.render_type == 'COLLECTION'):
+                            col = pset.instance_collection
+                            for co in col.objects:
+                                co.display_type = 'BOUNDS'
+                        elif(pset.render_type == 'OBJECT'):
+                            co = pset.instance_object
+                            co.display_type = 'BOUNDS'
+                        pset.display_method = 'RENDER'
+        
+        def post():
+            for o in bpy.data.objects:
+                if(len(o.particle_systems) > 0):
+                    for psys in o.particle_systems:
+                        pset = psys.settings
+                        pset.display_method = 'NONE'
+                        if(pset.render_type == 'COLLECTION'):
+                            col = pset.instance_collection
+                            for co in col.objects:
+                                co.display_type = 'TEXTURED'
+                        elif(pset.render_type == 'OBJECT'):
+                            co = pset.instance_object
+                            co.display_type = 'TEXTURED'
+        
+        pre()
+        # '''
+        
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        # depsgraph.update()
+        
+        vs = np.zeros((len(depsgraph.object_instances), 3), dtype=np.float32, )
+        c = 0
+        parent = None
+        for instance in depsgraph.object_instances:
+            if(instance.is_instance):
+                m = instance.matrix_world
+                parent = instance.parent
+                m = parent.matrix_world.inverted() @ m
+                loc = np.array(m.translation.to_tuple(), dtype=np.float32, )
+                vs[c] = loc
+                c += 1
+        
+        vs = vs[:c]
+        # print(parent)
+        if(parent):
+            c = PCVControl(bpy.context.scene.objects[parent.name])
+            c.draw(vs, None, None)
+        
+        # '''
+        post()
+        # '''
+        
+        cls.override = False
+        cls.flag = True
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        print(_d)
+    
+    @classmethod
+    def handler(cls, scene, depsgraph, ):
+        if(not cls.initialized):
+            return
+        
+        if(cls.override):
+            return
+        
+        if(cls.flag):
+            # FIXME: this is hackish, very hackish indeed, how to solve it? persuade some blender dev that when particle instances are hidden in viewport, depsgraph should return them.. basically, now i ignore next depsgraph update event and maybe i can miss something i should not with that..
+            cls.flag = False
+            return
+        
+        if(not bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+        else:
+            if(bpy.app.timers.is_registered(_pcv_pe_manager_update)):
+                # i've seen some 'ValueError: Error: function is not registered' here, how is that possible? no idea. so, lets check once more
+                # i think it was caused by some forgotten registered handler which was not removed, when finished PCVIVManager should correctly add and remove handlers..
+                # or meanwhile it run out?
+                try:
+                    bpy.app.timers.unregister(_pcv_pe_manager_update)
+                except ValueError as e:
+                    log("PCVIVManager: handler: {}".format(e))
+            bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
     
     @classmethod
     def _redraw_view_3d(cls):
@@ -398,7 +518,7 @@ class PCVIV3_psys_properties(PropertyGroup):
         pass
     
     draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
-    # this should be just safe limit, somewhere in advanced settigs
+    # this should be just safe limit, somewhere in advanced settings
     max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
     
     @classmethod
@@ -546,11 +666,11 @@ class PCVIV3_PT_panel(Panel):
         #     #         raise Exception('psys without uuid')
         #     c.operator('point_cloud_visualizer.pcviv3_update')
         
-        b = c.box()
-        b.scale_y = 0.5
-        b.label(text='cache:')
-        for k, v in PCVIV3Manager.cache.items():
-            b.label(text='{}'.format(k))
+        # b = c.box()
+        # b.scale_y = 0.5
+        # b.label(text='cache:')
+        # for k, v in PCVIV3Manager.cache.items():
+        #     b.label(text='{}'.format(k))
 
 
 # ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
