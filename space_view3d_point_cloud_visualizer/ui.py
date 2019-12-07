@@ -54,6 +54,8 @@ def update_panel_bl_category(self, context, ):
         
         # instavis3 tests
         instavis3.PCVIV3_PT_tests,
+        # instavis3
+        instavis3.PCVIV3_PT_panel,
     )
     try:
         p = _main_panel

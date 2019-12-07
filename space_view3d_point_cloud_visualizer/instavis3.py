@@ -225,6 +225,7 @@ class PCVIV3VertsSampler():
 
 class PCVIV3Manager():
     initialized = False
+    cache = {}
     
     @classmethod
     def init(cls):
@@ -233,9 +234,17 @@ class PCVIV3Manager():
         log("init", prefix='>>>', )
         
         # handlers here..
+        # bpy.app.handlers.depsgraph_update_pre.append(cls.uuid_handler)
+        # bpy.app.handlers.depsgraph_update_post.append(cls.uuid_handler)
+        
+        bpy.app.handlers.depsgraph_update_post.append(cls.update)
         
         bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
+        
+        # scene = bpy.context.scene
+        # depsgraph = bpy.context.evaluated_depsgraph_get()
+        # cls.uuid_handler(scene, depsgraph, )
     
     @classmethod
     def deinit(cls):
@@ -244,9 +253,135 @@ class PCVIV3Manager():
         log("deinit", prefix='>>>', )
         
         # handlers here..
+        # bpy.app.handlers.depsgraph_update_pre.remove(cls.uuid_handler)
+        # bpy.app.handlers.depsgraph_update_post.remove(cls.uuid_handler)
+        
+        bpy.app.handlers.depsgraph_update_post.remove(cls.update)
         
         bpy.app.handlers.load_pre.remove(watcher)
         cls.initialized = False
+    
+    @classmethod
+    def uuid_handler(cls, scene, depsgraph, ):
+        if(not cls.initialized):
+            return
+        # log("uuid_handler", prefix='>>>', )
+        dirty = False
+        ls = []
+        dps = bpy.data.particles
+        for ps in dps:
+            if(ps.users == 0):
+                continue
+            
+            pcviv = ps.pcv_instance_visualizer3
+            
+            if(pcviv.uuid == ""):
+                log("uuid_handler: found psys without uuid", prefix='>>>', )
+                pcviv.uuid = str(uuid.uuid1())
+                cls.cache[pcviv.uuid] = {
+                    'pset': ps,
+                }
+                
+                # cls._redraw_view_3d()
+                dirty = True
+            else:
+                if(pcviv.uuid not in cls.cache.keys()):
+                    cls.cache[pcviv.uuid] = {
+                        'pset': ps,
+                    }
+                    # cls._redraw_view_3d()
+                    dirty = True
+            
+            ls.append(pcviv.uuid)
+        
+        kill = []
+        for k in cls.cache.keys():
+            if(k not in ls):
+                kill.append(k)
+        for k in kill:
+            del cls.cache[k]
+        
+        if(len(kill) > 0):
+            # cls._redraw_view_3d()
+            dirty = True
+        
+        if(dirty):
+            cls.update(scene, depsgraph, )
+            cls._redraw_view_3d()
+    
+    @classmethod
+    def update(cls, scene, depsgraph, ):
+        _t = time.time()
+        
+        # import cProfile
+        # import pstats
+        # import io
+        # pr = cProfile.Profile()
+        # pr.enable()
+        
+        # for k, v in cls.cache.items():
+        #     pset = v['pset']
+        
+        frags = []
+        parent = None
+        
+        def apply_matrix(m, vs, ns=None, ):
+            vs.shape = (-1, 3)
+            vs = np.c_[vs, np.ones(vs.shape[0])]
+            vs = np.dot(m, vs.T)[0:3].T.reshape((-1))
+            vs.shape = (-1, 3)
+            if(ns is not None):
+                _, rot, _ = m.decompose()
+                rmat = rot.to_matrix().to_4x4()
+                ns.shape = (-1, 3)
+                ns = np.c_[ns, np.ones(ns.shape[0])]
+                ns = np.dot(rmat, ns.T)[0:3].T.reshape((-1))
+                ns.shape = (-1, 3)
+            return vs, ns
+        
+        for instance in depsgraph.object_instances:
+            # TODO: instance.particle_system can check for the right particle system so i can skip other particle system, it is None for instancers aka duplis?
+            if(instance.is_instance):
+                base = instance.object
+                # get matrix
+                m = instance.matrix_world
+                # unapply emitter matrix, instance.parent should refer to object holding particle system
+                parent = instance.parent
+                m = parent.matrix_world.inverted() @ m
+                
+                if(base.name not in cls.cache.keys()):
+                    sampler = PCVIV3VertsSampler(None, base, count=100, )
+                    vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
+                    cls.cache[base.name] = (vs, ns, cs, )
+                else:
+                    vs, ns, cs = cls.cache[base.name]
+                
+                vs, ns = apply_matrix(m, vs, ns)
+                frags.append((vs, ns, cs, ))
+        
+        if(len(frags) > 0):
+            vs = np.concatenate([i[0] for i in frags], axis=0, )
+            ns = np.concatenate([i[1] for i in frags], axis=0, )
+            cs = np.concatenate([i[2] for i in frags], axis=0, )
+            c = PCVControl(bpy.context.scene.objects[parent.name])
+            c.draw(vs, ns, cs)
+        
+        # pr.disable()
+        # s = io.StringIO()
+        # sortby = 'cumulative'
+        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        # ps.print_stats()
+        # print(s.getvalue())
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        print(_d)
+    
+    @classmethod
+    def _redraw_view_3d(cls):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
 
 
 @persistent
@@ -356,6 +491,66 @@ class PCVIV3_OT_deinit(Operator):
     def execute(self, context):
         PCVIV3Manager.deinit()
         return {'FINISHED'}
+
+
+'''
+class PCVIV3_OT_update(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_update"
+    bl_label = "Update"
+    bl_description = "Update point cloud visualization by particle system UUID"
+    
+    # uuid: StringProperty(name="UUID", default='', )
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is None):
+            return False
+        return True
+    
+    def execute(self, context):
+        # PCVIV3Manager.update(self.uuid, )
+        PCVIV3Manager.update()
+        return {'FINISHED'}
+'''
+
+
+class PCVIV3_PT_panel(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCVIV3"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        l = self.layout
+        c = l.column()
+        r = c.row(align=True)
+        r.operator('point_cloud_visualizer.pcviv3_init')
+        r.operator('point_cloud_visualizer.pcviv3_deinit')
+        
+        # if(PCVIV3Manager.initialized):
+        #     # o = context.object
+        #     # for psys in o.particle_systems:
+        #     #     pset = psys.settings.pcv_instance_visualizer3
+        #     #     if(pset.uuid != ''):
+        #     #         c.operator('point_cloud_visualizer.pcviv3_update', text='Update: {}'.format(psys.name)).uuid = pset.uuid
+        #     #     else:
+        #     #         raise Exception('psys without uuid')
+        #     c.operator('point_cloud_visualizer.pcviv3_update')
+        
+        b = c.box()
+        b.scale_y = 0.5
+        b.label(text='cache:')
+        for k, v in PCVIV3Manager.cache.items():
+            b.label(text='{}'.format(k))
 
 
 # ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
@@ -568,6 +763,3 @@ class PCVIV3_PT_tests(Panel):
         c.operator('point_cloud_visualizer.test_generator_speed')
         c.operator('point_cloud_visualizer.test_generator_profile')
         c.operator('point_cloud_visualizer.test_generator_draw')
-        c.separator()
-        c.operator('point_cloud_visualizer.pcviv3_init')
-        c.operator('point_cloud_visualizer.pcviv3_deinit')
