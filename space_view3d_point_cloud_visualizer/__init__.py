@@ -110,6 +110,7 @@ classes = (
     instavis3.PCVIV3_psys_properties, instavis3.PCVIV3_object_properties, instavis3.PCVIV3_material_properties,
     # instavis3 ops
     instavis3.PCVIV3_OT_init, instavis3.PCVIV3_OT_deinit,
+    instavis3.PCVIV3_OT_register,
     # instavis3.PCVIV3_OT_update,
     # instavis3 ui
     instavis3.PCVIV3_PT_panel,

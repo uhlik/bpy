@@ -232,9 +232,15 @@ class PCVIV3Manager():
     initialized = False
     # cache = {}
     
-    delay = 0.1
+    # delay = 0.1
+    # flag = False
+    # override = False
+    
+    registry = {}
+    cache = {}
     flag = False
-    override = False
+    buffer = []
+    stats = 0
     
     @classmethod
     def init(cls):
@@ -249,11 +255,14 @@ class PCVIV3Manager():
         # cls.setup()
         
         # bpy.app.handlers.depsgraph_update_post.append(cls.update)
+        bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
         
-        bpy.app.handlers.depsgraph_update_post.append(cls.handler)
+        # bpy.app.handlers.depsgraph_update_post.append(cls.handler)
         
         bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
+        
+        bpy.types.SpaceView3D.draw_handler_add(cls.draw, (), 'WINDOW', 'POST_VIEW')
         
         # scene = bpy.context.scene
         # depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -270,11 +279,13 @@ class PCVIV3Manager():
         # bpy.app.handlers.depsgraph_update_post.remove(cls.uuid_handler)
         
         # bpy.app.handlers.depsgraph_update_post.remove(cls.update)
-        bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        # bpy.app.handlers.depsgraph_update_post.remove(cls.handler)
+        bpy.app.handlers.depsgraph_update_post.remove(cls.depsgraph_update_post)
         
         bpy.app.handlers.load_pre.remove(watcher)
         cls.initialized = False
     
+    """
     @classmethod
     def uuid_handler(cls, scene, depsgraph, ):
         if(not cls.initialized):
@@ -322,8 +333,8 @@ class PCVIV3Manager():
         if(dirty):
             cls.update(scene, depsgraph, )
             cls._redraw_view_3d()
-    
-    '''
+    """
+    """
     @classmethod
     def update(cls, scene, depsgraph, ):
         _t = time.time()
@@ -390,12 +401,8 @@ class PCVIV3Manager():
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         print(_d)
-    '''
-    
-    # @classmethod
-    # def setup(cls):
-    #     pass
-    
+    """
+    """
     @classmethod
     def update(cls, scene=None, depsgraph=None, ):
         if(not cls.initialized):
@@ -469,7 +476,8 @@ class PCVIV3Manager():
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         print(_d)
-    
+    """
+    """
     @classmethod
     def handler(cls, scene, depsgraph, ):
         if(not cls.initialized):
@@ -495,6 +503,146 @@ class PCVIV3Manager():
                 except ValueError as e:
                     log("PCVIVManager: handler: {}".format(e))
             bpy.app.timers.register(_pcv_pe_manager_update, first_interval=cls.delay, persistent=False, )
+    """
+    
+    @classmethod
+    def register(cls, o, psys, ):
+        pset = psys.settings
+        pcviv = pset.pcv_instance_visualizer3
+        if(pcviv.uuid == ''):
+            pcviv.uuid = str(uuid.uuid1())
+        else:
+            raise Exception('{} . register() uuid exists, add some logic to handle that..'.format(cls.__class__.__name__))
+        cls.registry[pcviv.uuid] = {'object': o, 'psys': psys, }
+    
+    @classmethod
+    def depsgraph_update_post(cls, scene, depsgraph, ):
+        # log("update!", prefix='>>>', )
+        _t = time.time()
+        cls.update()
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        if(not cls.flag):
+            log("update: {}".format(_d), prefix='>>>', )
+    
+    @classmethod
+    def update(cls):
+        if(cls.flag):
+            return
+        cls.flag = True
+        
+        def pre():
+            for o in bpy.data.objects:
+                if(len(o.particle_systems) > 0):
+                    for psys in o.particle_systems:
+                        pset = psys.settings
+                        if(pset.render_type == 'COLLECTION'):
+                            col = pset.instance_collection
+                            for co in col.objects:
+                                co.display_type = 'BOUNDS'
+                        elif(pset.render_type == 'OBJECT'):
+                            co = pset.instance_object
+                            co.display_type = 'BOUNDS'
+                        pset.display_method = 'RENDER'
+        
+        def post():
+            for o in bpy.data.objects:
+                if(len(o.particle_systems) > 0):
+                    for psys in o.particle_systems:
+                        pset = psys.settings
+                        pset.display_method = 'NONE'
+                        if(pset.render_type == 'COLLECTION'):
+                            col = pset.instance_collection
+                            for co in col.objects:
+                                co.display_type = 'TEXTURED'
+                        elif(pset.render_type == 'OBJECT'):
+                            co = pset.instance_object
+                            co.display_type = 'TEXTURED'
+        
+        pre()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        depsgraph.update()
+        
+        buffer = [None] * len(depsgraph.object_instances)
+        c = 0
+        registered_uuids = tuple(cls.registry.keys())
+        cls.stats = 0
+        
+        # vs = np.zeros((len(depsgraph.object_instances), 3), dtype=np.float32, )
+        # c = 0
+        # parent = None
+        for instance in depsgraph.object_instances:
+            if(instance.is_instance):
+                # m = instance.matrix_world
+                # parent = instance.parent
+                # m = parent.matrix_world.inverted() @ m
+                # loc = np.array(m.translation.to_tuple(), dtype=np.float32, )
+                # vs[c] = loc
+                # c += 1
+                ipsys = instance.particle_system
+                ipset = ipsys.settings
+                ipcviv = ipset.pcv_instance_visualizer3
+                iuuid = ipcviv.uuid
+                if(iuuid in registered_uuids):
+                    m = instance.matrix_world
+                    # parent = instance.parent
+                    # m = parent.matrix_world.inverted() @ m
+                    m = Matrix() @ m
+                    
+                    base = instance.object
+                    if(base.name not in cls.cache.keys()):
+                        sampler = PCVIV3VertsSampler(None, base, count=1000, )
+                        vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
+                        vert_shader = '''
+                            in vec3 position;
+                            in vec3 color;
+                            uniform mat4 perspective_matrix;
+                            uniform mat4 object_matrix;
+                            out vec4 f_color;
+                            void main()
+                            {
+                                gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+                                gl_PointSize = 6;
+                                f_color = vec4(color, 1.0);
+                            }
+                        '''
+                        frag_shader = '''
+                            in vec4 f_color;
+                            out vec4 fragColor;
+                            void main()
+                            {
+                                fragColor = f_color;
+                            }
+                        '''
+                        shader = GPUShader(vert_shader, frag_shader)
+                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+                        cls.cache[base.name] = (vs, ns, cs, shader, batch)
+                    else:
+                        vs, ns, cs, shader, batch = cls.cache[base.name]
+                    # cls.buffer.append((shader, batch, m, ))
+                    buffer[c] = (shader, batch, m, )
+                    c += 1
+                    cls.stats += len(vs)
+        
+        buffer = list(filter(None, buffer))
+        cls.buffer = buffer
+        
+        post()
+        cls.flag = False
+    
+    @classmethod
+    def draw(cls):
+        _t = time.time()
+        
+        buffer = cls.buffer
+        pm = bpy.context.region_data.perspective_matrix
+        for shader, batch, matrix in buffer:
+            shader.bind()
+            shader.uniform_float("perspective_matrix", pm)
+            shader.uniform_float("object_matrix", matrix)
+            batch.draw(shader)
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("draw: {}".format(_d), prefix='>>>', )
     
     @classmethod
     def _redraw_view_3d(cls):
@@ -613,6 +761,24 @@ class PCVIV3_OT_deinit(Operator):
         return {'FINISHED'}
 
 
+class PCVIV3_OT_register(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_register"
+    bl_label = "Register"
+    bl_description = "Register particle system"
+    
+    @classmethod
+    def poll(cls, context):
+        ok = False
+        if(context.object is not None):
+            o = context.object
+            if(o.particle_systems.active is not None):
+                ok = True
+        return ok
+    
+    def execute(self, context):
+        PCVIV3Manager.register(context.object, context.object.particle_systems.active)
+        return {'FINISHED'}
+
 '''
 class PCVIV3_OT_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv3_update"
@@ -652,6 +818,7 @@ class PCVIV3_PT_panel(Panel):
     def draw(self, context):
         l = self.layout
         c = l.column()
+        c.operator('point_cloud_visualizer.pcviv3_register')
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv3_init')
         r.operator('point_cloud_visualizer.pcviv3_deinit')
@@ -666,11 +833,29 @@ class PCVIV3_PT_panel(Panel):
         #     #         raise Exception('psys without uuid')
         #     c.operator('point_cloud_visualizer.pcviv3_update')
         
-        # b = c.box()
-        # b.scale_y = 0.5
-        # b.label(text='cache:')
-        # for k, v in PCVIV3Manager.cache.items():
-        #     b.label(text='{}'.format(k))
+        b = c.box()
+        b.scale_y = 0.5
+        b.label(text='registry:')
+        for k, v in PCVIV3Manager.registry.items():
+            b.label(text='{}:{}'.format(k, v['psys'].name))
+        b = c.box()
+        b.scale_y = 0.5
+        b.label(text='cache:')
+        for k, v in PCVIV3Manager.cache.items():
+            b.label(text='{}'.format(k))
+        
+        def human_readable_number(num, suffix='', ):
+            f = 1000.0
+            for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', ]:
+                if(abs(num) < f):
+                    return "{:3.1f}{}{}".format(num, unit, suffix)
+                num /= f
+            return "{:.1f}{}{}".format(num, 'Y', suffix)
+        
+        b = c.box()
+        b.scale_y = 0.5
+        b.label(text='stats:')
+        b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats)))
 
 
 # ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
