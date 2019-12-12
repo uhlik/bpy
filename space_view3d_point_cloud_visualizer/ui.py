@@ -52,11 +52,9 @@ def update_panel_bl_category(self, context, ):
         
         PCV_PT_debug,
         
-        # instavis3 tests
-        instavis3.PCVIV3_PT_tests,
-        # instavis3
-        instavis3.PCVIV3_PT_panel,
-        instavis3.PCVIV3_PT_generator,
+        # # instavis3
+        # instavis3.PCVIV3_PT_panel,
+        # instavis3.PCVIV3_PT_generator,
     )
     try:
         p = _main_panel

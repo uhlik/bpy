@@ -1,6 +1,6 @@
 in vec3 f_color;
 
-uniform float alpha;
+uniform float alpha = 1.0;
 
 out vec4 fragColor;
 

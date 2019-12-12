@@ -107,17 +107,11 @@ classes = (
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
     
     # instavis3 props
-    instavis3.PCVIV3_psys_properties, instavis3.PCVIV3_object_properties, instavis3.PCVIV3_material_properties,
+    instavis3.PCVIV3_preferences, instavis3.PCVIV3_psys_properties, instavis3.PCVIV3_object_properties, instavis3.PCVIV3_material_properties,
     # instavis3 ops
-    instavis3.PCVIV3_OT_init, instavis3.PCVIV3_OT_deinit,
-    instavis3.PCVIV3_OT_register,
-    # instavis3.PCVIV3_OT_update,
+    instavis3.PCVIV3_OT_init, instavis3.PCVIV3_OT_deinit, instavis3.PCVIV3_OT_register,
     # instavis3 ui
     instavis3.PCVIV3_PT_panel, instavis3.PCVIV3_PT_generator,
-    
-    # instavis3 tests
-    instavis3.PCVIV3_OT_test_generator_speed, instavis3.PCVIV3_OT_test_generator_profile, instavis3.PCVIV3_OT_test_generator_draw,
-    instavis3.PCVIV3_PT_tests,
 )
 
 

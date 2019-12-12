@@ -230,7 +230,10 @@ class PCVIV3Manager():
     handle = None
     stats = 0
     
+    # if True, properties callback erase its object from cache and force it to be rebuild
     cache_auto_update = True
+    
+    alert = False
     
     @classmethod
     def init(cls):
@@ -238,6 +241,7 @@ class PCVIV3Manager():
             return
         log("init", prefix='>>>', )
         
+        bpy.app.handlers.depsgraph_update_pre.append(cls.depsgraph_update_pre)
         bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
         
         bpy.app.handlers.load_pre.append(watcher)
@@ -262,26 +266,70 @@ class PCVIV3Manager():
         cls.initialized = False
         
         bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
+        
+        cls.registry = {}
+        cls.cache = {}
+        cls.flag = False
+        cls.buffer = []
+        cls.handle = None
+        cls.stats = 0
+        
         cls._redraw_view_3d()
     
     @classmethod
     def register(cls, o, psys, ):
+        # if(pcviv.uuid == ''):
+        #     pcviv.uuid = str(uuid.uuid1())
+        # # else:
+        # #     raise Exception('{} . register() uuid exists, add some logic to handle that..'.format(cls.__class__.__name__))
+        # else:
+        #     if(pcviv.uuid in cls.registry.keys()):
+        #         return
+        
         pset = psys.settings
         pcviv = pset.pcv_instance_visualizer3
         if(pcviv.uuid == ''):
+            # not used before..
             pcviv.uuid = str(uuid.uuid1())
         else:
-            raise Exception('{} . register() uuid exists, add some logic to handle that..'.format(cls.__class__.__name__))
-        cls.registry[pcviv.uuid] = {'object': o, 'psys': psys, }
+            if(pcviv.uuid in cls.registry.keys()):
+                # is already registered
+                pass
+            else:
+                # was registered, then unregistered or removed, make new uuid
+                pcviv.uuid = str(uuid.uuid1())
+                # just in case..
+                pset.display_method = 'RENDER'
+                
+        cls.registry[pcviv.uuid] = psys
+    
+    @classmethod
+    def depsgraph_update_pre(cls, scene, depsgraph, ):
+        rm = []
+        for k, v in cls.registry.items():
+            # print(k, v)
+            # print(v.settings)
+            # print(v.settings.users)
+            # if(v.settings.users == 0):
+            #     rm.append(k)
+            if(v.settings is None):
+                rm.append(k)
+        for k in rm:
+            del cls.registry[k]
     
     @classmethod
     def depsgraph_update_post(cls, scene, depsgraph, ):
         # log("update!", prefix='>>>', )
-        cls.update(depsgraph)
+        cls.update(scene, depsgraph)
     
     @classmethod
-    def update(cls, depsgraph, ):
+    def update(cls, scene, depsgraph, ):
         _t = time.time()
+        
+        prefs = scene.pcv_instance_visualizer3
+        quality = prefs.quality
+        max_points = prefs.max_points
+        max_points_enabled = prefs.max_points_enabled
         
         # # NOTE: artificial updates (i need at least one when starting) are not detected
         # a = []
@@ -304,7 +352,15 @@ class PCVIV3Manager():
             return
         cls.flag = True
         
-        registered = tuple([v['psys'] for k, v in cls.registry.items()])
+        # import cProfile
+        # import pstats
+        # import io
+        # pr = cProfile.Profile()
+        # pr.enable()
+        
+        registered = tuple([v for k, v in cls.registry.items()])
+        
+        dt = []
         
         def pre():
             for o in bpy.data.objects:
@@ -318,9 +374,11 @@ class PCVIV3Manager():
                         if(pset.render_type == 'COLLECTION'):
                             col = pset.instance_collection
                             for co in col.objects:
+                                dt.append((co, co.display_type, ))
                                 co.display_type = 'BOUNDS'
                         elif(pset.render_type == 'OBJECT'):
                             co = pset.instance_object
+                            dt.append((co, co.display_type, ))
                             co.display_type = 'BOUNDS'
                         pset.display_method = 'RENDER'
         
@@ -334,13 +392,15 @@ class PCVIV3Manager():
                         
                         pset = psys.settings
                         pset.display_method = 'NONE'
-                        if(pset.render_type == 'COLLECTION'):
-                            col = pset.instance_collection
-                            for co in col.objects:
-                                co.display_type = 'TEXTURED'
-                        elif(pset.render_type == 'OBJECT'):
-                            co = pset.instance_object
-                            co.display_type = 'TEXTURED'
+                        # if(pset.render_type == 'COLLECTION'):
+                        #     col = pset.instance_collection
+                        #     for co in col.objects:
+                        #         co.display_type = 'TEXTURED'
+                        # elif(pset.render_type == 'OBJECT'):
+                        #     co = pset.instance_object
+                        #     co.display_type = 'TEXTURED'
+                        for co, t in dt:
+                            co.display_type = t
         
         pre()
         
@@ -350,6 +410,60 @@ class PCVIV3Manager():
         c = 0
         registered_uuids = tuple(cls.registry.keys())
         cls.stats = 0
+        
+        # import cProfile
+        # import pstats
+        # import io
+        # pr = cProfile.Profile()
+        # pr.enable()
+        
+        def precalc():
+            n = 0
+            d = {}
+            s = set()
+            for instance in depsgraph.object_instances:
+                if(instance.is_instance):
+                    ipsys = instance.particle_system
+                    ipset = ipsys.settings
+                    ipcviv = ipset.pcv_instance_visualizer3
+                    iuuid = ipcviv.uuid
+                    if(iuuid in registered_uuids):
+                        base = instance.object
+                        instance_options = base.pcv_instance_visualizer3
+                        ipoints = instance_options.max_points
+                        n += ipoints
+                        nm = base.name
+                        if(nm not in s):
+                            d[nm] = [ipoints, 0]
+                            s.add(nm)
+                        d[nm][1] += 1
+            if(n > max_points):
+                r = max_points / n
+                for k, v in d.items():
+                    v[0] = int(v[0] * r)
+                for k, v in d.items():
+                    if(v[0] == 0):
+                        v[0] = 1
+                return True, d
+            return False, None
+        
+        if(max_points_enabled):
+            adjust_point_counts, rules = precalc()
+            if(not adjust_point_counts and cls.alert):
+                cls.cache = {}
+            if(adjust_point_counts):
+                cls.cache = {}
+                cls.alert = True
+        else:
+            adjust_point_counts = False
+            rules = None
+        
+        # pr.disable()
+        # s = io.StringIO()
+        # sortby = 'cumulative'
+        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        # ps.print_stats()
+        # print(s.getvalue())
         
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
@@ -363,14 +477,17 @@ class PCVIV3Manager():
                     instance_options = base.pcv_instance_visualizer3
                     
                     if(base.name not in cls.cache.keys()):
+                        count = instance_options.max_points
+                        if(adjust_point_counts):
+                            count = rules[base.name][0]
                         if(instance_options.source == 'VERTICES'):
                             sampler = PCVIV3VertsSampler(base,
-                                                         count=instance_options.max_points,
+                                                         count=count,
                                                          seed=0,
                                                          constant_color=instance_options.color_constant, )
                         else:
                             sampler = PCVIV3FacesSampler(base,
-                                                         count=instance_options.max_points,
+                                                         count=count,
                                                          seed=0,
                                                          colorize=instance_options.color_source,
                                                          constant_color=instance_options.color_constant,
@@ -379,7 +496,7 @@ class PCVIV3Manager():
                         
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
-                        if(ipcviv.quality == 'BASIC'):
+                        if(quality == 'BASIC'):
                             # TODO: caching results of load_shader_code to memory, skip disk i/o
                             shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_basic')
                             shader = GPUShader(shader_data_vert, shader_data_frag, )
@@ -394,7 +511,7 @@ class PCVIV3Manager():
                     else:
                         vs, ns, cs, shader, batch = cls.cache[base.name]
                     
-                    if(ipcviv.quality == 'BASIC'):
+                    if(quality == 'BASIC'):
                         draw_size = instance_options.point_size
                         draw_quality = 0
                     else:
@@ -403,9 +520,12 @@ class PCVIV3Manager():
                     
                     buffer[c] = (draw_quality, shader, batch, m, draw_size, )
                     c += 1
-                    cls.stats += len(vs)
+                    # cls.stats += len(vs)
+                    cls.stats += vs.shape[0]
         
-        buffer = list(filter(None, buffer))
+        # buffer = list(filter(None, buffer))
+        # i count elements, so i can slice here without expensive filtering..
+        buffer = buffer[:c]
         cls.buffer = buffer
         
         post()
@@ -413,9 +533,22 @@ class PCVIV3Manager():
         
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("update: {}".format(_d), prefix='>>>', )
+        
+        # pr.disable()
+        # s = io.StringIO()
+        # sortby = 'cumulative'
+        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        # ps.print_stats()
+        # print(s.getvalue())
     
     @classmethod
     def draw(cls):
+        # import cProfile
+        # import pstats
+        # import io
+        # pr = cProfile.Profile()
+        # pr.enable()
+        
         # _t = time.time()
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
@@ -427,34 +560,35 @@ class PCVIV3Manager():
         
         buffer = cls.buffer
         
+        # get those just once per draw call
+        perspective_matrix = bpy.context.region_data.perspective_matrix
+        view_matrix = bpy.context.region_data.view_matrix
+        window_matrix = bpy.context.region_data.window_matrix
+        light = view_matrix.copy().inverted()
+        lt = light.translation
+        
         for quality, shader, batch, matrix, size in buffer:
             shader.bind()
             
             if(quality == 0):
-                
-                perspective_matrix = bpy.context.region_data.perspective_matrix
-                
                 shader.uniform_float("perspective_matrix", perspective_matrix)
                 shader.uniform_float("object_matrix", matrix)
                 shader.uniform_float("size", size)
-                shader.uniform_float("alpha", 1.0)
+                # shader.uniform_float("alpha", 1.0)
             else:
-                
-                view_matrix = bpy.context.region_data.view_matrix
-                window_matrix = bpy.context.region_data.window_matrix
-                light = view_matrix.copy().inverted()
-                
                 shader.uniform_float("model_matrix", matrix)
                 shader.uniform_float("view_matrix", view_matrix)
                 shader.uniform_float("window_matrix", window_matrix)
                 shader.uniform_float("size", size)
-                shader.uniform_float("alpha", 1.0)
-                shader.uniform_float("light_position", light.translation)
-                shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
-                shader.uniform_float("view_position", light.translation)
-                shader.uniform_float("ambient_strength", 0.5)
-                shader.uniform_float("specular_strength", 0.5)
-                shader.uniform_float("specular_exponent", 8.0)
+                # shader.uniform_float("alpha", 1.0)
+                # shader.uniform_float("light_position", light.translation)
+                shader.uniform_float("light_position", lt)
+                # shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+                # shader.uniform_float("view_position", light.translation)
+                shader.uniform_float("view_position", lt)
+                # shader.uniform_float("ambient_strength", 0.5)
+                # shader.uniform_float("specular_strength", 0.5)
+                # shader.uniform_float("specular_exponent", 8.0)
             
             batch.draw(shader)
         
@@ -466,6 +600,13 @@ class PCVIV3Manager():
         
         # _d = datetime.timedelta(seconds=time.time() - _t)
         # log("draw: {}".format(_d), prefix='>>>', )
+        
+        # pr.disable()
+        # s = io.StringIO()
+        # sortby = 'cumulative'
+        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        # ps.print_stats()
+        # print(s.getvalue())
     
     @classmethod
     def invalidate_cache(cls, name, ):
@@ -491,6 +632,27 @@ def watcher(scene):
     PCVIV3Manager.deinit()
 
 
+class PCVIV3_preferences(PropertyGroup):
+    
+    def _switch_shader(self, context, ):
+        pass
+    
+    quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "", ),
+                                                 ('RICH', "Rich", "", ),
+                                                 ], default='RICH', description="", update=_switch_shader, )
+    
+    max_points_enabled: BoolProperty(name="Max. Points Enabled", default=True, description="", )
+    max_points: IntProperty(name="Max. Points", default=1000000, min=1000, max=10000000, description="Maximum number of points per particle system", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Scene.pcv_instance_visualizer3 = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Scene.pcv_instance_visualizer3
+
+
 class PCVIV3_psys_properties(PropertyGroup):
     # this is going to be assigned during runtime by manager if it detects new psys creation on depsgraph update
     uuid: StringProperty(default="", options={'HIDDEN', }, )
@@ -502,13 +664,6 @@ class PCVIV3_psys_properties(PropertyGroup):
     # draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
     # # this should be just safe limit, somewhere in advanced settings
     # max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
-    
-    def _switch_shader(self, context, ):
-        pass
-    
-    quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "", ),
-                                                 ('RICH', "Rich", "", ),
-                                                 ], default='RICH', description="", update=_switch_shader, )
     
     @classmethod
     def register(cls):
@@ -549,7 +704,7 @@ class PCVIV3_object_properties(PropertyGroup):
     
     # # NOTE: maybe don't use pixel points, they are faster, that's for sure, but in this case, billboard points give some depth sense..
     point_size: IntProperty(name="Size", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
-    point_size_f: FloatProperty(name="Size", default=0.02, min=0.0, max=1.0, description="Point size", precision=6, )
+    point_size_f: FloatProperty(name="Size", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
     @classmethod
     def register(cls):
@@ -586,6 +741,8 @@ class PCVIV3_OT_init(Operator):
     def poll(cls, context):
         if(context.object is None):
             return False
+        if(PCVIV3Manager.initialized):
+            return False
         return True
     
     def execute(self, context):
@@ -601,6 +758,8 @@ class PCVIV3_OT_deinit(Operator):
     @classmethod
     def poll(cls, context):
         if(context.object is None):
+            return False
+        if(not PCVIV3Manager.initialized):
             return False
         return True
     
@@ -631,9 +790,10 @@ class PCVIV3_OT_register(Operator):
 class PCVIV3_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "View"
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
     bl_label = "PCVIV3"
-    bl_parent_id = "PCV_PT_panel"
+    # bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -646,17 +806,33 @@ class PCVIV3_PT_panel(Panel):
     def draw(self, context):
         l = self.layout
         c = l.column()
+        c.label(text='prefs: ')
         
+        pcviv_prefs = context.scene.pcv_instance_visualizer3
+        prefs = c.column()
+        prefs.prop(pcviv_prefs, 'quality')
+        prefs.prop(pcviv_prefs, 'max_points_enabled')
+        r = prefs.row()
+        r.prop(pcviv_prefs, 'max_points')
+        if(not pcviv_prefs.max_points_enabled):
+            r.enabled = False
+        if(PCVIV3Manager.initialized):
+            prefs.enabled = False
+        
+        # c.separator()
+        
+        c.label(text='psys: ')
         c.operator('point_cloud_visualizer.pcviv3_register')
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv3_init')
         r.operator('point_cloud_visualizer.pcviv3_deinit')
         
+        c.label(text='debug: ')
         b = c.box()
         b.scale_y = 0.5
         b.label(text='registry:')
         for k, v in PCVIV3Manager.registry.items():
-            b.label(text='{}:{}'.format(k, v['psys'].name))
+            b.label(text='{}'.format(k))
         b = c.box()
         b.scale_y = 0.5
         b.label(text='cache:')
@@ -680,9 +856,10 @@ class PCVIV3_PT_panel(Panel):
 class PCVIV3_PT_generator(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "View"
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
     bl_label = "PCVIV3 generator options"
-    bl_parent_id = "PCV_PT_panel"
+    # bl_parent_id = "PCV_PT_panel"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -718,212 +895,3 @@ class PCVIV3_PT_generator(Panel):
             for slot in context.object.material_slots:
                 if(slot.material is not None):
                     cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
-
-
-# ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
-
-
-class PCVIV3_OT_test_generator_speed(Operator):
-    bl_idname = "point_cloud_visualizer.test_generator_speed"
-    bl_label = "test_generator_speed"
-    
-    def execute(self, context):
-        log(self.bl_idname)
-        
-        o = context.object
-        n = 100
-        
-        def run_test_polygons(d):
-            _t = time.time()
-            for i in range(n):
-                s = PCVIV3FacesSampler(**d)
-            _d = datetime.timedelta(seconds=time.time() - _t) / n
-            return _d
-        
-        def run_test_vertices(d):
-            _t = time.time()
-            for i in range(n):
-                s = PCVIV3VertsSampler(**d)
-            _d = datetime.timedelta(seconds=time.time() - _t) / n
-            return _d
-        
-        w = 170
-        
-        log('{}'.format('-' * (w + 4)), 1)
-        log('polygons: ', 1)
-        
-        d = {'target': o, 'count': -1, 'seed': 0, 'colorize': None, 'constant_color': None, 'use_face_area': None, 'use_material_factors': None, }
-        
-        counts = [-1, 1000, 100, ]
-        
-        def run_variable_counts_with_arguments(d):
-            for c in counts:
-                d['count'] = c
-                r = run_test_polygons(d)
-                h = 'count: {}, colorize: {}, constant_color: {}, use_face_area: {}, use_material_factors: {}'.format(d['count'], d['colorize'], d['constant_color'], d['use_face_area'], d['use_material_factors'])
-                log('{:>{w}}'.format('{} >> {} >> {:.3f} ms'.format(h, r, r.microseconds / 1000), w=w, ), 2)
-            log('', 2)
-        
-        run_variable_counts_with_arguments(d)
-        d['colorize'] = 'VIEWPORT_DISPLAY_COLOR'
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = True
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = False
-        d['use_material_factors'] = True
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = True
-        d['use_material_factors'] = True
-        run_variable_counts_with_arguments(d)
-        
-        d['constant_color'] = (0.1, 0.2, 0.3, )
-        run_variable_counts_with_arguments(d)
-        d['colorize'] = 'VIEWPORT_DISPLAY_COLOR'
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = True
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = False
-        d['use_material_factors'] = True
-        run_variable_counts_with_arguments(d)
-        d['use_face_area'] = True
-        d['use_material_factors'] = True
-        run_variable_counts_with_arguments(d)
-        
-        log('{}'.format('-' * (w + 4)), 1)
-        log('vertices: ', 1)
-        log('{}'.format('-' * (w + 4)), 1)
-        
-        d = {'target': o, 'count': -1, 'seed': 0, 'constant_color': None, }
-        
-        def run_variable_counts_with_arguments(d):
-            for c in counts:
-                d['count'] = c
-                r = run_test_vertices(d)
-                h = 'count: {}, constant_color: {}'.format(d['count'], d['constant_color'], )
-                log('{:>{w}}'.format('{} >> {} >> {:.3f} ms'.format(h, r, r.microseconds / 1000), w=w, ), 2)
-            log('', 2)
-        
-        run_variable_counts_with_arguments(d)
-        
-        d['constant_color'] = (0.1, 0.2, 0.3, )
-        run_variable_counts_with_arguments(d)
-        
-        log('{}'.format('-' * (w + 4)), 1)
-        
-        return {'FINISHED'}
-
-
-class PCVIV3_OT_test_generator_profile(Operator):
-    bl_idname = "point_cloud_visualizer.test_generator_profile"
-    bl_label = "test_generator_profile"
-    
-    def execute(self, context):
-        log(self.bl_idname)
-        
-        o = context.object
-        n = 1000
-        
-        log('tests will run {} times'.format(n), 1)
-        
-        import cProfile
-        import pstats
-        import io
-        pr = cProfile.Profile()
-        pr.enable()
-        
-        d = {'target': o,
-             'count': -1,
-             'seed': 0,
-             'colorize': None,
-             'constant_color': (1.0, 0.0, 0.0),
-             'use_face_area': None,
-             'use_material_factors': None, }
-        for i in range(n):
-            p = PCVIV3FacesSampler(**d)
-        
-        pr.disable()
-        s = io.StringIO()
-        sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats()
-        print(s.getvalue())
-        
-        import cProfile
-        import pstats
-        import io
-        pr = cProfile.Profile()
-        pr.enable()
-        
-        d = {'target': o,
-             'count': -1,
-             'seed': 0,
-             'constant_color': (0.0, 1.0, 0.0), }
-        for i in range(n):
-            v = PCVIV3VertsSampler(**d)
-        
-        pr.disable()
-        s = io.StringIO()
-        sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats()
-        print(s.getvalue())
-        
-        return {'FINISHED'}
-
-
-class PCVIV3_OT_test_generator_draw(Operator):
-    bl_idname = "point_cloud_visualizer.test_generator_draw"
-    bl_label = "test_generator_draw"
-    
-    def execute(self, context):
-        log(self.bl_idname)
-        
-        o = context.object
-        
-        d = {'target': o,
-             'count': -1,
-             'seed': 0,
-             'colorize': None,
-             'constant_color': (1.0, 0.0, 0.0),
-             'use_face_area': None,
-             'use_material_factors': None, }
-        p = PCVIV3FacesSampler(**d)
-        
-        d = {'target': o,
-             'count': -1,
-             'seed': 0,
-             'constant_color': (0.0, 1.0, 0.0), }
-        v = PCVIV3VertsSampler(**d)
-        
-        vs = np.concatenate((p.vs, v.vs, ), axis=0, )
-        ns = np.concatenate((p.ns, v.ns, ), axis=0, )
-        cs = np.concatenate((p.cs, v.cs, ), axis=0, )
-        
-        from .machine import PCVControl
-        c = PCVControl(o)
-        c.draw(vs, ns, cs)
-        
-        return {'FINISHED'}
-
-
-class PCVIV3_PT_tests(Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "PCVIV3 Tests"
-    bl_parent_id = "PCV_PT_panel"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        if(o is None):
-            return False
-        return True
-    
-    def draw(self, context):
-        l = self.layout
-        c = l.column()
-        c.operator('point_cloud_visualizer.test_generator_speed')
-        c.operator('point_cloud_visualizer.test_generator_profile')
-        c.operator('point_cloud_visualizer.test_generator_draw')

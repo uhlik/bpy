@@ -4,13 +4,13 @@ in vec3 f_position;
 in vec3 f_normal;
 in vec3 f_color;
 
-uniform float alpha;
+uniform float alpha = 1.0;
 uniform vec3 light_position;
-uniform vec3 light_color;
+uniform vec3 light_color = vec3(0.8, 0.8, 0.8);
 uniform vec3 view_position;
-uniform float ambient_strength;
-uniform float specular_strength;
-uniform float specular_exponent;
+uniform float ambient_strength = 0.5;
+uniform float specular_strength = 0.5;
+uniform float specular_exponent = 8.0;
 
 void main()
 {
