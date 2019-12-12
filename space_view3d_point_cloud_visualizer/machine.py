@@ -1942,6 +1942,8 @@ registry = {
     'simple_clip': {'v': "simple_clip.vert", 'f': "simple_clip.frag", },
     'simple_skip_point': {'v': "simple_skip_point.vert", 'f': "simple_skip_point.frag", },
     'simple': {'v': "simple.vert", 'f': "simple.frag", },
+    
+    'instavis3_rich': {'v': "instavis3_rich.vert", 'f': "instavis3_rich.frag", 'g': "instavis3_rich.geom", },
 }
 
 

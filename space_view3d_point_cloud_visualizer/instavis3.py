@@ -34,11 +34,12 @@ from mathutils import Matrix, Vector, Quaternion, Color
 from mathutils.geometry import barycentric_transform
 from mathutils.interpolate import poly_3d_calc
 from bpy.app.handlers import persistent
+import bgl
 from gpu.types import GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
 from gpu_extras.batch import batch_for_shader
 
 from .debug import log, debug_mode
-# from .machine import load_shader_code
+from .machine import load_shader_code
 
 
 class PCVIV3Config():
@@ -274,22 +275,47 @@ class PCVIV3Manager():
     @classmethod
     def depsgraph_update_post(cls, scene, depsgraph, ):
         # log("update!", prefix='>>>', )
-        _t = time.time()
-        cls.update()
-        _d = datetime.timedelta(seconds=time.time() - _t)
-        if(not cls.flag):
-            log("update: {}".format(_d), prefix='>>>', )
+        # _t = time.time()
+        cls.update(depsgraph)
+        # _d = datetime.timedelta(seconds=time.time() - _t)
+        # if(not cls.flag):
+        #     log("update: {}".format(_d), prefix='>>>', )
     
     @classmethod
-    def update(cls):
+    def update(cls, depsgraph, ):
+        _t = time.time()
+        
+        # # NOTE: artificial updates (i need at least one when starting) are not detected
+        # a = []
+        # all_types = ['ACTION', 'ARMATURE', 'BRUSH', 'CAMERA', 'CACHEFILE', 'CURVE', 'FONT', 'GREASEPENCIL', 'COLLECTION', 'IMAGE', 'KEY', 'LIGHT', 'LIBRARY', 'LINESTYLE', 'LATTICE', 'MASK', 'MATERIAL', 'META', 'MESH', 'MOVIECLIP', 'NODETREE', 'OBJECT', 'PAINTCURVE', 'PALETTE', 'PARTICLE', 'LIGHT_PROBE', 'SCENE', 'SOUND', 'SPEAKER', 'TEXT', 'TEXTURE', 'WINDOWMANAGER', 'WORLD', 'WORKSPACE']
+        # for t in all_types:
+        #     a.append((t, depsgraph.id_type_updated(t), ))
+        # print(a)
+        
+        # # NOTE: with this i could filter out updates i don't need, but lets keep it simple for now, react on all updates
+        # hit = False
+        # types = ['CAMERA', 'CURVE', 'COLLECTION', 'IMAGE', 'LIBRARY', 'MATERIAL', 'MESH', 'OBJECT', 'PARTICLE', 'SCENE', 'TEXTURE', ]
+        # for t in types:
+        #     hit = depsgraph.id_type_updated(t)
+        #     if(hit):
+        #         break
+        # if(not hit):
+        #     return
+        
         if(cls.flag):
             return
         cls.flag = True
+        
+        registered = tuple([v['psys'] for k, v in cls.registry.items()])
         
         def pre():
             for o in bpy.data.objects:
                 if(len(o.particle_systems) > 0):
                     for psys in o.particle_systems:
+                        # skip unregistered systems
+                        if(psys not in registered):
+                            continue
+                        
                         pset = psys.settings
                         if(pset.render_type == 'COLLECTION'):
                             col = pset.instance_collection
@@ -304,6 +330,10 @@ class PCVIV3Manager():
             for o in bpy.data.objects:
                 if(len(o.particle_systems) > 0):
                     for psys in o.particle_systems:
+                        # skip unregistered systems
+                        if(psys not in registered):
+                            continue
+                        
                         pset = psys.settings
                         pset.display_method = 'NONE'
                         if(pset.render_type == 'COLLECTION'):
@@ -315,7 +345,7 @@ class PCVIV3Manager():
                             co.display_type = 'TEXTURED'
         
         pre()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
+        # depsgraph = bpy.context.evaluated_depsgraph_get()
         depsgraph.update()
         
         buffer = [None] * len(depsgraph.object_instances)
@@ -346,31 +376,39 @@ class PCVIV3Manager():
                     
                     base = instance.object
                     if(base.name not in cls.cache.keys()):
-                        sampler = PCVIV3VertsSampler(None, base, count=1000, )
+                        # sampler = PCVIV3VertsSampler(None, base, count=1000, )
+                        
+                        sampler = PCVIV3FacesSampler(None, base, count=1000, seed=0, colorize='VIEWPORT_DISPLAY_COLOR', constant_color=None, use_face_area=True, use_material_factors=True, )
+                        
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
-                        vert_shader = '''
-                            in vec3 position;
-                            in vec3 color;
-                            uniform mat4 perspective_matrix;
-                            uniform mat4 object_matrix;
-                            out vec4 f_color;
-                            void main()
-                            {
-                                gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
-                                gl_PointSize = 6;
-                                f_color = vec4(color, 1.0);
-                            }
-                        '''
-                        frag_shader = '''
-                            in vec4 f_color;
-                            out vec4 fragColor;
-                            void main()
-                            {
-                                fragColor = f_color;
-                            }
-                        '''
-                        shader = GPUShader(vert_shader, frag_shader)
-                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+                        # vert_shader = '''
+                        #     in vec3 position;
+                        #     in vec3 color;
+                        #     uniform mat4 perspective_matrix;
+                        #     uniform mat4 object_matrix;
+                        #     out vec4 f_color;
+                        #     void main()
+                        #     {
+                        #         gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+                        #         gl_PointSize = 6;
+                        #         f_color = vec4(color, 1.0);
+                        #     }
+                        # '''
+                        # frag_shader = '''
+                        #     in vec4 f_color;
+                        #     out vec4 fragColor;
+                        #     void main()
+                        #     {
+                        #         fragColor = f_color;
+                        #     }
+                        # '''
+                        # shader = GPUShader(vert_shader, frag_shader)
+                        # batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
+                        
+                        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
+                        shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
+                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
+                        
                         cls.cache[base.name] = (vs, ns, cs, shader, batch)
                     else:
                         vs, ns, cs, shader, batch = cls.cache[base.name]
@@ -384,21 +422,54 @@ class PCVIV3Manager():
         
         post()
         cls.flag = False
+        
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("update: {}".format(_d), prefix='>>>', )
     
     @classmethod
     def draw(cls):
-        _t = time.time()
+        # _t = time.time()
+        
+        bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
+        bgl.glEnable(bgl.GL_DEPTH_TEST)
+        bgl.glEnable(bgl.GL_BLEND)
         
         buffer = cls.buffer
         pm = bpy.context.region_data.perspective_matrix
+        
+        view_matrix = bpy.context.region_data.view_matrix
+        window_matrix = bpy.context.region_data.window_matrix
+        light = view_matrix.copy().inverted()
+        
         for shader, batch, matrix in buffer:
             shader.bind()
-            shader.uniform_float("perspective_matrix", pm)
-            shader.uniform_float("object_matrix", matrix)
+            # shader.uniform_float("perspective_matrix", pm)
+            # shader.uniform_float("object_matrix", matrix)
+            
+            shader.uniform_float("model_matrix", matrix)
+            shader.uniform_float("view_matrix", view_matrix)
+            shader.uniform_float("window_matrix", window_matrix)
+            
+            shader.uniform_float("size", 0.02)
+            
+            shader.uniform_float("alpha", 1.0)
+            
+            shader.uniform_float("light_position", light.translation)
+            shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+            shader.uniform_float("view_position", light.translation)
+            
+            shader.uniform_float("ambient_strength", 0.5)
+            shader.uniform_float("specular_strength", 0.5)
+            shader.uniform_float("specular_exponent", 8.0)
+            
             batch.draw(shader)
         
-        _d = datetime.timedelta(seconds=time.time() - _t)
-        log("draw: {}".format(_d), prefix='>>>', )
+        bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
+        bgl.glDisable(bgl.GL_DEPTH_TEST)
+        bgl.glDisable(bgl.GL_BLEND)
+        
+        # _d = datetime.timedelta(seconds=time.time() - _t)
+        # log("draw: {}".format(_d), prefix='>>>', )
     
     @classmethod
     def _redraw_view_3d(cls):
