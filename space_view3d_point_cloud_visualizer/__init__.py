@@ -113,7 +113,7 @@ classes = (
     instavis3.PCVIV3_OT_register,
     # instavis3.PCVIV3_OT_update,
     # instavis3 ui
-    instavis3.PCVIV3_PT_panel,
+    instavis3.PCVIV3_PT_panel, instavis3.PCVIV3_PT_generator,
     
     # instavis3 tests
     instavis3.PCVIV3_OT_test_generator_speed, instavis3.PCVIV3_OT_test_generator_profile, instavis3.PCVIV3_OT_test_generator_draw,

@@ -1944,6 +1944,7 @@ registry = {
     'simple': {'v': "simple.vert", 'f': "simple.frag", },
     
     'instavis3_rich': {'v': "instavis3_rich.vert", 'f': "instavis3_rich.frag", 'g': "instavis3_rich.geom", },
+    'instavis3_basic': {'v': "instavis3_basic.vert", 'f': "instavis3_basic.frag", },
 }
 
 

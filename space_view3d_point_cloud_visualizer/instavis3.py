@@ -230,6 +230,8 @@ class PCVIV3Manager():
     handle = None
     stats = 0
     
+    cache_auto_update = True
+    
     @classmethod
     def init(cls):
         if(cls.initialized):
@@ -358,20 +360,48 @@ class PCVIV3Manager():
                 if(iuuid in registered_uuids):
                     m = instance.matrix_world.copy()
                     base = instance.object
+                    instance_options = base.pcv_instance_visualizer3
+                    
                     if(base.name not in cls.cache.keys()):
-                        sampler = PCVIV3FacesSampler(base, count=1000, seed=0, colorize='VIEWPORT_DISPLAY_COLOR', constant_color=None, use_face_area=True, use_material_factors=True, )
+                        if(instance_options.source == 'VERTICES'):
+                            sampler = PCVIV3VertsSampler(base,
+                                                         count=instance_options.max_points,
+                                                         seed=0,
+                                                         constant_color=instance_options.color_constant, )
+                        else:
+                            sampler = PCVIV3FacesSampler(base,
+                                                         count=instance_options.max_points,
+                                                         seed=0,
+                                                         colorize=instance_options.color_source,
+                                                         constant_color=instance_options.color_constant,
+                                                         use_face_area=instance_options.use_face_area,
+                                                         use_material_factors=instance_options.use_material_factors, )
                         
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
-                        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
-                        shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
-                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
+                        if(ipcviv.quality == 'BASIC'):
+                            # TODO: caching results of load_shader_code to memory, skip disk i/o
+                            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_basic')
+                            shader = GPUShader(shader_data_vert, shader_data_frag, )
+                            batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
+                        else:
+                            # TODO: caching results of load_shader_code to memory, skip disk i/o
+                            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
+                            shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
+                            batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
                         
-                        cls.cache[base.name] = (vs, ns, cs, shader, batch)
+                        cls.cache[base.name] = (vs, ns, cs, shader, batch, )
                     else:
                         vs, ns, cs, shader, batch = cls.cache[base.name]
                     
-                    buffer[c] = (shader, batch, m, )
+                    if(ipcviv.quality == 'BASIC'):
+                        draw_size = instance_options.point_size
+                        draw_quality = 0
+                    else:
+                        draw_size = instance_options.point_size_f
+                        draw_quality = 1
+                    
+                    buffer[c] = (draw_quality, shader, batch, m, draw_size, )
                     c += 1
                     cls.stats += len(vs)
         
@@ -390,46 +420,63 @@ class PCVIV3Manager():
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
-        bgl.glEnable(bgl.GL_BLEND)
+        # bgl.glEnable(bgl.GL_BLEND)
         
         # bgl.glEnable(bgl.GL_CULL_FACE)
         # # bgl.glCullFace(bgl.GL_BACK)
         
         buffer = cls.buffer
-        pm = bpy.context.region_data.perspective_matrix
         
-        view_matrix = bpy.context.region_data.view_matrix
-        window_matrix = bpy.context.region_data.window_matrix
-        light = view_matrix.copy().inverted()
-        
-        for shader, batch, matrix in buffer:
+        for quality, shader, batch, matrix, size in buffer:
             shader.bind()
             
-            shader.uniform_float("model_matrix", matrix)
-            shader.uniform_float("view_matrix", view_matrix)
-            shader.uniform_float("window_matrix", window_matrix)
-            
-            shader.uniform_float("size", 0.02)
-            shader.uniform_float("alpha", 1.0)
-            
-            shader.uniform_float("light_position", light.translation)
-            shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
-            shader.uniform_float("view_position", light.translation)
-            
-            shader.uniform_float("ambient_strength", 0.5)
-            shader.uniform_float("specular_strength", 0.5)
-            shader.uniform_float("specular_exponent", 8.0)
+            if(quality == 0):
+                
+                perspective_matrix = bpy.context.region_data.perspective_matrix
+                
+                shader.uniform_float("perspective_matrix", perspective_matrix)
+                shader.uniform_float("object_matrix", matrix)
+                shader.uniform_float("size", size)
+                shader.uniform_float("alpha", 1.0)
+            else:
+                
+                view_matrix = bpy.context.region_data.view_matrix
+                window_matrix = bpy.context.region_data.window_matrix
+                light = view_matrix.copy().inverted()
+                
+                shader.uniform_float("model_matrix", matrix)
+                shader.uniform_float("view_matrix", view_matrix)
+                shader.uniform_float("window_matrix", window_matrix)
+                shader.uniform_float("size", size)
+                shader.uniform_float("alpha", 1.0)
+                shader.uniform_float("light_position", light.translation)
+                shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
+                shader.uniform_float("view_position", light.translation)
+                shader.uniform_float("ambient_strength", 0.5)
+                shader.uniform_float("specular_strength", 0.5)
+                shader.uniform_float("specular_exponent", 8.0)
             
             batch.draw(shader)
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
-        bgl.glDisable(bgl.GL_BLEND)
+        # bgl.glDisable(bgl.GL_BLEND)
         
         # bgl.glDisable(bgl.GL_CULL_FACE)
         
         # _d = datetime.timedelta(seconds=time.time() - _t)
         # log("draw: {}".format(_d), prefix='>>>', )
+    
+    @classmethod
+    def invalidate_cache(cls, name, ):
+        if(not cls.cache_auto_update):
+            return False
+        
+        if(name in PCVIV3Manager.cache.keys()):
+            del PCVIV3Manager.cache[name]
+            return True
+        else:
+            return False
     
     @classmethod
     def _redraw_view_3d(cls):
@@ -452,9 +499,16 @@ class PCVIV3_psys_properties(PropertyGroup):
         # PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
         pass
     
-    draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
-    # this should be just safe limit, somewhere in advanced settings
-    max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
+    # draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
+    # # this should be just safe limit, somewhere in advanced settings
+    # max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
+    
+    def _switch_shader(self, context, ):
+        pass
+    
+    quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "", ),
+                                                 ('RICH', "Rich", "", ),
+                                                 ], default='RICH', description="", update=_switch_shader, )
     
     @classmethod
     def register(cls):
@@ -466,33 +520,36 @@ class PCVIV3_psys_properties(PropertyGroup):
 
 
 class PCVIV3_object_properties(PropertyGroup):
+    
+    def _invalidate_cache(self, context, ):
+        PCVIV3Manager.invalidate_cache(context.object.name)
+    
     source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
                                                ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
-                                               ], default='POLYGONS', description="Point cloud generation source", )
-    max_points_static: IntProperty(name="Max. Static Points", default=1000, min=1, max=100000, description="Maximum number of points per instance for static drawing", )
-    max_points_interactive: IntProperty(name="Max. Interactive Points", default=100, min=1, max=10000, description="Maximum number of points per instance for interactive drawing", )
-    
-    # NOTE: maybe don't use pixel points, they are faster, that's for sure, but in this case, billboard points give some depth sense..
-    point_size: IntProperty(name="Size", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
-    point_size_f: FloatProperty(name="Scale", default=1.0, min=0.0, max=10.0, description="Point scale (shader size * scale)", precision=6, )
-    
-    # TODO: i write it here again, solve empty material slots without material and therefore without any data to generate color from..
+                                               ], default='POLYGONS', description="Point cloud generation source", update=_invalidate_cache, )
+    max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_cache, )
     color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
                                                            ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
-                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", )
-    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, )
+                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_cache, )
+    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, update=_invalidate_cache, )
     
-    def _method_update(self, context, ):
-        if(not self.use_face_area and not self.use_material_factors):
-            self.use_face_area = True
+    # def _method_update(self, context, ):
+    #     if(not self.use_face_area and not self.use_material_factors):
+    #         self.use_face_area = True
+    #
+    #     # simulated _invalidate_cache()
+    #     o = context.object
+    #     if(o.name in PCVIV3Manager.cache.keys()):
+    #         del PCVIV3Manager.cache[o.name]
     
-    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
-    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
+    # use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
+    # use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
+    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_cache, )
+    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_cache, )
     
-    # # helper property, draw minimal ui or draw all props
-    # subpanel_opened: BoolProperty(default=False, options={'HIDDEN', }, )
-    # # store info how long was last update, generate and store to cache
-    # debug_update: StringProperty(default="", )
+    # # NOTE: maybe don't use pixel points, they are faster, that's for sure, but in this case, billboard points give some depth sense..
+    point_size: IntProperty(name="Size", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
+    point_size_f: FloatProperty(name="Size", default=0.02, min=0.0, max=1.0, description="Point size", precision=6, )
     
     @classmethod
     def register(cls):
@@ -504,8 +561,12 @@ class PCVIV3_object_properties(PropertyGroup):
 
 
 class PCVIV3_material_properties(PropertyGroup):
+    
+    def _invalidate_cache(self, context, ):
+        PCVIV3Manager.invalidate_cache(context.object.name)
+    
     # this serves as material weight value for polygon point generator, higher value means that it is more likely for polygon to be used as point source
-    factor: FloatProperty(name="Factor", default=0.5, min=0.0, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", )
+    factor: FloatProperty(name="Factor", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", update=_invalidate_cache, )
     
     @classmethod
     def register(cls):
@@ -585,6 +646,7 @@ class PCVIV3_PT_panel(Panel):
     def draw(self, context):
         l = self.layout
         c = l.column()
+        
         c.operator('point_cloud_visualizer.pcviv3_register')
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv3_init')
@@ -613,6 +675,49 @@ class PCVIV3_PT_panel(Panel):
         b.scale_y = 0.5
         b.label(text='stats:')
         b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats)))
+
+
+class PCVIV3_PT_generator(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "View"
+    bl_label = "PCVIV3 generator options"
+    bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        pcviv = context.object.pcv_instance_visualizer3
+        l = self.layout
+        c = l.column()
+        c.prop(pcviv, 'max_points')
+        c.prop(pcviv, 'point_size')
+        c.prop(pcviv, 'point_size_f')
+        c.prop(pcviv, 'source')
+        if(pcviv.source == 'VERTICES'):
+            r = c.row()
+            r.prop(pcviv, 'color_constant')
+        else:
+            c.prop(pcviv, 'color_source')
+            if(pcviv.color_source == 'CONSTANT'):
+                r = c.row()
+                r.prop(pcviv, 'color_constant')
+            else:
+                c.prop(pcviv, 'use_face_area')
+                c.prop(pcviv, 'use_material_factors')
+        
+        if(pcviv.use_material_factors):
+            b = c.box()
+            cc = b.column(align=True)
+            for slot in context.object.material_slots:
+                if(slot.material is not None):
+                    cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
 
 
 # ---------------------------------------------------------------------------- and now for something completely different. it's.. tests! who would have thought?
