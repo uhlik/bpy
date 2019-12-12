@@ -27,4 +27,9 @@ void main()
     
     vec3 col = (ambient + diffuse + specular) * f_color.rgb;
     frag_color = vec4(col, alpha);
+    
+    // if(!gl_FrontFacing){
+    //     discard;
+    // }
+    
 }

@@ -52,7 +52,7 @@ class PCVIV3Config():
 
 
 class PCVIV3FacesSampler():
-    def __init__(self, context, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
+    def __init__(self, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
         if(colorize is None):
             colorize = 'CONSTANT'
         if(constant_color is None):
@@ -162,7 +162,7 @@ class PCVIV3FacesSampler():
 
 
 class PCVIV3VertsSampler():
-    def __init__(self, context, target, count=-1, seed=0, constant_color=None, ):
+    def __init__(self, target, count=-1, seed=0, constant_color=None, ):
         # NOTE: material display color is not useable here, material is assigned to polygons. checking each vertex for its polygon (in fact there can be many of them) will be cpu intensive, so leave vertex sampler for case when user wants fast results or need to see vertices because of low poly geometry..
         if(constant_color is None):
             constant_color = PCVIV3Config.sampler_constant_color
@@ -275,11 +275,7 @@ class PCVIV3Manager():
     @classmethod
     def depsgraph_update_post(cls, scene, depsgraph, ):
         # log("update!", prefix='>>>', )
-        # _t = time.time()
         cls.update(depsgraph)
-        # _d = datetime.timedelta(seconds=time.time() - _t)
-        # if(not cls.flag):
-        #     log("update: {}".format(_d), prefix='>>>', )
     
     @classmethod
     def update(cls, depsgraph, ):
@@ -345,7 +341,7 @@ class PCVIV3Manager():
                             co.display_type = 'TEXTURED'
         
         pre()
-        # depsgraph = bpy.context.evaluated_depsgraph_get()
+        
         depsgraph.update()
         
         buffer = [None] * len(depsgraph.object_instances)
@@ -353,57 +349,19 @@ class PCVIV3Manager():
         registered_uuids = tuple(cls.registry.keys())
         cls.stats = 0
         
-        # vs = np.zeros((len(depsgraph.object_instances), 3), dtype=np.float32, )
-        # c = 0
-        # parent = None
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
-                # m = instance.matrix_world
-                # parent = instance.parent
-                # m = parent.matrix_world.inverted() @ m
-                # loc = np.array(m.translation.to_tuple(), dtype=np.float32, )
-                # vs[c] = loc
-                # c += 1
                 ipsys = instance.particle_system
                 ipset = ipsys.settings
                 ipcviv = ipset.pcv_instance_visualizer3
                 iuuid = ipcviv.uuid
                 if(iuuid in registered_uuids):
-                    m = instance.matrix_world
-                    # parent = instance.parent
-                    # m = parent.matrix_world.inverted() @ m
-                    m = Matrix() @ m
-                    
+                    m = instance.matrix_world.copy()
                     base = instance.object
                     if(base.name not in cls.cache.keys()):
-                        # sampler = PCVIV3VertsSampler(None, base, count=1000, )
-                        
-                        sampler = PCVIV3FacesSampler(None, base, count=1000, seed=0, colorize='VIEWPORT_DISPLAY_COLOR', constant_color=None, use_face_area=True, use_material_factors=True, )
+                        sampler = PCVIV3FacesSampler(base, count=1000, seed=0, colorize='VIEWPORT_DISPLAY_COLOR', constant_color=None, use_face_area=True, use_material_factors=True, )
                         
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
-                        # vert_shader = '''
-                        #     in vec3 position;
-                        #     in vec3 color;
-                        #     uniform mat4 perspective_matrix;
-                        #     uniform mat4 object_matrix;
-                        #     out vec4 f_color;
-                        #     void main()
-                        #     {
-                        #         gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
-                        #         gl_PointSize = 6;
-                        #         f_color = vec4(color, 1.0);
-                        #     }
-                        # '''
-                        # frag_shader = '''
-                        #     in vec4 f_color;
-                        #     out vec4 fragColor;
-                        #     void main()
-                        #     {
-                        #         fragColor = f_color;
-                        #     }
-                        # '''
-                        # shader = GPUShader(vert_shader, frag_shader)
-                        # batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, })
                         
                         shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
                         shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
@@ -412,7 +370,7 @@ class PCVIV3Manager():
                         cls.cache[base.name] = (vs, ns, cs, shader, batch)
                     else:
                         vs, ns, cs, shader, batch = cls.cache[base.name]
-                    # cls.buffer.append((shader, batch, m, ))
+                    
                     buffer[c] = (shader, batch, m, )
                     c += 1
                     cls.stats += len(vs)
@@ -434,6 +392,9 @@ class PCVIV3Manager():
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         bgl.glEnable(bgl.GL_BLEND)
         
+        # bgl.glEnable(bgl.GL_CULL_FACE)
+        # # bgl.glCullFace(bgl.GL_BACK)
+        
         buffer = cls.buffer
         pm = bpy.context.region_data.perspective_matrix
         
@@ -443,15 +404,12 @@ class PCVIV3Manager():
         
         for shader, batch, matrix in buffer:
             shader.bind()
-            # shader.uniform_float("perspective_matrix", pm)
-            # shader.uniform_float("object_matrix", matrix)
             
             shader.uniform_float("model_matrix", matrix)
             shader.uniform_float("view_matrix", view_matrix)
             shader.uniform_float("window_matrix", window_matrix)
             
             shader.uniform_float("size", 0.02)
-            
             shader.uniform_float("alpha", 1.0)
             
             shader.uniform_float("light_position", light.translation)
@@ -467,6 +425,8 @@ class PCVIV3Manager():
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
         bgl.glDisable(bgl.GL_BLEND)
+        
+        # bgl.glDisable(bgl.GL_CULL_FACE)
         
         # _d = datetime.timedelta(seconds=time.time() - _t)
         # log("draw: {}".format(_d), prefix='>>>', )
@@ -687,7 +647,7 @@ class PCVIV3_OT_test_generator_speed(Operator):
         log('{}'.format('-' * (w + 4)), 1)
         log('polygons: ', 1)
         
-        d = {'context': context, 'target': o, 'count': -1, 'seed': 0, 'colorize': None, 'constant_color': None, 'use_face_area': None, 'use_material_factors': None, }
+        d = {'target': o, 'count': -1, 'seed': 0, 'colorize': None, 'constant_color': None, 'use_face_area': None, 'use_material_factors': None, }
         
         counts = [-1, 1000, 100, ]
         
@@ -728,7 +688,7 @@ class PCVIV3_OT_test_generator_speed(Operator):
         log('vertices: ', 1)
         log('{}'.format('-' * (w + 4)), 1)
         
-        d = {'context': context, 'target': o, 'count': -1, 'seed': 0, 'constant_color': None, }
+        d = {'target': o, 'count': -1, 'seed': 0, 'constant_color': None, }
         
         def run_variable_counts_with_arguments(d):
             for c in counts:
@@ -766,8 +726,7 @@ class PCVIV3_OT_test_generator_profile(Operator):
         pr = cProfile.Profile()
         pr.enable()
         
-        d = {'context': context,
-             'target': o,
+        d = {'target': o,
              'count': -1,
              'seed': 0,
              'colorize': None,
@@ -790,8 +749,7 @@ class PCVIV3_OT_test_generator_profile(Operator):
         pr = cProfile.Profile()
         pr.enable()
         
-        d = {'context': context,
-             'target': o,
+        d = {'target': o,
              'count': -1,
              'seed': 0,
              'constant_color': (0.0, 1.0, 0.0), }
@@ -817,8 +775,7 @@ class PCVIV3_OT_test_generator_draw(Operator):
         
         o = context.object
         
-        d = {'context': context,
-             'target': o,
+        d = {'target': o,
              'count': -1,
              'seed': 0,
              'colorize': None,
@@ -827,8 +784,7 @@ class PCVIV3_OT_test_generator_draw(Operator):
              'use_material_factors': None, }
         p = PCVIV3FacesSampler(**d)
         
-        d = {'context': context,
-             'target': o,
+        d = {'target': o,
              'count': -1,
              'seed': 0,
              'constant_color': (0.0, 1.0, 0.0), }
