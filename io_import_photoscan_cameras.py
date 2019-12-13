@@ -164,26 +164,34 @@ class PSCSensor():
         
         self.calibration = {}
         cals = xml.findall("calibration")
+        cal = None
         for c in cals:
             # there can be also calibration element with class="initial" attribute
             # this is when sensor is precalibrated.. if it is so, then use adjusted values
             if(c.attrib["class"] == "adjusted"):
                 cal = c
         
-        self.calibration['type'] = cal.attrib["type"]
-        self.calibration['class'] = cal.attrib["class"]
-        
-        cres = cal.find("resolution")
-        self.calibration['resolution'] = {'width': int(cres.attrib["width"]), 'height': int(cres.attrib["height"]), }
-        
-        # self.calibration['fx'] = float(cal.find("fx").text)
-        # self.calibration['fy'] = float(cal.find("fy").text)
-        self.calibration['f'] = float(cal.find("f").text)
-        self.calibration['cx'] = float(cal.find("cx").text)
-        self.calibration['cy'] = float(cal.find("cy").text)
-        # self.calibration['k1'] = float(cal.find("k1").text)
-        # self.calibration['k2'] = float(cal.find("k2").text)
-        # self.calibration['k3'] = float(cal.find("k3").text)
+        if(cal is None):
+            # skip it and hope for the best
+            self.calibration['type'] = None
+            self.calibration['class'] = None
+            self.calibration['resolution'] = {'width': self.props['pixel_width'], 'height': self.props['pixel_height'], }
+            self.calibration['f'] = self.props['focal_length']
+            self.calibration['cx'] = 0.0
+            self.calibration['cy'] = 0.0
+        else:
+            self.calibration['type'] = cal.attrib["type"]
+            self.calibration['class'] = cal.attrib["class"]
+            cres = cal.find("resolution")
+            self.calibration['resolution'] = {'width': int(cres.attrib["width"]), 'height': int(cres.attrib["height"]), }
+            # self.calibration['fx'] = float(cal.find("fx").text)
+            # self.calibration['fy'] = float(cal.find("fy").text)
+            self.calibration['f'] = float(cal.find("f").text)
+            self.calibration['cx'] = float(cal.find("cx").text)
+            self.calibration['cy'] = float(cal.find("cy").text)
+            # self.calibration['k1'] = float(cal.find("k1").text)
+            # self.calibration['k2'] = float(cal.find("k2").text)
+            # self.calibration['k3'] = float(cal.find("k3").text)
         
         sw = 0
         sh = 0
