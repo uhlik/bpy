@@ -565,6 +565,50 @@ class PCVIV3Manager():
         window_matrix = bpy.context.region_data.window_matrix
         light = view_matrix.copy().inverted()
         lt = light.translation
+        vp = lt
+        
+        '''
+        matrix = view_matrix.inverted()
+        distance = matrix.translation.length
+        eye = matrix.to_translation()
+        target = matrix @ Vector((0.0, 0.0, -distance))
+        up = matrix @ Vector((0.0, 1.0, 0.0)) - eye
+        
+        def look_at_matrix(eye, target, up):
+            z = eye - target
+            x = up.cross(z)
+            y = z.cross(x)
+            
+            x.normalize()
+            y.normalize()
+            z.normalize()
+            
+            r = Matrix()
+            r[0][0] = x[0]
+            r[0][1] = y[0]
+            r[0][2] = z[0]
+            r[0][3] = 0
+            r[1][0] = x[1]
+            r[1][1] = y[1]
+            r[1][2] = z[1]
+            r[1][3] = 0
+            r[2][0] = x[2]
+            r[2][1] = y[2]
+            r[2][2] = z[2]
+            r[2][3] = 0
+            
+            t = Matrix.Translation(eye)
+            return t @ r
+        
+        eye2 = eye + Vector((-1.0, -1.0, 1.0))
+        lt = look_at_matrix(eye2, target, up).translation
+        '''
+        
+        # matrix = view_matrix.inverted()
+        # eye = matrix.to_translation()
+        # up = matrix @ Vector((0.0, 1.0, 0.0)) - eye
+        # eye2 = eye + (up.normalized() * 3.0)
+        # lt = eye2
         
         for quality, shader, batch, matrix, size in buffer:
             shader.bind()
@@ -584,7 +628,7 @@ class PCVIV3Manager():
                 shader.uniform_float("light_position", lt)
                 # shader.uniform_float("light_color", (0.8, 0.8, 0.8, ))
                 # shader.uniform_float("view_position", light.translation)
-                shader.uniform_float("view_position", lt)
+                shader.uniform_float("view_position", vp)
                 # shader.uniform_float("ambient_strength", 0.5)
                 # shader.uniform_float("specular_strength", 0.5)
                 # shader.uniform_float("specular_exponent", 8.0)
@@ -799,6 +843,30 @@ class PCVIV3_OT_apply_generator_settings(Operator):
             ps.point_size = pcviv.point_size
             ps.point_size_f = pcviv.point_size_f
         
+        for so in context.selected_objects:
+            if(so is o):
+                continue
+            PCVIV3Manager.invalidate_cache(so.name)
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_invalidate_caches(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_invalidate_caches"
+    bl_label = "Invalidate All Caches"
+    bl_description = "Force refresh of all point caches"
+    
+    @classmethod
+    def poll(cls, context):
+        return True
+    
+    def execute(self, context):
+        PCVIV3Manager.cache = {}
+        
+        scene = bpy.context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        PCVIV3Manager.depsgraph_update_post(scene, depsgraph, )
+        
         return {'FINISHED'}
 
 
@@ -885,12 +953,13 @@ class PCVIV3_PT_panel(PCVIV3_PT_base):
             prefs.enabled = False
         
         # c.separator()
-        
-        c.label(text='psys: ')
-        c.operator('point_cloud_visualizer.pcviv3_register')
+        c.label(text='manager: ')
         r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv3_init')
         r.operator('point_cloud_visualizer.pcviv3_deinit')
+        
+        c.label(text='psys: ')
+        c.operator('point_cloud_visualizer.pcviv3_register')
         
         ok = False
         if(context.object is not None):
@@ -927,6 +996,7 @@ class PCVIV3_PT_panel(PCVIV3_PT_base):
         
         c.separator()
         c.operator('point_cloud_visualizer.pcviv3_reset_viewport_draw')
+        c.operator('point_cloud_visualizer.pcviv3_invalidate_caches')
 
 
 class PCVIV3_PT_generator(PCVIV3_PT_base):
@@ -981,7 +1051,7 @@ class PCVIV3_PT_generator(PCVIV3_PT_base):
 classes = (
     PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties,
     PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register,
-    PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw,
+    PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
     PCVIV3_PT_panel, PCVIV3_PT_generator,
 )
 
