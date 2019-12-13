@@ -20,6 +20,18 @@
 # author: Jakub Uhlik
 # (c) 2019 Jakub Uhlik
 
+bl_info = {"name": "PCV Instance Visualizer 3",
+           "description": "",
+           "author": "Jakub Uhlik",
+           "version": (0, 0, 1),
+           "blender": (2, 80, 0),
+           "location": "View3D > Sidebar > Point Cloud Visualizer",
+           "warning": "",
+           "wiki_url": "https://github.com/uhlik/bpy",
+           "tracker_url": "https://github.com/uhlik/bpy/issues",
+           "category": "3D View", }
+
+import os
 import uuid
 import time
 import datetime
@@ -29,34 +41,70 @@ import numpy as np
 import bpy
 import bmesh
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
-from bpy.types import PropertyGroup, Panel, Operator, UIList
+from bpy.types import PropertyGroup, Panel, Operator
 from mathutils import Matrix, Vector, Quaternion, Color
-from mathutils.geometry import barycentric_transform
-from mathutils.interpolate import poly_3d_calc
 from bpy.app.handlers import persistent
 import bgl
-from gpu.types import GPUShader, GPUBatch, GPUVertBuf, GPUVertFormat
+from gpu.types import GPUShader
 from gpu_extras.batch import batch_for_shader
 
-from .debug import log, debug_mode
-from .machine import load_shader_code
+
+try:
+    from .debug import log, debug_mode
+except ImportError:
+    def debug_mode():
+        return True
+        # return (bpy.app.debug_value != 0)
+    
+    def log(msg, indent=0, prefix='>', ):
+        m = "{}{} {}".format("    " * indent, prefix, msg)
+        if(debug_mode()):
+            print(m)
 
 
-class PCVIV3Config():
+shader_directory = os.path.join(os.path.dirname(__file__), 'shaders')
+shader_registry = {
+    'instavis3_rich': {'v': "instavis3_rich.vert", 'f': "instavis3_rich.frag", 'g': "instavis3_rich.geom", },
+    'instavis3_basic': {'v': "instavis3_basic.vert", 'f': "instavis3_basic.frag", },
+}
+
+
+def load_shader_code(name):
+    if(name not in shader_registry.keys()):
+        raise TypeError("Unknown shader requested..")
+    d = shader_registry[name]
+    vf = d['v']
+    ff = d['f']
+    gf = None
+    if('g' in d.keys()):
+        gf = d['g']
+    
+    with open(os.path.join(shader_directory, vf), mode='r', encoding='utf-8') as f:
+        vs = f.read()
+    with open(os.path.join(shader_directory, ff), mode='r', encoding='utf-8') as f:
+        fs = f.read()
+    
+    gs = None
+    if(gf is not None):
+        with open(os.path.join(shader_directory, gf), mode='r', encoding='utf-8') as f:
+            gs = f.read()
+    
+    return vs, fs, gs
+
+
+class PCVIV3FacesSampler():
     # shuffling points in mesh sampler is very slow, PCV display percentage won't work as expected if points are not shuffled, but for instavis is not that important
     sampler_shuffle = False
     # default mesh sampler point color
     sampler_constant_color = (1.0, 0.0, 1.0, )
     # used when mesh data is not available, like when face sampler is used, but mesh has no faces, or vertex sampler with empty mesh
     sampler_error_color = (1.0, 0.0, 1.0, )
-
-
-class PCVIV3FacesSampler():
+    
     def __init__(self, target, count=-1, seed=0, colorize=None, constant_color=None, use_face_area=None, use_material_factors=None, ):
         if(colorize is None):
             colorize = 'CONSTANT'
         if(constant_color is None):
-            constant_color = PCVIV3Config.sampler_constant_color
+            constant_color = self.sampler_constant_color
         if(use_material_factors is None and colorize == 'VIEWPORT_DISPLAY_COLOR'):
             use_material_factors = False
         if(use_material_factors):
@@ -64,25 +112,29 @@ class PCVIV3FacesSampler():
                 use_material_factors = False
         
         me = target.data
-        
-        if(len(me.polygons) == 0):
+        if(target.type not in ('MESH', )):
+            self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
+            self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            self.cs = np.array((self.sampler_error_color, ), dtype=np.float32, )
+            return
+        elif(len(me.polygons) == 0):
             # no polygons to generate from, use origin
             self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
             self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
-            self.cs = np.array((PCVIV3Config.sampler_error_color, ), dtype=np.float32, )
+            self.cs = np.array((self.sampler_error_color, ), dtype=np.float32, )
             return
         if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
             if(len(target.data.materials) == 0):
                 # no materials, set to constant
                 colorize = 'CONSTANT'
-                constant_color = PCVIV3Config.sampler_error_color
+                constant_color = self.sampler_error_color
                 use_material_factors = False
             materials = target.data.materials
             if(None in materials[:]):
                 # if there is empty slot, abort it and set to constant
                 # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
                 colorize = 'CONSTANT'
-                constant_color = PCVIV3Config.sampler_error_color
+                constant_color = self.sampler_error_color
                 use_material_factors = False
         
         l = len(me.polygons)
@@ -149,7 +201,7 @@ class PCVIV3FacesSampler():
             ns = np.take(normals, indices, axis=0, )
             cs = np.take(colors, indices, axis=0, )
         
-        if(PCVIV3Config.sampler_shuffle):
+        if(self.sampler_shuffle):
             a = np.concatenate((vs, ns, cs), axis=1, )
             np.random.shuffle(a)
             vs = a[:, :3]
@@ -162,18 +214,30 @@ class PCVIV3FacesSampler():
 
 
 class PCVIV3VertsSampler():
+    # shuffling points in mesh sampler is very slow, PCV display percentage won't work as expected if points are not shuffled, but for instavis is not that important
+    sampler_shuffle = False
+    # default mesh sampler point color
+    sampler_constant_color = (1.0, 0.0, 1.0, )
+    # used when mesh data is not available, like when face sampler is used, but mesh has no faces, or vertex sampler with empty mesh
+    sampler_error_color = (1.0, 0.0, 1.0, )
+    
     def __init__(self, target, count=-1, seed=0, constant_color=None, ):
         # NOTE: material display color is not useable here, material is assigned to polygons. checking each vertex for its polygon (in fact there can be many of them) will be cpu intensive, so leave vertex sampler for case when user wants fast results or need to see vertices because of low poly geometry..
         if(constant_color is None):
-            constant_color = PCVIV3Config.sampler_constant_color
+            constant_color = self.sampler_constant_color
         
         me = target.data
         
-        if(len(me.vertices) == 0):
+        if(target.type not in ('MESH', )):
+            self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
+            self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
+            self.cs = np.array((self.sampler_error_color, ), dtype=np.float32, )
+            return
+        elif(len(me.vertices) == 0):
             # no vertices to generate from, use origin
             self.vs = np.array(((0.0, 0.0, 0.0, ), ), dtype=np.float32, )
             self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
-            self.cs = np.array((PCVIV3Config.sampler_error_color, ), dtype=np.float32, )
+            self.cs = np.array((self.sampler_error_color, ), dtype=np.float32, )
             return
         
         l = len(me.vertices)
@@ -208,7 +272,7 @@ class PCVIV3VertsSampler():
             ns = np.take(normals, indices, axis=0, )
             cs = np.take(colors, indices, axis=0, )
         
-        if(PCVIV3Config.sampler_shuffle):
+        if(self.sampler_shuffle):
             a = np.concatenate((vs, ns, cs), axis=1, )
             np.random.shuffle(a)
             vs = a[:, :3]
@@ -232,10 +296,6 @@ class PCVIV3Manager():
     
     # if True, properties callback erase its object from cache and force it to be rebuild
     cache_auto_update = True
-    
-    '''
-    alert = False
-    '''
     
     @classmethod
     def init(cls):
@@ -280,14 +340,6 @@ class PCVIV3Manager():
     
     @classmethod
     def register(cls, o, psys, ):
-        # if(pcviv.uuid == ''):
-        #     pcviv.uuid = str(uuid.uuid1())
-        # # else:
-        # #     raise Exception('{} . register() uuid exists, add some logic to handle that..'.format(cls.__class__.__name__))
-        # else:
-        #     if(pcviv.uuid in cls.registry.keys()):
-        #         return
-        
         pset = psys.settings
         pcviv = pset.pcv_instance_visualizer3
         if(pcviv.uuid == ''):
@@ -300,20 +352,20 @@ class PCVIV3Manager():
             else:
                 # was registered, then unregistered or removed, make new uuid
                 pcviv.uuid = str(uuid.uuid1())
-                # just in case..
-                pset.display_method = 'RENDER'
+                # # just in case..
+                # pset.display_method = 'RENDER'
                 
         cls.registry[pcviv.uuid] = psys
+        
+        if(cls.initialized):
+            scene = bpy.context.scene
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
     def depsgraph_update_pre(cls, scene, depsgraph, ):
         rm = []
         for k, v in cls.registry.items():
-            # print(k, v)
-            # print(v.settings)
-            # print(v.settings.users)
-            # if(v.settings.users == 0):
-            #     rm.append(k)
             if(v.settings is None):
                 rm.append(k)
         for k in rm:
@@ -330,10 +382,6 @@ class PCVIV3Manager():
         
         prefs = scene.pcv_instance_visualizer3
         quality = prefs.quality
-        '''
-        max_points = prefs.max_points
-        max_points_enabled = prefs.max_points_enabled
-        '''
         
         # # NOTE: artificial updates (i need at least one when starting) are not detected
         # a = []
@@ -364,7 +412,7 @@ class PCVIV3Manager():
         
         registered = tuple([v for k, v in cls.registry.items()])
         
-        dt = []
+        dt = {}
         
         def pre():
             for o in bpy.data.objects:
@@ -378,11 +426,13 @@ class PCVIV3Manager():
                         if(pset.render_type == 'COLLECTION'):
                             col = pset.instance_collection
                             for co in col.objects:
-                                dt.append((co, co.display_type, ))
+                                if(co.name not in dt.keys()):
+                                    dt[co.name] = (co, co.display_type, )
                                 co.display_type = 'BOUNDS'
                         elif(pset.render_type == 'OBJECT'):
                             co = pset.instance_object
-                            dt.append((co, co.display_type, ))
+                            if(co.name not in dt.keys()):
+                                dt[co.name] = (co, co.display_type, )
                             co.display_type = 'BOUNDS'
                         pset.display_method = 'RENDER'
         
@@ -403,7 +453,7 @@ class PCVIV3Manager():
                         # elif(pset.render_type == 'OBJECT'):
                         #     co = pset.instance_object
                         #     co.display_type = 'TEXTURED'
-                        for co, t in dt:
+                        for co, t in dt.values():
                             co.display_type = t
         
         pre()
@@ -415,68 +465,13 @@ class PCVIV3Manager():
         registered_uuids = tuple(cls.registry.keys())
         cls.stats = 0
         
-        '''
-        # import cProfile
-        # import pstats
-        # import io
-        # pr = cProfile.Profile()
-        # pr.enable()
-        
-        def precalc():
-            n = 0
-            d = {}
-            s = set()
-            for instance in depsgraph.object_instances:
-                if(instance.is_instance):
-                    ipsys = instance.particle_system
-                    ipset = ipsys.settings
-                    ipcviv = ipset.pcv_instance_visualizer3
-                    iuuid = ipcviv.uuid
-                    if(iuuid in registered_uuids):
-                        base = instance.object
-                        instance_options = base.pcv_instance_visualizer3
-                        ipoints = instance_options.max_points
-                        n += ipoints
-                        nm = base.name
-                        if(nm not in s):
-                            d[nm] = [ipoints, 0]
-                            s.add(nm)
-                        d[nm][1] += 1
-            if(n > max_points):
-                r = max_points / n
-                for k, v in d.items():
-                    v[0] = int(v[0] * r)
-                for k, v in d.items():
-                    if(v[0] == 0):
-                        v[0] = 1
-                return True, d
-            return False, None
-        
-        if(max_points_enabled):
-            adjust_point_counts, rules = precalc()
-            if(not adjust_point_counts and cls.alert):
-                cls.cache = {}
-            if(adjust_point_counts):
-                cls.cache = {}
-                cls.alert = True
-        else:
-            adjust_point_counts = False
-            rules = None
-        
-        # pr.disable()
-        # s = io.StringIO()
-        # sortby = 'cumulative'
-        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        # ps.print_stats()
-        # print(s.getvalue())
-        '''
-        
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
                 ipsys = instance.particle_system
                 ipset = ipsys.settings
                 ipcviv = ipset.pcv_instance_visualizer3
                 iuuid = ipcviv.uuid
+                iscale = ipcviv.point_scale
                 if(iuuid in registered_uuids):
                     m = instance.matrix_world.copy()
                     base = instance.object
@@ -485,10 +480,6 @@ class PCVIV3Manager():
                     if(base.name not in cls.cache.keys()):
                         count = instance_options.max_points
                         color_constant = instance_options.color_constant
-                        '''
-                        if(adjust_point_counts):
-                            count = rules[base.name][0]
-                        '''
                         if(instance_options.source == 'VERTICES'):
                             sampler = PCVIV3VertsSampler(base,
                                                          count=count,
@@ -506,12 +497,12 @@ class PCVIV3Manager():
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
                         if(quality == 'BASIC'):
-                            # TODO: caching results of load_shader_code to memory, skip disk i/o
+                            # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                             shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_basic')
                             shader = GPUShader(shader_data_vert, shader_data_frag, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                         else:
-                            # TODO: caching results of load_shader_code to memory, skip disk i/o
+                            # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                             shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
                             shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
@@ -521,19 +512,17 @@ class PCVIV3Manager():
                         vs, ns, cs, shader, batch = cls.cache[base.name]
                     
                     if(quality == 'BASIC'):
-                        draw_size = instance_options.point_size
+                        draw_size = int(instance_options.point_size * iscale)
                         draw_quality = 0
                     else:
-                        draw_size = instance_options.point_size_f
+                        draw_size = instance_options.point_size_f * iscale
                         draw_quality = 1
                     
                     buffer[c] = (draw_quality, shader, batch, m, draw_size, )
                     c += 1
-                    # cls.stats += len(vs)
                     cls.stats += vs.shape[0]
         
-        # buffer = list(filter(None, buffer))
-        # i count elements, so i can slice here without expensive filtering..
+        # i count elements, so i can slice here without expensive filtering None out..
         buffer = buffer[:c]
         cls.buffer = buffer
         
@@ -564,6 +553,7 @@ class PCVIV3Manager():
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         # bgl.glEnable(bgl.GL_BLEND)
         
+        # # NOTE: i draw all points facing camera, so this won't work
         # bgl.glEnable(bgl.GL_CULL_FACE)
         # # bgl.glCullFace(bgl.GL_BACK)
         
@@ -646,14 +636,9 @@ class PCVIV3_preferences(PropertyGroup):
     def _switch_shader(self, context, ):
         pass
     
-    quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "", ),
-                                                 ('RICH', "Rich", "", ),
-                                                 ], default='RICH', description="", update=_switch_shader, )
-    
-    '''
-    max_points_enabled: BoolProperty(name="Max. Points Enabled", default=True, description="", )
-    max_points: IntProperty(name="Max. Points", default=1000000, min=1000, max=10000000, description="Maximum number of points per particle system", )
-    '''
+    quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "Basic pixel point based shader with flat colors", ),
+                                                 ('RICH', "Rich", "Rich billboard shaded with phong shading", ),
+                                                 ], default='RICH', description="Global quality settings for all", update=_switch_shader, )
     
     @classmethod
     def register(cls):
@@ -668,13 +653,7 @@ class PCVIV3_psys_properties(PropertyGroup):
     # this is going to be assigned during runtime by manager if it detects new psys creation on depsgraph update
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
-    def _draw_update(self, context, ):
-        # PCVIV2Manager.draw_update(context.object, self.uuid, self.draw, )
-        pass
-    
-    # draw: BoolProperty(name="Draw", default=True, description="Draw particle instances as point cloud", update=_draw_update, )
-    # # this should be just safe limit, somewhere in advanced settings
-    # max_points: IntProperty(name="Max. Points", default=1000000, min=1, max=10000000, description="Maximum number of points per particle system", )
+    point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, description="Adjust point size of all points", precision=6, )
     
     @classmethod
     def register(cls):
@@ -699,23 +678,11 @@ class PCVIV3_object_properties(PropertyGroup):
                                                            ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_cache, )
     color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, update=_invalidate_cache, )
     
-    # def _method_update(self, context, ):
-    #     if(not self.use_face_area and not self.use_material_factors):
-    #         self.use_face_area = True
-    #
-    #     # simulated _invalidate_cache()
-    #     o = context.object
-    #     if(o.name in PCVIV3Manager.cache.keys()):
-    #         del PCVIV3Manager.cache[o.name]
-    
-    # use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_method_update, )
-    # use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_method_update, )
     use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_cache, )
     use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_cache, )
     
-    # # NOTE: maybe don't use pixel points, they are faster, that's for sure, but in this case, billboard points give some depth sense..
-    point_size: IntProperty(name="Size", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
-    point_size_f: FloatProperty(name="Size", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
+    point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
+    point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
     @classmethod
     def register(cls):
@@ -791,6 +758,13 @@ class PCVIV3_OT_register(Operator):
             o = context.object
             if(o.particle_systems.active is not None):
                 ok = True
+                uuid = o.particle_systems.active.settings.pcv_instance_visualizer3.uuid
+                if(uuid == ""):
+                    ok = True
+                if(uuid in PCVIV3Manager.registry.keys()):
+                    rpsys = PCVIV3Manager.registry[uuid]
+                    if(rpsys == o.particle_systems.active):
+                        ok = False
         return ok
     
     def execute(self, context):
@@ -798,14 +772,96 @@ class PCVIV3_OT_register(Operator):
         return {'FINISHED'}
 
 
-class PCVIV3_PT_panel(Panel):
+class PCVIV3_OT_apply_generator_settings(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_apply_generator_settings"
+    bl_label = "Apply Settings To Selected"
+    bl_description = "Apply generator settings to all selected objects"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is not None):
+            return True
+        return False
+    
+    def execute(self, context):
+        o = context.object
+        pcviv = o.pcv_instance_visualizer3
+        for so in context.selected_objects:
+            if(so is o):
+                continue
+            ps = so.pcv_instance_visualizer3
+            ps.source = pcviv.source
+            ps.max_points = pcviv.max_points
+            ps.color_source = pcviv.color_source
+            ps.color_constant = pcviv.color_constant
+            ps.use_face_area = pcviv.use_face_area
+            ps.use_material_factors = pcviv.use_material_factors
+            ps.point_size = pcviv.point_size
+            ps.point_size_f = pcviv.point_size_f
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_reset_viewport_draw(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_reset_viewport_draw"
+    bl_label = "Reset Viewport Draw Settings"
+    bl_description = "Reset all viewport draw settings for all objects and particle systems in scene to defaults, in case something is meesed up after deinitialize"
+    
+    @classmethod
+    def poll(cls, context):
+        return True
+    
+    def execute(self, context):
+        for o in context.scene.objects:
+            o.display_type = 'TEXTURED'
+            if(len(o.particle_systems)):
+                for p in o.particle_systems:
+                    p.settings.display_method = 'RENDER'
+        
+        return {'FINISHED'}
+
+
+class PCVIV3_PT_base(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Point Cloud Visualizer"
+    bl_label = "PCVIV3 base"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def prop_name(self, cls, prop, colon=False, ):
+        for p in cls.bl_rna.properties:
+            if(p.identifier == prop):
+                if(colon):
+                    return "{}:".format(p.name)
+                return p.name
+        return ''
+    
+    def third_label_two_thirds_prop(self, cls, prop, uil, ):
+        f = 0.33
+        r = uil.row()
+        s = r.split(factor=f)
+        s.label(text=self.prop_name(cls, prop, True, ))
+        s = s.split(factor=1.0)
+        r = s.row()
+        r.prop(cls, prop, text='', )
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+
+
+class PCVIV3_PT_panel(PCVIV3_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
     bl_label = "PCVIV3"
     # bl_parent_id = "PCV_PT_panel"
-    bl_options = {'DEFAULT_CLOSED'}
+    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = set()
     
     @classmethod
     def poll(cls, context):
@@ -815,20 +871,16 @@ class PCVIV3_PT_panel(Panel):
         return True
     
     def draw(self, context):
+        tab = '    '
+        
         l = self.layout
         c = l.column()
         c.label(text='prefs: ')
         
         pcviv_prefs = context.scene.pcv_instance_visualizer3
         prefs = c.column()
-        prefs.prop(pcviv_prefs, 'quality')
-        '''
-        prefs.prop(pcviv_prefs, 'max_points_enabled')
-        r = prefs.row()
-        r.prop(pcviv_prefs, 'max_points')
-        if(not pcviv_prefs.max_points_enabled):
-            r.enabled = False
-        '''
+        # prefs.prop(pcviv_prefs, 'quality')
+        self.third_label_two_thirds_prop(pcviv_prefs, 'quality', c, )
         if(PCVIV3Manager.initialized):
             prefs.enabled = False
         
@@ -840,17 +892,26 @@ class PCVIV3_PT_panel(Panel):
         r.operator('point_cloud_visualizer.pcviv3_init')
         r.operator('point_cloud_visualizer.pcviv3_deinit')
         
+        ok = False
+        if(context.object is not None):
+            o = context.object
+            if(o.particle_systems.active is not None):
+                ok = True
+        if(ok):
+            pset_pcviv = o.particle_systems.active.settings.pcv_instance_visualizer3
+            c.prop(pset_pcviv, 'point_scale')
+        
         c.label(text='debug: ')
         b = c.box()
         b.scale_y = 0.5
-        b.label(text='registry:')
+        b.label(text='registry: ({})'.format(len(PCVIV3Manager.registry.keys())))
         for k, v in PCVIV3Manager.registry.items():
-            b.label(text='{}'.format(k))
+            b.label(text='{}{}'.format(tab, k))
         b = c.box()
         b.scale_y = 0.5
-        b.label(text='cache:')
+        b.label(text='cache: ({})'.format(len(PCVIV3Manager.cache.keys())))
         for k, v in PCVIV3Manager.cache.items():
-            b.label(text='{}'.format(k))
+            b.label(text='{}{}'.format(tab, k))
         
         def human_readable_number(num, suffix='', ):
             f = 1000.0
@@ -862,11 +923,13 @@ class PCVIV3_PT_panel(Panel):
         
         b = c.box()
         b.scale_y = 0.5
-        b.label(text='stats:')
         b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats)))
+        
+        c.separator()
+        c.operator('point_cloud_visualizer.pcviv3_reset_viewport_draw')
 
 
-class PCVIV3_PT_generator(Panel):
+class PCVIV3_PT_generator(PCVIV3_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
@@ -889,12 +952,15 @@ class PCVIV3_PT_generator(Panel):
         c.prop(pcviv, 'max_points')
         c.prop(pcviv, 'point_size')
         c.prop(pcviv, 'point_size_f')
-        c.prop(pcviv, 'source')
+        # c.prop(pcviv, 'source')
+        self.third_label_two_thirds_prop(pcviv, 'source', c, )
+        
         if(pcviv.source == 'VERTICES'):
             r = c.row()
             r.prop(pcviv, 'color_constant')
         else:
-            c.prop(pcviv, 'color_source')
+            # c.prop(pcviv, 'color_source')
+            self.third_label_two_thirds_prop(pcviv, 'color_source', c, )
             if(pcviv.color_source == 'CONSTANT'):
                 r = c.row()
                 r.prop(pcviv, 'color_constant')
@@ -908,3 +974,29 @@ class PCVIV3_PT_generator(Panel):
             for slot in context.object.material_slots:
                 if(slot.material is not None):
                     cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
+        
+        c.operator('point_cloud_visualizer.pcviv3_apply_generator_settings')
+
+
+classes = (
+    PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties,
+    PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register,
+    PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw,
+    PCVIV3_PT_panel, PCVIV3_PT_generator,
+)
+
+
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+
+
+def unregister():
+    PCVIV3Manager.deinit()
+    
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
+
+
+if __name__ == "__main__":
+    register()

@@ -105,14 +105,8 @@ classes = (
     
     ui.PCV_PT_debug,
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
-    
-    # instavis3 props
-    instavis3.PCVIV3_preferences, instavis3.PCVIV3_psys_properties, instavis3.PCVIV3_object_properties, instavis3.PCVIV3_material_properties,
-    # instavis3 ops
-    instavis3.PCVIV3_OT_init, instavis3.PCVIV3_OT_deinit, instavis3.PCVIV3_OT_register,
-    # instavis3 ui
-    instavis3.PCVIV3_PT_panel, instavis3.PCVIV3_PT_generator,
 )
+classes += instavis3.classes
 
 
 def register():
