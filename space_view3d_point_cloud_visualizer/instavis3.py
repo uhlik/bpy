@@ -233,7 +233,9 @@ class PCVIV3Manager():
     # if True, properties callback erase its object from cache and force it to be rebuild
     cache_auto_update = True
     
+    '''
     alert = False
+    '''
     
     @classmethod
     def init(cls):
@@ -328,8 +330,10 @@ class PCVIV3Manager():
         
         prefs = scene.pcv_instance_visualizer3
         quality = prefs.quality
+        '''
         max_points = prefs.max_points
         max_points_enabled = prefs.max_points_enabled
+        '''
         
         # # NOTE: artificial updates (i need at least one when starting) are not detected
         # a = []
@@ -411,6 +415,7 @@ class PCVIV3Manager():
         registered_uuids = tuple(cls.registry.keys())
         cls.stats = 0
         
+        '''
         # import cProfile
         # import pstats
         # import io
@@ -464,6 +469,7 @@ class PCVIV3Manager():
         # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
         # ps.print_stats()
         # print(s.getvalue())
+        '''
         
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
@@ -478,19 +484,22 @@ class PCVIV3Manager():
                     
                     if(base.name not in cls.cache.keys()):
                         count = instance_options.max_points
+                        color_constant = instance_options.color_constant
+                        '''
                         if(adjust_point_counts):
                             count = rules[base.name][0]
+                        '''
                         if(instance_options.source == 'VERTICES'):
                             sampler = PCVIV3VertsSampler(base,
                                                          count=count,
                                                          seed=0,
-                                                         constant_color=instance_options.color_constant, )
+                                                         constant_color=color_constant, )
                         else:
                             sampler = PCVIV3FacesSampler(base,
                                                          count=count,
                                                          seed=0,
                                                          colorize=instance_options.color_source,
-                                                         constant_color=instance_options.color_constant,
+                                                         constant_color=color_constant,
                                                          use_face_area=instance_options.use_face_area,
                                                          use_material_factors=instance_options.use_material_factors, )
                         
@@ -641,8 +650,10 @@ class PCVIV3_preferences(PropertyGroup):
                                                  ('RICH', "Rich", "", ),
                                                  ], default='RICH', description="", update=_switch_shader, )
     
+    '''
     max_points_enabled: BoolProperty(name="Max. Points Enabled", default=True, description="", )
     max_points: IntProperty(name="Max. Points", default=1000000, min=1000, max=10000000, description="Maximum number of points per particle system", )
+    '''
     
     @classmethod
     def register(cls):
@@ -811,11 +822,13 @@ class PCVIV3_PT_panel(Panel):
         pcviv_prefs = context.scene.pcv_instance_visualizer3
         prefs = c.column()
         prefs.prop(pcviv_prefs, 'quality')
+        '''
         prefs.prop(pcviv_prefs, 'max_points_enabled')
         r = prefs.row()
         r.prop(pcviv_prefs, 'max_points')
         if(not pcviv_prefs.max_points_enabled):
             r.enabled = False
+        '''
         if(PCVIV3Manager.initialized):
             prefs.enabled = False
         
