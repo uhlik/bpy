@@ -329,6 +329,14 @@ class PCVIV3Manager():
         
         bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
         
+        prefs = bpy.context.scene.pcv_instance_visualizer3
+        for k, psys in cls.registry.items():
+            psys.settings.display_method = prefs.exit_psys_display_method
+        for n in cls.cache.keys():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                o.display_type = prefs.exit_object_display_type
+        
         cls.registry = {}
         cls.cache = {}
         cls.flag = False
@@ -652,7 +660,7 @@ class PCVIV3Manager():
         # print(s.getvalue())
     
     @classmethod
-    def invalidate_cache(cls, name, ):
+    def invalidate_object_cache(cls, name, ):
         if(not cls.cache_auto_update):
             return False
         
@@ -671,18 +679,25 @@ class PCVIV3Manager():
 
 
 @persistent
-def watcher(scene):
+def watcher(undefined):
     PCVIV3Manager.deinit()
 
 
 class PCVIV3_preferences(PropertyGroup):
     
     def _switch_shader(self, context, ):
-        pass
+        PCVIV3Manager.cache = {}
+        
+        scene = bpy.context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        PCVIV3Manager.depsgraph_update_post(scene, depsgraph, )
     
     quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "Basic pixel point based shader with flat colors", ),
-                                                 ('RICH', "Rich", "Rich billboard shaded with phong shading", ),
+                                                 ('RICH', "Rich", "Rich billboard shader with phong shading", ),
                                                  ], default='RICH', description="Global quality settings for all", update=_switch_shader, )
+    
+    exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='BOUNDS', description="To what set instance base objects Display Type when point cloud mode is exited", )
+    exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
     @classmethod
     def register(cls):
@@ -710,20 +725,20 @@ class PCVIV3_psys_properties(PropertyGroup):
 
 class PCVIV3_object_properties(PropertyGroup):
     
-    def _invalidate_cache(self, context, ):
-        PCVIV3Manager.invalidate_cache(context.object.name)
+    def _invalidate_object_cache(self, context, ):
+        PCVIV3Manager.invalidate_object_cache(context.object.name)
     
     source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
                                                ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
-                                               ], default='POLYGONS', description="Point cloud generation source", update=_invalidate_cache, )
-    max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_cache, )
+                                               ], default='POLYGONS', description="Point cloud generation source", update=_invalidate_object_cache, )
+    max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
                                                            ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
-                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_cache, )
-    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, update=_invalidate_cache, )
+                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_object_cache, )
+    color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, update=_invalidate_object_cache, )
     
-    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_cache, )
-    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_cache, )
+    use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_object_cache, )
+    use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_object_cache, )
     
     point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
@@ -739,11 +754,11 @@ class PCVIV3_object_properties(PropertyGroup):
 
 class PCVIV3_material_properties(PropertyGroup):
     
-    def _invalidate_cache(self, context, ):
-        PCVIV3Manager.invalidate_cache(context.object.name)
+    def _invalidate_object_cache(self, context, ):
+        PCVIV3Manager.invalidate_object_cache(context.object.name)
     
     # this serves as material weight value for polygon point generator, higher value means that it is more likely for polygon to be used as point source
-    factor: FloatProperty(name="Factor", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", update=_invalidate_cache, )
+    factor: FloatProperty(name="Factor", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", update=_invalidate_object_cache, )
     
     @classmethod
     def register(cls):
@@ -846,7 +861,7 @@ class PCVIV3_OT_apply_generator_settings(Operator):
         for so in context.selected_objects:
             if(so is o):
                 continue
-            PCVIV3Manager.invalidate_cache(so.name)
+            PCVIV3Manager.invalidate_object_cache(so.name)
         
         return {'FINISHED'}
 
@@ -921,12 +936,12 @@ class PCVIV3_PT_base(Panel):
         return True
 
 
-class PCVIV3_PT_panel(PCVIV3_PT_base):
+class PCVIV3_PT_main(PCVIV3_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3"
+    bl_label = "PCVIV3 Main"
     # bl_parent_id = "PCV_PT_panel"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_options = set()
@@ -939,27 +954,31 @@ class PCVIV3_PT_panel(PCVIV3_PT_base):
         return True
     
     def draw(self, context):
-        tab = '    '
-        
         l = self.layout
         c = l.column()
-        c.label(text='prefs: ')
         
-        pcviv_prefs = context.scene.pcv_instance_visualizer3
-        prefs = c.column()
-        # prefs.prop(pcviv_prefs, 'quality')
-        self.third_label_two_thirds_prop(pcviv_prefs, 'quality', c, )
-        if(PCVIV3Manager.initialized):
-            prefs.enabled = False
-        
-        # c.separator()
-        c.label(text='manager: ')
+        c.label(text='PCVIV3 Manager:')
         r = c.row(align=True)
-        r.operator('point_cloud_visualizer.pcviv3_init')
-        r.operator('point_cloud_visualizer.pcviv3_deinit')
+        cc = r.column(align=True)
+        if(not PCVIV3Manager.initialized):
+            cc.alert = True
+        cc.operator('point_cloud_visualizer.pcviv3_init')
+        cc = r.column(align=True)
+        if(PCVIV3Manager.initialized):
+            cc.alert = True
+        cc.operator('point_cloud_visualizer.pcviv3_deinit')
         
-        c.label(text='psys: ')
-        c.operator('point_cloud_visualizer.pcviv3_register')
+        n = 'n/a'
+        if(context.object is not None):
+            o = context.object
+            if(o.particle_systems.active is not None):
+                n = o.particle_systems.active.name
+        
+        c.label(text='Active Particle System: {}'.format(n))
+        r = c.row()
+        if(PCVIV3_OT_register.poll(context)):
+            r.alert = True
+        r.operator('point_cloud_visualizer.pcviv3_register')
         
         ok = False
         if(context.object is not None):
@@ -969,8 +988,115 @@ class PCVIV3_PT_panel(PCVIV3_PT_base):
         if(ok):
             pset_pcviv = o.particle_systems.active.settings.pcv_instance_visualizer3
             c.prop(pset_pcviv, 'point_scale')
+
+
+class PCVIV3_PT_generator(PCVIV3_PT_base):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
+    bl_label = "PCVIV3 Generator Options"
+    # bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        pcviv = context.object.pcv_instance_visualizer3
+        l = self.layout
+        c = l.column()
+        c.prop(pcviv, 'max_points')
+        pcviv_prefs = context.scene.pcv_instance_visualizer3
+        if(pcviv_prefs.quality == 'BASIC'):
+            c.prop(pcviv, 'point_size')
+        else:
+            c.prop(pcviv, 'point_size_f')
+        # c.prop(pcviv, 'source')
+        self.third_label_two_thirds_prop(pcviv, 'source', c, )
         
-        c.label(text='debug: ')
+        if(pcviv.source == 'VERTICES'):
+            r = c.row()
+            # r.prop(pcviv, 'color_constant')
+            self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
+        else:
+            # c.prop(pcviv, 'color_source')
+            self.third_label_two_thirds_prop(pcviv, 'color_source', c, )
+            if(pcviv.color_source == 'CONSTANT'):
+                r = c.row()
+                # r.prop(pcviv, 'color_constant')
+                self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
+            else:
+                c.prop(pcviv, 'use_face_area')
+                c.prop(pcviv, 'use_material_factors')
+        
+        if(pcviv.use_material_factors):
+            b = c.box()
+            cc = b.column(align=True)
+            for slot in context.object.material_slots:
+                if(slot.material is not None):
+                    cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
+        
+        c.operator('point_cloud_visualizer.pcviv3_apply_generator_settings')
+
+
+class PCVIV3_PT_preferences(PCVIV3_PT_base):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
+    bl_label = "PCVIV3 Preferences"
+    # bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        pcviv = context.object.pcv_instance_visualizer3
+        l = self.layout
+        c = l.column()
+        
+        pcviv_prefs = context.scene.pcv_instance_visualizer3
+        c.label(text="Global Settings:")
+        self.third_label_two_thirds_prop(pcviv_prefs, 'quality', c, )
+        c.separator()
+        c.label(text="Exit Display Settings:")
+        self.third_label_two_thirds_prop(pcviv_prefs, 'exit_object_display_type', c, )
+        self.third_label_two_thirds_prop(pcviv_prefs, 'exit_psys_display_method', c, )
+
+
+class PCVIV3_PT_debug(PCVIV3_PT_base):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
+    bl_label = "PCVIV3 Debug"
+    # bl_parent_id = "PCV_PT_panel"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        pcviv = context.object.pcv_instance_visualizer3
+        l = self.layout
+        c = l.column()
+        
+        tab = '    '
+        
         b = c.box()
         b.scale_y = 0.5
         b.label(text='registry: ({})'.format(len(PCVIV3Manager.registry.keys())))
@@ -997,62 +1123,17 @@ class PCVIV3_PT_panel(PCVIV3_PT_base):
         c.separator()
         c.operator('point_cloud_visualizer.pcviv3_reset_viewport_draw')
         c.operator('point_cloud_visualizer.pcviv3_invalidate_caches')
-
-
-class PCVIV3_PT_generator(PCVIV3_PT_base):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 generator options"
-    # bl_parent_id = "PCV_PT_panel"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        if(o is None):
-            return False
-        return True
-    
-    def draw(self, context):
-        pcviv = context.object.pcv_instance_visualizer3
-        l = self.layout
-        c = l.column()
-        c.prop(pcviv, 'max_points')
-        c.prop(pcviv, 'point_size')
-        c.prop(pcviv, 'point_size_f')
-        # c.prop(pcviv, 'source')
-        self.third_label_two_thirds_prop(pcviv, 'source', c, )
-        
-        if(pcviv.source == 'VERTICES'):
-            r = c.row()
-            r.prop(pcviv, 'color_constant')
-        else:
-            # c.prop(pcviv, 'color_source')
-            self.third_label_two_thirds_prop(pcviv, 'color_source', c, )
-            if(pcviv.color_source == 'CONSTANT'):
-                r = c.row()
-                r.prop(pcviv, 'color_constant')
-            else:
-                c.prop(pcviv, 'use_face_area')
-                c.prop(pcviv, 'use_material_factors')
-        
-        if(pcviv.use_material_factors):
-            b = c.box()
-            cc = b.column(align=True)
-            for slot in context.object.material_slots:
-                if(slot.material is not None):
-                    cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
-        
-        c.operator('point_cloud_visualizer.pcviv3_apply_generator_settings')
+        c.separator()
+        r = c.row()
+        r.alert = True
+        r.operator('script.reload')
 
 
 classes = (
     PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties,
     PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register,
     PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
-    PCVIV3_PT_panel, PCVIV3_PT_generator,
+    PCVIV3_PT_main, PCVIV3_PT_generator, PCVIV3_PT_preferences, PCVIV3_PT_debug,
 )
 
 
