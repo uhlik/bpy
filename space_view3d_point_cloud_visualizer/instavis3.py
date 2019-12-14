@@ -526,9 +526,10 @@ class PCVIV3Manager():
                         draw_size = instance_options.point_size_f * iscale
                         draw_quality = 1
                     
-                    buffer[c] = (draw_quality, shader, batch, m, draw_size, )
-                    c += 1
-                    cls.stats += vs.shape[0]
+                    if(ipcviv.draw):
+                        buffer[c] = (draw_quality, shader, batch, m, draw_size, )
+                        c += 1
+                        cls.stats += vs.shape[0]
         
         # i count elements, so i can slice here without expensive filtering None out..
         buffer = buffer[:c]
@@ -713,6 +714,7 @@ class PCVIV3_psys_properties(PropertyGroup):
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
     point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, description="Adjust point size of all points", precision=6, )
+    draw: BoolProperty(name="Draw", default=True, description="Draw point cloud to viewport", )
     
     @classmethod
     def register(cls):
@@ -957,6 +959,7 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
         l = self.layout
         c = l.column()
         
+        # manager
         c.label(text='PCVIV3 Manager:')
         r = c.row(align=True)
         cc = r.column(align=True)
@@ -968,12 +971,12 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv3_deinit')
         
+        # psys if there is any..
         n = 'n/a'
         if(context.object is not None):
             o = context.object
             if(o.particle_systems.active is not None):
                 n = o.particle_systems.active.name
-        
         c.label(text='Active Particle System: {}'.format(n))
         r = c.row()
         if(PCVIV3_OT_register.poll(context)):
@@ -987,6 +990,9 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
                 ok = True
         if(ok):
             pset_pcviv = o.particle_systems.active.settings.pcv_instance_visualizer3
+            r = c.row()
+            r.prop(pset_pcviv, 'draw', toggle=True, )
+            r.scale_y = 1.5
             c.prop(pset_pcviv, 'point_scale')
 
 
