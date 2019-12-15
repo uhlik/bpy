@@ -767,6 +767,14 @@ class PCVIV3Manager():
             return False
     
     @classmethod
+    def force_update(cls):
+        if(not cls.initialized):
+            return
+        scene = bpy.context.scene
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        cls.depsgraph_update_post(scene, depsgraph, )
+    
+    @classmethod
     def _redraw_view_3d(cls):
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
@@ -933,6 +941,22 @@ class PCVIV3_OT_register(Operator):
     
     def execute(self, context):
         PCVIV3Manager.register(context.object, context.object.particle_systems.active)
+        return {'FINISHED'}
+
+
+class PCVIV3_OT_force_update(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_force_update"
+    bl_label = "Force Update"
+    bl_description = "Force update all registered particle systems drawing"
+    
+    @classmethod
+    def poll(cls, context):
+        if(not PCVIV3Manager.initialized):
+            return False
+        return True
+    
+    def execute(self, context):
+        PCVIV3Manager.force_update()
         return {'FINISHED'}
 
 
@@ -1113,6 +1137,11 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
             if(not pset_pcviv.use_origins_only):
                 cc.enabled = False
             # origins only
+        
+        c.separator()
+        r = c.row()
+        r.alert = PCVIV3_OT_force_update.poll(context)
+        r.operator('point_cloud_visualizer.pcviv3_force_update')
 
 
 class PCVIV3_PT_generator(PCVIV3_PT_base):
@@ -1260,7 +1289,7 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
 
 classes = (
     PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties,
-    PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register,
+    PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register, PCVIV3_OT_force_update,
     PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
     PCVIV3_PT_main, PCVIV3_PT_generator, PCVIV3_PT_preferences, PCVIV3_PT_debug,
 )
