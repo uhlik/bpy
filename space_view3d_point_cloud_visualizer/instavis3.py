@@ -1016,14 +1016,18 @@ class PCVIV3_PT_generator(PCVIV3_PT_base):
         pcviv = context.object.pcv_instance_visualizer3
         l = self.layout
         c = l.column()
-        c.prop(pcviv, 'max_points')
+        
         pcviv_prefs = context.scene.pcv_instance_visualizer3
         if(pcviv_prefs.quality == 'BASIC'):
             c.prop(pcviv, 'point_size')
         else:
             c.prop(pcviv, 'point_size_f')
+        
+        c.separator()
+        
         # c.prop(pcviv, 'source')
         self.third_label_two_thirds_prop(pcviv, 'source', c, )
+        c.prop(pcviv, 'max_points')
         
         if(pcviv.source == 'VERTICES'):
             r = c.row()
