@@ -676,7 +676,7 @@ class PCVIV3Manager():
         # pr = cProfile.Profile()
         # pr.enable()
         
-        # _t = time.time()
+        _t = time.time()
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
@@ -793,8 +793,8 @@ class PCVIV3Manager():
         
         # bgl.glDisable(bgl.GL_CULL_FACE)
         
-        # _d = datetime.timedelta(seconds=time.time() - _t)
-        # log("draw: {}".format(_d), prefix='>>>', )
+        _d = datetime.timedelta(seconds=time.time() - _t)
+        log("draw: {}".format(_d), prefix='>>>', )
         
         # pr.disable()
         # s = io.StringIO()
