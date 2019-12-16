@@ -421,12 +421,12 @@ class PCVIV3Manager():
     @classmethod
     def depsgraph_update_post(cls, scene, depsgraph, ):
         if(not cls.viewport_render_active):
-            r = cls._all_viewport_shading_types()
+            r = cls._all_viewports_shading_type()
             if('RENDERED' in r):
                 cls.viewport_render_active = True
                 cls.viewport_render_pre(scene, depsgraph, )
         else:
-            r = cls._all_viewport_shading_types()
+            r = cls._all_viewports_shading_type()
             if('RENDERED' not in r):
                 cls.viewport_render_active = False
                 cls.viewport_render_post(scene, depsgraph, )
@@ -824,6 +824,7 @@ class PCVIV3Manager():
     
     @classmethod
     def render_pre(cls, scene, depsgraph, ):
+        log("render_pre", prefix='>>>', )
         cls.render_active = True
         for k, psys in cls.registry.items():
             cls.pre_render_state[psys.name] = psys.settings.pcv_instance_visualizer3.draw
@@ -831,6 +832,7 @@ class PCVIV3Manager():
     
     @classmethod
     def render_post(cls, scene, depsgraph, ):
+        log("render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_render_state.keys()):
                 psys.settings.pcv_instance_visualizer3.draw = cls.pre_render_state[psys.name]
@@ -840,6 +842,7 @@ class PCVIV3Manager():
     
     @classmethod
     def viewport_render_pre(cls, scene, depsgraph, ):
+        log("viewport_render_pre", prefix='>>>', )
         for k, psys in cls.registry.items():
             cls.pre_viewport_render_state[psys.name] = psys.settings.pcv_instance_visualizer3.draw
             psys.settings.pcv_instance_visualizer3.draw = False
@@ -852,6 +855,7 @@ class PCVIV3Manager():
     
     @classmethod
     def viewport_render_post(cls, scene, depsgraph, ):
+        log("viewport_render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_viewport_render_state.keys()):
                 psys.settings.pcv_instance_visualizer3.draw = cls.pre_viewport_render_state[psys.name]
@@ -866,6 +870,7 @@ class PCVIV3Manager():
     
     @classmethod
     def save_pre(cls, scene, depsgraph, ):
+        log("save_pre", prefix='>>>', )
         cls.save_active = True
         prefs = bpy.context.scene.pcv_instance_visualizer3
         for k, psys in cls.registry.items():
@@ -879,6 +884,7 @@ class PCVIV3Manager():
     
     @classmethod
     def save_post(cls, scene, depsgraph, ):
+        log("save_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_save_state.keys()):
                 psys.settings.display_method = cls.pre_save_state[psys.name]
@@ -892,7 +898,7 @@ class PCVIV3Manager():
         cls.save_active = False
     
     @classmethod
-    def _all_viewport_shading_types(cls):
+    def _all_viewports_shading_type(cls):
         r = []
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
