@@ -301,8 +301,16 @@ class PCVIV3Manager():
     origins_size = None
     # origins only
     
+    # NOTE: this is unused, is it?
     # if True, properties callback erase its object from cache and force it to be rebuild
     cache_auto_update = True
+    
+    pre_render_state = {}
+    render_active = False
+    pre_save_state = {}
+    save_active = False
+    pre_viewport_render_state = {}
+    viewport_render_active = False
     
     @classmethod
     def init(cls):
@@ -312,6 +320,11 @@ class PCVIV3Manager():
         
         bpy.app.handlers.depsgraph_update_pre.append(cls.depsgraph_update_pre)
         bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
+        
+        bpy.app.handlers.render_pre.append(cls.render_pre)
+        bpy.app.handlers.render_post.append(cls.render_post)
+        bpy.app.handlers.save_pre.append(cls.save_pre)
+        bpy.app.handlers.save_post.append(cls.save_post)
         
         bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
@@ -329,7 +342,13 @@ class PCVIV3Manager():
             return
         log("deinit", prefix='>>>', )
         
+        bpy.app.handlers.depsgraph_update_pre.remove(cls.depsgraph_update_pre)
         bpy.app.handlers.depsgraph_update_post.remove(cls.depsgraph_update_post)
+        
+        bpy.app.handlers.render_pre.remove(cls.render_pre)
+        bpy.app.handlers.render_post.remove(cls.render_post)
+        bpy.app.handlers.save_pre.remove(cls.save_pre)
+        bpy.app.handlers.save_post.remove(cls.save_post)
         
         bpy.app.handlers.load_pre.remove(watcher)
         cls.initialized = False
@@ -350,6 +369,19 @@ class PCVIV3Manager():
         cls.buffer = []
         cls.handle = None
         cls.stats = 0
+        
+        cls.origins_shader = None
+        cls.origins_batch = None
+        cls.origins_quality = None
+        cls.origins_size = None
+        cls.pre_render_state = {}
+        cls.render_active = False
+        cls.pre_save_state = {}
+        cls.save_active = False
+        cls.pre_viewport_render_state = {}
+        cls.viewport_render_active = False
+        
+        cls.cache_auto_update = True
         
         cls._redraw_view_3d()
     
@@ -388,6 +420,17 @@ class PCVIV3Manager():
     
     @classmethod
     def depsgraph_update_post(cls, scene, depsgraph, ):
+        if(not cls.viewport_render_active):
+            r = cls._all_viewport_shading_types()
+            if('RENDERED' in r):
+                cls.viewport_render_active = True
+                cls.viewport_render_pre(scene, depsgraph, )
+        else:
+            r = cls._all_viewport_shading_types()
+            if('RENDERED' not in r):
+                cls.viewport_render_active = False
+                cls.viewport_render_post(scene, depsgraph, )
+        
         # log("update!", prefix='>>>', )
         cls.update(scene, depsgraph)
     
@@ -473,7 +516,9 @@ class PCVIV3Manager():
                         for co, t in dt.values():
                             co.display_type = t
         
-        pre()
+        if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
+            # NOTE: this is getting spaghettized
+            pre()
         
         depsgraph.update()
         
@@ -607,7 +652,10 @@ class PCVIV3Manager():
             cls.origins_size = None
         # origins only
         
-        post()
+        if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
+            # NOTE: this is getting spaghettized
+            post()
+        
         cls.flag = False
         
         _d = datetime.timedelta(seconds=time.time() - _t)
@@ -773,6 +821,86 @@ class PCVIV3Manager():
         scene = bpy.context.scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
         cls.depsgraph_update_post(scene, depsgraph, )
+    
+    @classmethod
+    def render_pre(cls, scene, depsgraph, ):
+        cls.render_active = True
+        for k, psys in cls.registry.items():
+            cls.pre_render_state[psys.name] = psys.settings.pcv_instance_visualizer3.draw
+            psys.settings.pcv_instance_visualizer3.draw = False
+    
+    @classmethod
+    def render_post(cls, scene, depsgraph, ):
+        for k, psys in cls.registry.items():
+            if(psys.name in cls.pre_render_state.keys()):
+                psys.settings.pcv_instance_visualizer3.draw = cls.pre_render_state[psys.name]
+        
+        cls.pre_render_state = {}
+        cls.render_active = False
+    
+    @classmethod
+    def viewport_render_pre(cls, scene, depsgraph, ):
+        for k, psys in cls.registry.items():
+            cls.pre_viewport_render_state[psys.name] = psys.settings.pcv_instance_visualizer3.draw
+            psys.settings.pcv_instance_visualizer3.draw = False
+            psys.settings.display_method = 'RENDER'
+        for n in cls.cache.keys():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                cls.pre_viewport_render_state[o.name] = o.display_type
+                o.display_type = 'BOUNDS'
+    
+    @classmethod
+    def viewport_render_post(cls, scene, depsgraph, ):
+        for k, psys in cls.registry.items():
+            if(psys.name in cls.pre_viewport_render_state.keys()):
+                psys.settings.pcv_instance_visualizer3.draw = cls.pre_viewport_render_state[psys.name]
+                psys.settings.display_method = 'NONE'
+        for n in cls.cache.keys():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                if(o.name in cls.pre_viewport_render_state.keys()):
+                    o.display_type = cls.pre_viewport_render_state[o.name]
+        
+        cls.pre_viewport_render_state = {}
+    
+    @classmethod
+    def save_pre(cls, scene, depsgraph, ):
+        cls.save_active = True
+        prefs = bpy.context.scene.pcv_instance_visualizer3
+        for k, psys in cls.registry.items():
+            cls.pre_save_state[psys.name] = psys.settings.display_method
+            psys.settings.display_method = prefs.exit_psys_display_method
+        for n in cls.cache.keys():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                cls.pre_save_state[o.name] = o.display_type
+                o.display_type = prefs.exit_object_display_type
+    
+    @classmethod
+    def save_post(cls, scene, depsgraph, ):
+        for k, psys in cls.registry.items():
+            if(psys.name in cls.pre_save_state.keys()):
+                psys.settings.display_method = cls.pre_save_state[psys.name]
+        for n in cls.cache.keys():
+            o = bpy.data.objects.get(n)
+            if(o is not None):
+                if(o.name in cls.pre_save_state.keys()):
+                    o.display_type = cls.pre_save_state[o.name]
+        
+        cls.pre_save_state = {}
+        cls.save_active = False
+    
+    @classmethod
+    def _all_viewport_shading_types(cls):
+        r = []
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    for space in area.spaces:
+                        if(space.type == 'VIEW_3D'):
+                            r.append(space.shading.type)
+        return r
     
     @classmethod
     def _redraw_view_3d(cls):
