@@ -301,10 +301,6 @@ class PCVIV3Manager():
     origins_size = None
     # origins only
     
-    # NOTE: this is unused, is it?
-    # if True, properties callback erase its object from cache and force it to be rebuild
-    cache_auto_update = True
-    
     pre_render_state = {}
     render_active = False
     pre_save_state = {}
@@ -381,8 +377,6 @@ class PCVIV3Manager():
         cls.pre_viewport_render_state = {}
         cls.viewport_render_active = False
         
-        cls.cache_auto_update = True
-        
         cls._redraw_view_3d()
     
     @classmethod
@@ -399,9 +393,7 @@ class PCVIV3Manager():
             else:
                 # was registered, then unregistered or removed, make new uuid
                 pcviv.uuid = str(uuid.uuid1())
-                # # just in case..
-                # pset.display_method = 'RENDER'
-                
+        
         cls.registry[pcviv.uuid] = psys
         
         if(cls.initialized):
@@ -431,7 +423,6 @@ class PCVIV3Manager():
                 cls.viewport_render_active = False
                 cls.viewport_render_post(scene, depsgraph, )
         
-        # log("update!", prefix='>>>', )
         cls.update(scene, depsgraph)
     
     @classmethod
@@ -458,7 +449,7 @@ class PCVIV3Manager():
         # if(not hit):
         #     return
         
-        # TODO: FIXME: filter out events to interesting ones only, lets say start with 'PARTICLE' and add internal update mechanism to fire when some settings are changed. then try to add the minimum of other event types to have it usable.. for example, if user update mesh from collection, provide some 'Update' button to refresh cloud and not react on all changes that are made. in higher instance counts it slows everything down
+        # TODO: filter out events to interesting ones only, lets say start with 'PARTICLE' and add internal update mechanism to fire when some settings are changed. then try to add the minimum of other event types to have it usable.. for example, if user update mesh from collection, provide some 'Update' button to refresh cloud and not react on all changes that are made. in higher instance counts it slows everything down
         
         if(cls.flag):
             return
@@ -506,13 +497,6 @@ class PCVIV3Manager():
                         
                         pset = psys.settings
                         pset.display_method = 'NONE'
-                        # if(pset.render_type == 'COLLECTION'):
-                        #     col = pset.instance_collection
-                        #     for co in col.objects:
-                        #         co.display_type = 'TEXTURED'
-                        # elif(pset.render_type == 'OBJECT'):
-                        #     co = pset.instance_object
-                        #     co.display_type = 'TEXTURED'
                         for co, t in dt.values():
                             co.display_type = t
         
@@ -596,7 +580,6 @@ class PCVIV3Manager():
                     
                     # origins only
                     if(ipcviv.draw and ipcviv.use_origins_only):
-                        # v = m.translation.to_tuple()
                         v = m.translation
                         origins_vs[oc][0] = v[0]
                         origins_vs[oc][1] = v[1]
@@ -644,7 +627,6 @@ class PCVIV3Manager():
             cls.origins_size = draw_size
             
             cls.stats += origins_vs.shape[0]
-            
         else:
             cls.origins_shader = None
             cls.origins_batch = None
@@ -682,10 +664,6 @@ class PCVIV3Manager():
         bgl.glEnable(bgl.GL_DEPTH_TEST)
         # bgl.glEnable(bgl.GL_BLEND)
         
-        # # NOTE: i draw all points facing camera, so this won't work
-        # bgl.glEnable(bgl.GL_CULL_FACE)
-        # # bgl.glCullFace(bgl.GL_BACK)
-        
         buffer = cls.buffer
         
         # get those just once per draw call
@@ -695,49 +673,6 @@ class PCVIV3Manager():
         light = view_matrix.copy().inverted()
         lt = light.translation
         vp = lt
-        
-        '''
-        matrix = view_matrix.inverted()
-        distance = matrix.translation.length
-        eye = matrix.to_translation()
-        target = matrix @ Vector((0.0, 0.0, -distance))
-        up = matrix @ Vector((0.0, 1.0, 0.0)) - eye
-        
-        def look_at_matrix(eye, target, up):
-            z = eye - target
-            x = up.cross(z)
-            y = z.cross(x)
-            
-            x.normalize()
-            y.normalize()
-            z.normalize()
-            
-            r = Matrix()
-            r[0][0] = x[0]
-            r[0][1] = y[0]
-            r[0][2] = z[0]
-            r[0][3] = 0
-            r[1][0] = x[1]
-            r[1][1] = y[1]
-            r[1][2] = z[1]
-            r[1][3] = 0
-            r[2][0] = x[2]
-            r[2][1] = y[2]
-            r[2][2] = z[2]
-            r[2][3] = 0
-            
-            t = Matrix.Translation(eye)
-            return t @ r
-        
-        eye2 = eye + Vector((-1.0, -1.0, 1.0))
-        lt = look_at_matrix(eye2, target, up).translation
-        '''
-        
-        # matrix = view_matrix.inverted()
-        # eye = matrix.to_translation()
-        # up = matrix @ Vector((0.0, 1.0, 0.0)) - eye
-        # eye2 = eye + (up.normalized() * 3.0)
-        # lt = eye2
         
         for quality, shader, batch, matrix, size in buffer:
             shader.bind()
@@ -791,8 +726,6 @@ class PCVIV3Manager():
         bgl.glDisable(bgl.GL_DEPTH_TEST)
         # bgl.glDisable(bgl.GL_BLEND)
         
-        # bgl.glDisable(bgl.GL_CULL_FACE)
-        
         _d = datetime.timedelta(seconds=time.time() - _t)
         log("draw: {}".format(_d), prefix='>>>', )
         
@@ -805,9 +738,6 @@ class PCVIV3Manager():
     
     @classmethod
     def invalidate_object_cache(cls, name, ):
-        if(not cls.cache_auto_update):
-            return False
-        
         if(name in PCVIV3Manager.cache.keys()):
             del PCVIV3Manager.cache[name]
             return True
@@ -1307,20 +1237,16 @@ class PCVIV3_PT_generator(PCVIV3_PT_base):
         
         c.separator()
         
-        # c.prop(pcviv, 'source')
         self.third_label_two_thirds_prop(pcviv, 'source', c, )
         c.prop(pcviv, 'max_points')
         
         if(pcviv.source == 'VERTICES'):
             r = c.row()
-            # r.prop(pcviv, 'color_constant')
             self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
         else:
-            # c.prop(pcviv, 'color_source')
             self.third_label_two_thirds_prop(pcviv, 'color_source', c, )
             if(pcviv.color_source == 'CONSTANT'):
                 r = c.row()
-                # r.prop(pcviv, 'color_constant')
                 self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
             else:
                 c.prop(pcviv, 'use_face_area')
