@@ -35,15 +35,12 @@ import os
 import uuid
 import time
 import datetime
-import random
 import numpy as np
 
 import bpy
-import bmesh
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty
 from bpy.types import PropertyGroup, Panel, Operator
 from mathutils import Matrix, Vector, Quaternion, Color
-from bpy.app.handlers import persistent
 import bgl
 from gpu.types import GPUShader
 from gpu_extras.batch import batch_for_shader
@@ -846,7 +843,7 @@ class PCVIV3Manager():
                     area.tag_redraw()
 
 
-@persistent
+@bpy.app.handlers.persistent
 def watcher(undefined):
     PCVIV3Manager.deinit()
 
