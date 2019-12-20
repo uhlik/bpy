@@ -64,11 +64,17 @@ shader_registry = {
     'instavis3_rich': {'v': "instavis3_rich.vert", 'f': "instavis3_rich.frag", 'g': "instavis3_rich.geom", },
     'instavis3_basic': {'v': "instavis3_basic.vert", 'f': "instavis3_basic.frag", },
 }
+shader_cache = {}
 
 
 def load_shader_code(name):
     if(name not in shader_registry.keys()):
         raise TypeError("Unknown shader requested..")
+    
+    if(name in shader_cache.keys()):
+        c = shader_cache[name]
+        return c['v'], c['f'], c['g']
+    
     d = shader_registry[name]
     vf = d['v']
     ff = d['f']
@@ -85,6 +91,12 @@ def load_shader_code(name):
     if(gf is not None):
         with open(os.path.join(shader_directory, gf), mode='r', encoding='utf-8') as f:
             gs = f.read()
+    
+    shader_cache[name] = {
+        'v': vs,
+        'f': fs,
+        'g': gs,
+    }
     
     return vs, fs, gs
 
