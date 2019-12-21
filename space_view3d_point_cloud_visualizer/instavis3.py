@@ -1323,10 +1323,13 @@ class PCVIV3_PT_instances(PCVIV3_PT_base):
         ok = False
         if(context.object is not None):
             o = context.object
+            c.label(text='{}: Particle Systems:'.format(o.name))
             c.template_list("PARTICLE_UL_particle_systems", "particle_systems", o, "particle_systems", o.particle_systems, "active_index", rows=3, )
             if(o.particle_systems.active is not None):
                 pset = o.particle_systems.active.settings
                 if(pset.render_type == 'COLLECTION' and pset.instance_collection is not None):
+                    c.label(text='{}: Instanced Collection Objects:'.format(pset.name))
+                    
                     col = pset.instance_collection
                     pcvcol = col.pcv_instance_visualizer3
                     c.template_list("PCVIV3_UL_instances", "", col, "objects", pcvcol, "active_index", rows=5, )
@@ -1335,7 +1338,7 @@ class PCVIV3_PT_instances(PCVIV3_PT_base):
                     pcvco = co.pcv_instance_visualizer3
                     
                     # c.separator()
-                    c.label(text='"{}" Settings:'.format(co.name), )
+                    c.label(text='Base Object "{}" Settings:'.format(co.name), )
                     
                     pcviv_prefs = context.scene.pcv_instance_visualizer3
                     if(pcviv_prefs.quality == 'BASIC'):
@@ -1366,12 +1369,14 @@ class PCVIV3_PT_instances(PCVIV3_PT_base):
                                 cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
                     c.operator('point_cloud_visualizer.pcviv3_apply_generator_settings')
                 elif(pset.render_type == 'OBJECT' and pset.instance_object is not None):
+                    c.label(text='{}: Instanced Object:'.format(pset.name))
+                    
                     co = pset.instance_object
                     b = c.box()
                     b.label(text=co.name, icon='OBJECT_DATA', )
                     
                     # c.separator()
-                    c.label(text='"{}" Settings:'.format(co.name), )
+                    c.label(text='Base Object "{}" Settings:'.format(co.name), )
                     
                     pcvco = co.pcv_instance_visualizer3
                     
