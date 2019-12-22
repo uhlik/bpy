@@ -301,7 +301,11 @@ class PCVIV3Manager():
     flag = False
     buffer = []
     handle = None
-    stats = 0
+    
+    stats_enabled = debug_mode()
+    stats_num_points = 0
+    stats_num_instances = 0
+    stats_num_draws = 0
     
     # origins only
     origins_shader = None
@@ -373,7 +377,10 @@ class PCVIV3Manager():
         cls.flag = False
         cls.buffer = []
         cls.handle = None
-        cls.stats = 0
+        
+        cls.stats_num_points = 0
+        cls.stats_num_instances = 0
+        cls.stats_num_draws = 0
         
         cls.origins_shader = None
         cls.origins_batch = None
@@ -518,7 +525,9 @@ class PCVIV3Manager():
         buffer = [None] * len(depsgraph.object_instances)
         c = 0
         registered_uuids = tuple(cls.registry.keys())
-        cls.stats = 0
+        
+        cls.stats_num_points = 0
+        cls.stats_num_instances = 0
         
         # origins only
         l = len(depsgraph.object_instances)
@@ -536,6 +545,9 @@ class PCVIV3Manager():
                 iuuid = ipcviv.uuid
                 iscale = ipcviv.point_scale
                 if(iuuid in registered_uuids):
+                    if(cls.stats_enabled):
+                        cls.stats_num_instances += 1
+                    
                     m = instance.matrix_world.copy()
                     base = instance.object
                     instance_options = base.pcv_instance_visualizer3
@@ -585,7 +597,9 @@ class PCVIV3Manager():
                     if(ipcviv.draw and not ipcviv.use_origins_only):
                         buffer[c] = (draw_quality, shader, batch, m, draw_size, )
                         c += 1
-                        cls.stats += vs.shape[0]
+                        
+                        if(cls.stats_enabled):
+                            cls.stats_num_points += vs.shape[0]
                     
                     # origins only
                     if(ipcviv.draw and ipcviv.use_origins_only):
@@ -635,7 +649,8 @@ class PCVIV3Manager():
             cls.origins_quality = draw_quality
             cls.origins_size = draw_size
             
-            cls.stats += origins_vs.shape[0]
+            if(cls.stats_enabled):
+                cls.stats_num_points += origins_vs.shape[0]
         else:
             cls.origins_shader = None
             cls.origins_batch = None
@@ -677,6 +692,8 @@ class PCVIV3Manager():
         
         buffer = cls.buffer
         
+        cls.stats_num_draws = 0
+        
         # get those just once per draw call
         perspective_matrix = bpy.context.region_data.perspective_matrix
         view_matrix = bpy.context.region_data.view_matrix
@@ -709,6 +726,9 @@ class PCVIV3Manager():
                 # shader.uniform_float("specular_exponent", 8.0)
             
             batch.draw(shader)
+            
+            if(cls.stats_enabled):
+                cls.stats_num_draws += 1
         
         # origins only
         if(cls.origins_shader is not None):
@@ -731,6 +751,9 @@ class PCVIV3Manager():
                 shader.uniform_float("light_position", lt)
                 shader.uniform_float("view_position", vp)
             batch.draw(shader)
+            
+            if(cls.stats_enabled):
+                cls.stats_num_draws += 1
         # origins only
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
@@ -1487,7 +1510,28 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
         
         b = c.box()
         b.scale_y = 0.5
-        b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats)))
+        f = 0.5
+        cc = b.column()
+        
+        def table_row(uil, ct1, ct2, fac, ):
+            r = uil.row()
+            s = r.split(factor=fac)
+            s.label(text=ct1)
+            s = s.split(factor=1.0)
+            s.alignment = 'RIGHT'
+            s.label(text=ct2)
+        
+        if(PCVIV3Manager.stats_enabled):
+            # b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats_num_points)))
+            # b.label(text='instances: {}'.format(human_readable_number(PCVIV3Manager.stats_num_instances)))
+            # b.label(text='draws: {}'.format(human_readable_number(PCVIV3Manager.stats_num_draws)))
+            table_row(cc, 'points: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_points)), f, )
+            table_row(cc, 'instances: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_instances)), f, )
+            table_row(cc, 'draws: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_draws)), f, )
+        else:
+            table_row(cc, 'points: ', 'n/a', f, )
+            table_row(cc, 'instances: ', 'n/a', f, )
+            table_row(cc, 'draws: ', 'n/a', f, )
         
         c.separator()
         c.operator('point_cloud_visualizer.pcviv3_reset_viewport_draw')
