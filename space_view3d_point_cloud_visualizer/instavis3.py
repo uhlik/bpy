@@ -467,9 +467,29 @@ class PCVIV3Manager():
         
         # TODO: filter out events to interesting ones only, lets say start with 'PARTICLE' and add internal update mechanism to fire when some settings are changed. then try to add the minimum of other event types to have it usable.. for example, if user update mesh from collection, provide some 'Update' button to refresh cloud and not react on all changes that are made. in higher instance counts it slows everything down
         
+        # types = ['PARTICLE', ]
+        # hit = False
+        # for t in types:
+        #     hit = depsgraph.id_type_updated(t)
+        #     if(hit):
+        #         break
+        # if(not hit):
+        #     return
+        
         if(cls.flag):
             return
         cls.flag = True
+        
+        # log('depsgraph.updates')
+        # for du in depsgraph.updates:
+        #     log('id: {}, geometry: {:d}, transform: {:d}'.format(str(du.id).replace('bpy_struct, ', '', 1, ), du.is_updated_geometry, du.is_updated_transform), 1)
+        #
+        # log('depsgraph.id_type_updated')
+        # types = ['ACTION', 'ARMATURE', 'BRUSH', 'CAMERA', 'CACHEFILE', 'CURVE', 'FONT', 'GREASEPENCIL', 'COLLECTION', 'IMAGE', 'KEY', 'LIGHT', 'LIBRARY', 'LINESTYLE', 'LATTICE', 'MASK', 'MATERIAL', 'META', 'MESH', 'MOVIECLIP', 'NODETREE', 'OBJECT', 'PAINTCURVE', 'PALETTE', 'PARTICLE', 'LIGHT_PROBE', 'SCENE', 'SOUND', 'SPEAKER', 'TEXT', 'TEXTURE', 'WINDOWMANAGER', 'WORLD', 'WORKSPACE']
+        # for t in types:
+        #     b = depsgraph.id_type_updated(t)
+        #     if(b):
+        #         log('type: {}'.format(t), 1)
         
         # import cProfile
         # import pstats
