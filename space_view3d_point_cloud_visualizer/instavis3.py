@@ -1062,6 +1062,30 @@ class PCVIV3_OT_register(Operator):
         return {'FINISHED'}
 
 
+class PCVIV3_OT_register_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv3_register_all"
+    bl_label = "Register All"
+    bl_description = "Register all particle systems on active object"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is not None):
+            o = context.object
+            for psys in o.particle_systems:
+                uuid = psys.settings.pcv_instance_visualizer3.uuid
+                if(uuid == ""):
+                    return True
+                if(uuid not in PCVIV3Manager.registry.keys()):
+                    return True
+        return False
+    
+    def execute(self, context):
+        o = context.object
+        for psys in o.particle_systems:
+            PCVIV3Manager.register(o, psys)
+        return {'FINISHED'}
+
+
 class PCVIV3_OT_force_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv3_force_update"
     bl_label = "Force Update"
@@ -1257,6 +1281,8 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
             # origins only
         
         c.separator()
+        r = c.row()
+        r.operator('point_cloud_visualizer.pcviv3_register_all')
         r = c.row()
         r.alert = PCVIV3_OT_force_update.poll(context)
         r.operator('point_cloud_visualizer.pcviv3_force_update')
@@ -1544,7 +1570,7 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
 
 classes = (
     PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties, PCVIV3_collection_properties,
-    PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register, PCVIV3_OT_force_update,
+    PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register, PCVIV3_OT_register_all, PCVIV3_OT_force_update,
     PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
     PCVIV3_UL_instances,
     PCVIV3_PT_main, PCVIV3_PT_generator, PCVIV3_PT_instances, PCVIV3_PT_preferences, PCVIV3_PT_debug,
