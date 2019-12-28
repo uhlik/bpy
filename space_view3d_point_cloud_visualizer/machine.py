@@ -124,9 +124,16 @@ class PCVManager():
         pcv.has_vcols = vcols
         
         vs = np.column_stack((points['x'], points['y'], points['z'], ))
+        if(vs.dtype != np.float32):
+            # convert to float32 for display if needed..
+            vs = vs.astype(np.float32)
         
         if(normals):
             ns = np.column_stack((points['nx'], points['ny'], points['nz'], ))
+            if(ns.dtype != np.float32):
+                # convert to float32 for display if needed..
+                ns = ns.astype(np.float32)
+            
         else:
             n = len(points)
             ns = np.column_stack((np.full(n, 0.0, dtype=np.float32, ),
@@ -134,6 +141,8 @@ class PCVManager():
                                   np.full(n, 1.0, dtype=np.float32, ), ))
         
         if(vcols):
+            # convert to float32 for display is not needed because colors are always processed to float32 array..
+            
             # preferences = bpy.context.preferences
             # addon_prefs = preferences.addons[__name__].preferences
             if(addon_prefs.convert_16bit_colors and points['red'].dtype == 'uint16'):
