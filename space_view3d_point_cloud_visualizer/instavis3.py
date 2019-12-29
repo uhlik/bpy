@@ -140,8 +140,7 @@ class PCVIV3FacesSampler():
                 use_material_factors = False
             materials = target.data.materials
             if(None in materials[:]):
-                # if there is empty slot, abort it and set to constant
-                # TODO: make some workaround empty slots, this would require check for polygons with that empty material assigned and replacing that with constant color
+                # if there is empty slot, abort it and set to constant, checking each polygon will be slow..
                 colorize = 'CONSTANT'
                 constant_color = self.sampler_error_color
                 use_material_factors = False
@@ -162,7 +161,6 @@ class PCVIV3FacesSampler():
         me.polygons.foreach_get('normal', normals, )
         normals.shape = (l, 3)
         
-        # TODO: following block can be skipped in some cases, like when requested point count is greater or equal to polygon count
         choices = np.indices((l, ), dtype=np.int, )
         choices.shape = (l, )
         weights = np.zeros(l, dtype=np.float32, )
@@ -231,7 +229,6 @@ class PCVIV3VertsSampler():
     sampler_error_color = (1.0, 0.0, 1.0, )
     
     def __init__(self, target, count=-1, seed=0, constant_color=None, ):
-        # NOTE: material display color is not useable here, material is assigned to polygons. checking each vertex for its polygon (in fact there can be many of them) will be cpu intensive, so leave vertex sampler for case when user wants fast results or need to see vertices because of low poly geometry..
         if(constant_color is None):
             constant_color = self.sampler_constant_color
         
@@ -413,12 +410,14 @@ class PCVIV3Manager():
         cls.registry[pcviv.uuid] = psys
         
         if(cls.initialized):
+            # run update to draw psys just registered
             scene = bpy.context.scene
             depsgraph = bpy.context.evaluated_depsgraph_get()
             cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
     def depsgraph_update_pre(cls, scene, depsgraph, ):
+        # if registered psys was removed, remove from registry as well
         rm = []
         for k, v in cls.registry.items():
             if(v.settings is None):
@@ -448,6 +447,7 @@ class PCVIV3Manager():
         prefs = scene.pcv_instance_visualizer3
         quality = prefs.quality
         
+        # flag prevents recursion because i will fire depsgraph update a few times from now on
         if(cls.flag):
             return
         cls.flag = True
@@ -460,9 +460,11 @@ class PCVIV3Manager():
         
         registered = tuple([v for k, v in cls.registry.items()])
         
+        # store viewport draw settings of objects in pre() to be able to restore them in post()
         dt = {}
         
         def pre():
+            # turn on invisible instances to be able to get their matrices
             for o in bpy.data.objects:
                 if(len(o.particle_systems) > 0):
                     for psys in o.particle_systems:
@@ -485,6 +487,7 @@ class PCVIV3Manager():
                         pset.display_method = 'RENDER'
         
         def post():
+            # hide instance back when i am finished
             for o in bpy.data.objects:
                 if(len(o.particle_systems) > 0):
                     for psys in o.particle_systems:
@@ -498,15 +501,17 @@ class PCVIV3Manager():
                             co.display_type = t
         
         if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
-            # NOTE: this is getting spaghettized
             pre()
         
+        # instance are visible, update depsgraph
         depsgraph.update()
         
+        # zero out old draw buffer
         buffer = [None] * len(depsgraph.object_instances)
         c = 0
         registered_uuids = tuple(cls.registry.keys())
         
+        # zero out stats
         cls.stats_num_points = 0
         cls.stats_num_instances = 0
         
@@ -518,6 +523,7 @@ class PCVIV3Manager():
         oc = 0
         # origins only
         
+        # loop over all instances in scene, choose and process those originating from registered psys
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
                 ipsys = instance.particle_system
@@ -534,6 +540,7 @@ class PCVIV3Manager():
                     instance_options = base.pcv_instance_visualizer3
                     
                     if(base.name not in cls.cache.keys()):
+                        # generate point cloud from object and store in cache, if object is changed it won't be updated until invalidate_object_cache is called, this is done with generator properties, but if user changes mesh directly, it won't be noticed..
                         count = instance_options.max_points
                         color_constant = instance_options.color_constant
                         if(instance_options.source == 'VERTICES'):
@@ -553,12 +560,10 @@ class PCVIV3Manager():
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
                         if(quality == 'BASIC'):
-                            # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                             shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_basic')
                             shader = GPUShader(shader_data_vert, shader_data_frag, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                         else:
-                            # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                             shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
                             shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
@@ -567,6 +572,7 @@ class PCVIV3Manager():
                     else:
                         vs, ns, cs, shader, batch = cls.cache[base.name]
                     
+                    # size data for draw buffer
                     if(quality == 'BASIC'):
                         draw_size = int(instance_options.point_size * iscale)
                         draw_quality = 0
@@ -609,7 +615,6 @@ class PCVIV3Manager():
             origins_cs = origins_cs[:oc]
             
             if(quality == 'BASIC'):
-                # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                 shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_basic')
                 shader = GPUShader(shader_data_vert, shader_data_frag, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
@@ -617,7 +622,6 @@ class PCVIV3Manager():
                 draw_size = prefs.origins_point_size
                 draw_quality = 0
             else:
-                # TODO: caching results of load_shader_code to memory, skip disk i/o, it's not a big deal, i it called once per base object
                 shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis3_rich')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
@@ -640,7 +644,6 @@ class PCVIV3Manager():
         # origins only
         
         if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
-            # NOTE: this is getting spaghettized
             post()
         
         cls.flag = False
@@ -751,6 +754,7 @@ class PCVIV3Manager():
     
     @classmethod
     def invalidate_object_cache(cls, name, ):
+        # force regenerating object point cloud
         if(name in PCVIV3Manager.cache.keys()):
             del PCVIV3Manager.cache[name]
             return True
@@ -759,6 +763,7 @@ class PCVIV3Manager():
     
     @classmethod
     def force_update(cls):
+        # force PCVIV3Manager.update call
         if(not cls.initialized):
             return
         scene = bpy.context.scene
@@ -767,6 +772,7 @@ class PCVIV3Manager():
     
     @classmethod
     def render_pre(cls, scene, depsgraph, ):
+        # do not draw point cloud during render
         log("render_pre", prefix='>>>', )
         cls.render_active = True
         for k, psys in cls.registry.items():
@@ -775,6 +781,7 @@ class PCVIV3Manager():
     
     @classmethod
     def render_post(cls, scene, depsgraph, ):
+        # restore drawing point cloud after render
         log("render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_render_state.keys()):
@@ -785,6 +792,7 @@ class PCVIV3Manager():
     
     @classmethod
     def viewport_render_pre(cls, scene, depsgraph, ):
+        # do not draw point cloud during viewport render
         log("viewport_render_pre", prefix='>>>', )
         for k, psys in cls.registry.items():
             cls.pre_viewport_render_state[psys.name] = psys.settings.pcv_instance_visualizer3.draw
@@ -798,6 +806,7 @@ class PCVIV3Manager():
     
     @classmethod
     def viewport_render_post(cls, scene, depsgraph, ):
+        # restore drawing point cloud after viewport render
         log("viewport_render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_viewport_render_state.keys()):
@@ -813,6 +822,7 @@ class PCVIV3Manager():
     
     @classmethod
     def save_pre(cls, scene, depsgraph, ):
+        # switch to exit display mode before file save to not get hidden instances after file is opened again
         log("save_pre", prefix='>>>', )
         cls.save_active = True
         prefs = bpy.context.scene.pcv_instance_visualizer3
@@ -827,6 +837,7 @@ class PCVIV3Manager():
     
     @classmethod
     def save_post(cls, scene, depsgraph, ):
+        # switch back after file save
         log("save_post", prefix='>>>', )
         for k, psys in cls.registry.items():
             if(psys.name in cls.pre_save_state.keys()):
@@ -842,6 +853,7 @@ class PCVIV3Manager():
     
     @classmethod
     def _all_viewports_shading_type(cls):
+        # used for viewport render detection
         r = []
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
@@ -873,10 +885,12 @@ class PCVIV3_preferences(PropertyGroup):
         depsgraph = bpy.context.evaluated_depsgraph_get()
         PCVIV3Manager.depsgraph_update_post(scene, depsgraph, )
     
+    # shader quality, switch between basic pixel based and rich shaded geometry based, can be changed on the fly
     quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "Basic pixel point based shader with flat colors", ),
                                                  ('RICH', "Rich", "Rich billboard shader with phong shading", ),
                                                  ], default='RICH', description="Global quality settings for all", update=_switch_shader, )
     
+    # exit display settings is used for file save and when instavis is deinitialized, just to prevent viewport slowdown
     exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='BOUNDS', description="To what set instance base objects Display Type when point cloud mode is exited", )
     exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
@@ -898,6 +912,7 @@ class PCVIV3_psys_properties(PropertyGroup):
     # this is going to be assigned during runtime by manager if it detects new psys creation on depsgraph update
     uuid: StringProperty(default="", options={'HIDDEN', }, )
     
+    # global point scale for all points, handy when points get too small to be visible, but you still want to keep different sizes per object
     point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, description="Adjust point size of all points", precision=6, )
     draw: BoolProperty(name="Draw", default=True, description="Draw point cloud to viewport", )
     # origins only
@@ -921,7 +936,8 @@ class PCVIV3_object_properties(PropertyGroup):
     source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
                                                ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
                                                ], default='POLYGONS', description="Point cloud generation source", update=_invalidate_object_cache, )
-    max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
+    # max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
+    max_points: IntProperty(name="Max. Points", default=500, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
                                                            ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
                                                            ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_object_cache, )
@@ -930,6 +946,7 @@ class PCVIV3_object_properties(PropertyGroup):
     use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_object_cache, )
     use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_object_cache, )
     
+    # point_size is for basic shader, point_size_f if for rich shader
     point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
