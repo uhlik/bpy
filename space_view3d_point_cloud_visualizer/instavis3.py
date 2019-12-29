@@ -448,60 +448,15 @@ class PCVIV3Manager():
         prefs = scene.pcv_instance_visualizer3
         quality = prefs.quality
         
-        # # NOTE: artificial updates (i need at least one when starting) are not detected
-        # a = []
-        # all_types = ['ACTION', 'ARMATURE', 'BRUSH', 'CAMERA', 'CACHEFILE', 'CURVE', 'FONT', 'GREASEPENCIL', 'COLLECTION', 'IMAGE', 'KEY', 'LIGHT', 'LIBRARY', 'LINESTYLE', 'LATTICE', 'MASK', 'MATERIAL', 'META', 'MESH', 'MOVIECLIP', 'NODETREE', 'OBJECT', 'PAINTCURVE', 'PALETTE', 'PARTICLE', 'LIGHT_PROBE', 'SCENE', 'SOUND', 'SPEAKER', 'TEXT', 'TEXTURE', 'WINDOWMANAGER', 'WORLD', 'WORKSPACE']
-        # for t in all_types:
-        #     a.append((t, depsgraph.id_type_updated(t), ))
-        # print(a)
-        
-        # # NOTE: with this i could filter out updates i don't need, but lets keep it simple for now, react on all updates
-        # hit = False
-        # types = ['CAMERA', 'CURVE', 'COLLECTION', 'IMAGE', 'LIBRARY', 'MATERIAL', 'MESH', 'OBJECT', 'PARTICLE', 'SCENE', 'TEXTURE', ]
-        # for t in types:
-        #     hit = depsgraph.id_type_updated(t)
-        #     if(hit):
-        #         break
-        # if(not hit):
-        #     return
-        
-        # TODO: filter out events to interesting ones only, lets say start with 'PARTICLE' and add internal update mechanism to fire when some settings are changed. then try to add the minimum of other event types to have it usable.. for example, if user update mesh from collection, provide some 'Update' button to refresh cloud and not react on all changes that are made. in higher instance counts it slows everything down
-        
-        # types = ['PARTICLE', ]
-        # hit = False
-        # for t in types:
-        #     hit = depsgraph.id_type_updated(t)
-        #     if(hit):
-        #         break
-        # if(not hit):
-        #     return
-        
         if(cls.flag):
             return
         cls.flag = True
-        
-        # log('depsgraph.updates')
-        # for du in depsgraph.updates:
-        #     log('id: {}, geometry: {:d}, transform: {:d}'.format(str(du.id).replace('bpy_struct, ', '', 1, ), du.is_updated_geometry, du.is_updated_transform), 1)
-        #
-        # log('depsgraph.id_type_updated')
-        # types = ['ACTION', 'ARMATURE', 'BRUSH', 'CAMERA', 'CACHEFILE', 'CURVE', 'FONT', 'GREASEPENCIL', 'COLLECTION', 'IMAGE', 'KEY', 'LIGHT', 'LIBRARY', 'LINESTYLE', 'LATTICE', 'MASK', 'MATERIAL', 'META', 'MESH', 'MOVIECLIP', 'NODETREE', 'OBJECT', 'PAINTCURVE', 'PALETTE', 'PARTICLE', 'LIGHT_PROBE', 'SCENE', 'SOUND', 'SPEAKER', 'TEXT', 'TEXTURE', 'WINDOWMANAGER', 'WORLD', 'WORKSPACE']
-        # for t in types:
-        #     b = depsgraph.id_type_updated(t)
-        #     if(b):
-        #         log('type: {}'.format(t), 1)
         
         # import cProfile
         # import pstats
         # import io
         # pr = cProfile.Profile()
         # pr.enable()
-        
-        # evaluated_ids = [depsgraph.id_eval_get(psys.settings) for psys in cls.registry.values()]
-        # for du in depsgraph.updates:
-        #     if(du.id in evaluated_ids):
-        #         # registered psys was updated
-        #         pass
         
         registered = tuple([v for k, v in cls.registry.items()])
         
@@ -708,9 +663,7 @@ class PCVIV3Manager():
         # pr = cProfile.Profile()
         # pr.enable()
         
-        '''
-        _t = time.time()
-        '''
+        # _t = time.time()
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
@@ -786,10 +739,8 @@ class PCVIV3Manager():
         bgl.glDisable(bgl.GL_DEPTH_TEST)
         # bgl.glDisable(bgl.GL_BLEND)
         
-        '''
-        _d = datetime.timedelta(seconds=time.time() - _t)
-        log("draw: {}".format(_d), prefix='>>>', )
-        '''
+        # _d = datetime.timedelta(seconds=time.time() - _t)
+        # log("draw: {}".format(_d), prefix='>>>', )
         
         # pr.disable()
         # s = io.StringIO()
@@ -1539,12 +1490,6 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
         l = self.layout
         c = l.column()
         
-        # c.label(text='blender preferences:')
-        # c.prop(bpy.context.preferences.system, 'viewport_aa')
-        # c.separator()
-        #
-        # c.label(text='runtime:')
-        
         tab = '    '
         
         b = c.box()
@@ -1580,9 +1525,6 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
             s.label(text=ct2)
         
         if(PCVIV3Manager.stats_enabled):
-            # b.label(text='points: {}'.format(human_readable_number(PCVIV3Manager.stats_num_points)))
-            # b.label(text='instances: {}'.format(human_readable_number(PCVIV3Manager.stats_num_instances)))
-            # b.label(text='draws: {}'.format(human_readable_number(PCVIV3Manager.stats_num_draws)))
             table_row(cc, 'points: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_points)), f, )
             table_row(cc, 'instances: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_instances)), f, )
             table_row(cc, 'draws: ', '{}'.format(human_readable_number(PCVIV3Manager.stats_num_draws)), f, )
