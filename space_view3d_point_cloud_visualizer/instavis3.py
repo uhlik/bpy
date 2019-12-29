@@ -452,6 +452,16 @@ class PCVIV3Manager():
             return
         cls.flag = True
         
+        # auto switch to origins only
+        if(prefs.switch_origins_only):
+            registered = tuple([v for k, v in cls.registry.items()])
+            for psys in registered:
+                pset = psys.settings
+                if(pset.count >= prefs.switch_origins_only_threshold):
+                    pset.pcv_instance_visualizer3.use_origins_only = True
+                # else:
+                #     pset.pcv_instance_visualizer3.use_origins_only = False
+        
         # import cProfile
         # import pstats
         # import io
@@ -896,8 +906,11 @@ class PCVIV3_preferences(PropertyGroup):
     
     # origins only
     origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
-    origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
+    origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.05, min=0.001, max=1.0, description="Point size", precision=6, )
     # origins only
+    
+    switch_origins_only: BoolProperty(name="Switch To Origins Only", default=True, description="Switch display to Origins Only for high instance counts", )
+    switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2**31-1, description="Switch display to Origins Only when instance count exceeds this value", )
     
     @classmethod
     def register(cls):
@@ -1488,6 +1501,10 @@ class PCVIV3_PT_preferences(PCVIV3_PT_base):
         c.label(text="Exit Display Settings:")
         self.third_label_two_thirds_prop(pcviv_prefs, 'exit_object_display_type', c, )
         self.third_label_two_thirds_prop(pcviv_prefs, 'exit_psys_display_method', c, )
+        c.separator()
+        c.label(text="Auto Switch To Origins Only:")
+        c.prop(pcviv_prefs, 'switch_origins_only', text='Enabled', )
+        c.prop(pcviv_prefs, 'switch_origins_only_threshold')
 
 
 class PCVIV3_PT_debug(PCVIV3_PT_base):
