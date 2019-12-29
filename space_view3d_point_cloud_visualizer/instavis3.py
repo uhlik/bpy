@@ -1303,6 +1303,10 @@ class PCVIV3_PT_generator(PCVIV3_PT_base):
         l = self.layout
         c = l.column()
         
+        o = context.object
+        if(o.particle_systems.active is not None):
+            c.label(text="Select instanced object to set its properties.", icon='ERROR', )
+        
         pcviv_prefs = context.scene.pcv_instance_visualizer3
         if(pcviv_prefs.quality == 'BASIC'):
             c.prop(pcviv, 'point_size')
