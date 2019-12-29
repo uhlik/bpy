@@ -497,6 +497,12 @@ class PCVIV3Manager():
         # pr = cProfile.Profile()
         # pr.enable()
         
+        # evaluated_ids = [depsgraph.id_eval_get(psys.settings) for psys in cls.registry.values()]
+        # for du in depsgraph.updates:
+        #     if(du.id in evaluated_ids):
+        #         # registered psys was updated
+        #         pass
+        
         registered = tuple([v for k, v in cls.registry.items()])
         
         dt = {}
@@ -1532,6 +1538,12 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
         pcviv = context.object.pcv_instance_visualizer3
         l = self.layout
         c = l.column()
+        
+        # c.label(text='blender preferences:')
+        # c.prop(bpy.context.preferences.system, 'viewport_aa')
+        # c.separator()
+        #
+        # c.label(text='runtime:')
         
         tab = '    '
         
