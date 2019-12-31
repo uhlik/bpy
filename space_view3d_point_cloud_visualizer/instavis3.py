@@ -1095,7 +1095,7 @@ class PCVIV3_OT_register_all(Operator):
 
 class PCVIV3_OT_force_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv3_force_update"
-    bl_label = "Force Update"
+    bl_label = "Force Update All"
     bl_description = "Force update all registered particle systems drawing"
     
     @classmethod
@@ -1219,7 +1219,7 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 Main"
+    bl_label = "PCVIV3"
     # bl_parent_id = "PCV_PT_panel"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_options = set()
@@ -1246,6 +1246,96 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
         if(PCVIV3Manager.initialized):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv3_deinit')
+        
+        # # psys if there is any..
+        # n = 'n/a'
+        # if(context.object is not None):
+        #     o = context.object
+        #     if(o.particle_systems.active is not None):
+        #         n = o.particle_systems.active.name
+        # c.label(text='Active Particle System: {}'.format(n))
+        # r = c.row()
+        # if(PCVIV3_OT_register.poll(context)):
+        #     r.alert = True
+        # r.operator('point_cloud_visualizer.pcviv3_register')
+        #
+        # ok = False
+        # if(context.object is not None):
+        #     o = context.object
+        #     if(o.particle_systems.active is not None):
+        #         ok = True
+        # if(ok):
+        #     pset_pcviv = o.particle_systems.active.settings.pcv_instance_visualizer3
+        #     r = c.row()
+        #     r.prop(pset_pcviv, 'draw', toggle=True, )
+        #     r.scale_y = 1.5
+        #     r = c.row()
+        #     r.prop(pset_pcviv, 'point_scale')
+        #
+        #     # origins only
+        #     if(pset_pcviv.use_origins_only):
+        #         r.enabled = False
+        #     c.prop(pset_pcviv, 'use_origins_only')
+        #
+        #     cc = c.column(align=True)
+        #     pcviv_prefs = context.scene.pcv_instance_visualizer3
+        #     if(pcviv_prefs.quality == 'BASIC'):
+        #         cc.prop(pcviv_prefs, 'origins_point_size')
+        #     else:
+        #         cc.prop(pcviv_prefs, 'origins_point_size_f')
+        #     if(not pset_pcviv.use_origins_only):
+        #         cc.enabled = False
+        #     # origins only
+        
+        # c.separator()
+        # r = c.row()
+        # r.operator('point_cloud_visualizer.pcviv3_register_all')
+        r = c.row()
+        r.alert = PCVIV3_OT_force_update.poll(context)
+        r.operator('point_cloud_visualizer.pcviv3_force_update')
+
+
+class PCVIV3_PT_particles(PCVIV3_PT_base):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    # bl_category = "View"
+    bl_category = "Point Cloud Visualizer"
+    bl_label = "Particle System"
+    bl_parent_id = "PCVIV3_PT_main"
+    # bl_options = {'DEFAULT_CLOSED'}
+    bl_options = set()
+    
+    @classmethod
+    def poll(cls, context):
+        o = context.active_object
+        if(o is None):
+            return False
+        return True
+    
+    def draw(self, context):
+        l = self.layout
+        c = l.column()
+        
+        # # manager
+        # c.label(text='PCVIV3 Manager:')
+        # r = c.row(align=True)
+        # cc = r.column(align=True)
+        # if(not PCVIV3Manager.initialized):
+        #     cc.alert = True
+        # cc.operator('point_cloud_visualizer.pcviv3_init')
+        # cc = r.column(align=True)
+        # if(PCVIV3Manager.initialized):
+        #     cc.alert = True
+        # cc.operator('point_cloud_visualizer.pcviv3_deinit')
+        
+        if(context.object is not None):
+            o = context.object
+            c.label(text='{}: Particle Systems:'.format(o.name))
+            c.template_list("PARTICLE_UL_particle_systems", "particle_systems", o, "particle_systems", o.particle_systems, "active_index", rows=3, )
+            
+        r = c.row()
+        r.operator('point_cloud_visualizer.pcviv3_register_all')
+        c.separator()
         
         # psys if there is any..
         n = 'n/a'
@@ -1287,12 +1377,12 @@ class PCVIV3_PT_main(PCVIV3_PT_base):
                 cc.enabled = False
             # origins only
         
-        c.separator()
-        r = c.row()
-        r.operator('point_cloud_visualizer.pcviv3_register_all')
-        r = c.row()
-        r.alert = PCVIV3_OT_force_update.poll(context)
-        r.operator('point_cloud_visualizer.pcviv3_force_update')
+        # c.separator()
+        # r = c.row()
+        # r.operator('point_cloud_visualizer.pcviv3_register_all')
+        # r = c.row()
+        # r.alert = PCVIV3_OT_force_update.poll(context)
+        # r.operator('point_cloud_visualizer.pcviv3_force_update')
 
 
 class PCVIV3_PT_generator(PCVIV3_PT_base):
@@ -1300,8 +1390,8 @@ class PCVIV3_PT_generator(PCVIV3_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 Generator Options"
-    # bl_parent_id = "PCV_PT_panel"
+    bl_label = "Generator Options"
+    bl_parent_id = "PCVIV3_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -1364,8 +1454,8 @@ class PCVIV3_PT_instances(PCVIV3_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 Instance Options"
-    # bl_parent_id = "PCV_PT_panel"
+    bl_label = "Instance Options"
+    bl_parent_id = "PCVIV3_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -1478,8 +1568,8 @@ class PCVIV3_PT_preferences(PCVIV3_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 Preferences"
-    # bl_parent_id = "PCV_PT_panel"
+    bl_label = "Preferences"
+    bl_parent_id = "PCVIV3_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
@@ -1512,16 +1602,22 @@ class PCVIV3_PT_debug(PCVIV3_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "Point Cloud Visualizer"
-    bl_label = "PCVIV3 Debug"
-    # bl_parent_id = "PCV_PT_panel"
+    bl_label = "Debug"
+    bl_parent_id = "PCVIV3_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
     
     @classmethod
     def poll(cls, context):
+        # o = context.active_object
+        # if(o is None):
+        #     return False
+        # return True
+        
         o = context.active_object
-        if(o is None):
-            return False
-        return True
+        if(o is not None):
+            if(debug_mode()):
+                return True
+        return False
     
     def draw(self, context):
         pcviv = context.object.pcv_instance_visualizer3
@@ -1585,7 +1681,8 @@ classes = (
     PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register, PCVIV3_OT_register_all, PCVIV3_OT_force_update,
     PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
     PCVIV3_UL_instances,
-    PCVIV3_PT_main, PCVIV3_PT_generator, PCVIV3_PT_instances, PCVIV3_PT_preferences, PCVIV3_PT_debug,
+    PCVIV3_PT_main, PCVIV3_PT_particles, PCVIV3_PT_instances, PCVIV3_PT_preferences, PCVIV3_PT_debug,
+    # PCVIV3_PT_generator,
 )
 
 
