@@ -910,7 +910,7 @@ class PCVIV3_preferences(PropertyGroup):
     # origins only
     
     switch_origins_only: BoolProperty(name="Switch To Origins Only", default=True, description="Switch display to Origins Only for high instance counts", )
-    switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2**31-1, description="Switch display to Origins Only when instance count exceeds this value", )
+    switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2 ** 31 - 1, description="Switch display to Origins Only when instance count exceeds this value", )
     
     @classmethod
     def register(cls):

@@ -31,12 +31,10 @@ from .debug import log, debug_mode
 from .machine import PCVManager, PCVSequence, preferences
 from . import ops
 from . import filters
-from . import instavis
 from . import edit
 from . import render
 from . import convert
 from . import generate
-from . import instavis3
 
 
 def update_panel_bl_category(self, context, ):
@@ -46,15 +44,7 @@ def update_panel_bl_category(self, context, ):
         PCV_PT_clip,
         PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
         PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
-        PCV_PT_development,
-        
-        # instavis.PCVIV2_PT_panel, instavis.PCVIV2_PT_generator, instavis.PCVIV2_PT_display, instavis.PCVIV2_PT_debug,
-        
-        PCV_PT_debug,
-        
-        # # instavis3
-        # instavis3.PCVIV3_PT_panel,
-        # instavis3.PCVIV3_PT_generator,
+        PCV_PT_development, PCV_PT_debug,
     )
     try:
         p = _main_panel
