@@ -25,7 +25,7 @@ bl_info = {"name": "PCV Instance Visualizer 3",
            "author": "Jakub Uhlik",
            "version": (0, 0, 1),
            "blender": (2, 81, 0),
-           "location": "View3D > Sidebar > Point Cloud Visualizer",
+           "location": "View3D > Sidebar > Point Cloud Visualizer > PCVIV3",
            "warning": "",
            "wiki_url": "https://github.com/uhlik/bpy",
            "tracker_url": "https://github.com/uhlik/bpy/issues",
@@ -1385,64 +1385,6 @@ class PCVIV3_PT_particles(PCVIV3_PT_base):
         # r.operator('point_cloud_visualizer.pcviv3_force_update')
 
 
-class PCVIV3_PT_generator(PCVIV3_PT_base):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
-    bl_label = "Generator Options"
-    bl_parent_id = "PCVIV3_PT_main"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    @classmethod
-    def poll(cls, context):
-        o = context.active_object
-        if(o is None):
-            return False
-        return True
-    
-    def draw(self, context):
-        pcviv = context.object.pcv_instance_visualizer3
-        l = self.layout
-        c = l.column()
-        
-        o = context.object
-        if(o.particle_systems.active is not None):
-            c.label(text="Select instanced object to set its properties.", icon='ERROR', )
-        
-        pcviv_prefs = context.scene.pcv_instance_visualizer3
-        if(pcviv_prefs.quality == 'BASIC'):
-            c.prop(pcviv, 'point_size')
-        else:
-            c.prop(pcviv, 'point_size_f')
-        
-        c.separator()
-        
-        self.third_label_two_thirds_prop(pcviv, 'source', c, )
-        c.prop(pcviv, 'max_points')
-        
-        if(pcviv.source == 'VERTICES'):
-            r = c.row()
-            self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
-        else:
-            self.third_label_two_thirds_prop(pcviv, 'color_source', c, )
-            if(pcviv.color_source == 'CONSTANT'):
-                r = c.row()
-                self.third_label_two_thirds_prop(pcviv, 'color_constant', r, )
-            else:
-                c.prop(pcviv, 'use_face_area')
-                c.prop(pcviv, 'use_material_factors')
-        
-        if(pcviv.use_material_factors):
-            b = c.box()
-            cc = b.column(align=True)
-            for slot in context.object.material_slots:
-                if(slot.material is not None):
-                    cc.prop(slot.material.pcv_instance_visualizer3, 'factor', text=slot.material.name)
-        
-        c.operator('point_cloud_visualizer.pcviv3_apply_generator_settings')
-
-
 class PCVIV3_UL_instances(UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, ):
         pcviv = context.object.pcv_instance_visualizer3
@@ -1680,9 +1622,7 @@ classes = (
     PCVIV3_preferences, PCVIV3_psys_properties, PCVIV3_object_properties, PCVIV3_material_properties, PCVIV3_collection_properties,
     PCVIV3_OT_init, PCVIV3_OT_deinit, PCVIV3_OT_register, PCVIV3_OT_register_all, PCVIV3_OT_force_update,
     PCVIV3_OT_apply_generator_settings, PCVIV3_OT_reset_viewport_draw, PCVIV3_OT_invalidate_caches,
-    PCVIV3_UL_instances,
-    PCVIV3_PT_main, PCVIV3_PT_particles, PCVIV3_PT_instances, PCVIV3_PT_preferences, PCVIV3_PT_debug,
-    # PCVIV3_PT_generator,
+    PCVIV3_UL_instances, PCVIV3_PT_main, PCVIV3_PT_particles, PCVIV3_PT_instances, PCVIV3_PT_preferences, PCVIV3_PT_debug,
 )
 
 
