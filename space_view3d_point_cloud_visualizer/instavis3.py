@@ -533,6 +533,8 @@ class PCVIV3Manager():
         oc = 0
         # origins only
         
+        np.random.seed(seed=0, )
+        
         # loop over all instances in scene, choose and process those originating from registered psys
         for instance in depsgraph.object_instances:
             if(instance.is_instance):
@@ -542,6 +544,12 @@ class PCVIV3Manager():
                 iuuid = ipcviv.uuid
                 iscale = ipcviv.point_scale
                 if(iuuid in registered_uuids):
+                    # if(ipcviv.display < 100.0):
+                    if(ipcviv.display <= 99.0):
+                        if(np.random.random() > ipcviv.display / 100.0):
+                            # skip all processing and drawing.. also at this stage i can determine to which psys instance belongs and i can have display percentage per psys.
+                            continue
+                    
                     if(cls.stats_enabled):
                         cls.stats_num_instances += 1
                     
@@ -928,6 +936,7 @@ class PCVIV3_psys_properties(PropertyGroup):
     # global point scale for all points, handy when points get too small to be visible, but you still want to keep different sizes per object
     point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, description="Adjust point size of all points", precision=6, )
     draw: BoolProperty(name="Draw", default=True, description="Draw point cloud to viewport", )
+    display: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of displayed instances", )
     # origins only
     use_origins_only: BoolProperty(name="Draw Origins Only", default=False, description="Draw only instance origins in a single draw pass", )
     # origins only
@@ -1359,6 +1368,8 @@ class PCVIV3_PT_particles(PCVIV3_PT_base):
             r = c.row()
             r.prop(pset_pcviv, 'draw', toggle=True, )
             r.scale_y = 1.5
+            r = c.row()
+            r.prop(pset_pcviv, 'display')
             r = c.row()
             r.prop(pset_pcviv, 'point_scale')
             
