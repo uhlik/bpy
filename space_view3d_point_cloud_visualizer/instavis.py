@@ -563,17 +563,17 @@ class PCVIVManager():
                         color_constant = instance_options.color_constant
                         if(instance_options.source == 'VERTICES'):
                             sampler = PCVIVVertsSampler(base,
-                                                         count=count,
-                                                         seed=0,
-                                                         constant_color=color_constant, )
+                                                        count=count,
+                                                        seed=0,
+                                                        constant_color=color_constant, )
                         else:
                             sampler = PCVIVFacesSampler(base,
-                                                         count=count,
-                                                         seed=0,
-                                                         colorize=instance_options.color_source,
-                                                         constant_color=color_constant,
-                                                         use_face_area=instance_options.use_face_area,
-                                                         use_material_factors=instance_options.use_material_factors, )
+                                                        count=count,
+                                                        seed=0,
+                                                        colorize=instance_options.color_source,
+                                                        constant_color=color_constant,
+                                                        use_face_area=instance_options.use_face_area,
+                                                        use_material_factors=instance_options.use_material_factors, )
                         
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
