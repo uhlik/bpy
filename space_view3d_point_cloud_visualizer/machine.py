@@ -1614,7 +1614,7 @@ class PCVSequence():
     initialized = False
     
     @classmethod
-    def handler(cls, scene, ):
+    def handler(cls, scene, depsgraph, ):
         cf = scene.frame_current
         for k, v in cls.cache.items():
             pcv = v['pcv']
