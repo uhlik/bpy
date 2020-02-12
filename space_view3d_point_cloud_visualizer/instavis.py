@@ -46,6 +46,12 @@ from gpu.types import GPUShader
 from gpu_extras.batch import batch_for_shader
 
 
+# TODO: remove last pcv dependency
+# TODO: make it register from outside with/without ui/debug ops, 2 sets of classes
+# TODO: make init/deinit automatic. whole setup is register psys
+# TODO: maybe do not load shaders from files, it will be more self-contained
+
+
 try:
     from .debug import log, debug_mode
 except ImportError:
