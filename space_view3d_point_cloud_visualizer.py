@@ -9948,8 +9948,7 @@ class PCVIV2Manager():
         elif(settings.render_type == 'OBJECT'):
             co = settings.instance_object
             if(co.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', )):
-                self.report({'ERROR'}, "Object does not have geometry data.")
-                return {'CANCELLED'}
+                raise Exception("Object does not have geometry data.")
             # extract points
             # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize='VIEWPORT_DISPLAY_COLOR', )
             # sampler = PCVIVDraftWeightedFixedCountNumpySampler(bpy.context, co, count=max_points, colorize=color_source, constant_color=color_constant, )
@@ -13061,8 +13060,8 @@ classes = (
     PCV_PT_development,
     PCV_OT_generate_volume_point_cloud,
     
-    PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
-    PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
+    # PCVIV2_PT_panel, PCVIV2_PT_generator, PCVIV2_PT_display, PCVIV2_PT_debug,
+    # PCVIV2_OT_init, PCVIV2_OT_deinit, PCVIV2_OT_reset, PCVIV2_OT_reset_all, PCVIV2_OT_update, PCVIV2_OT_update_all,
     
     PCVIV2_OT_dev_transform_normals, PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset, PCV_OT_clip_planes_from_camera_view,
     
