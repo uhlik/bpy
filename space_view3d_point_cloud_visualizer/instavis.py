@@ -18,14 +18,14 @@
 
 # part of "Point Cloud Visualizer" blender addon
 # author: Jakub Uhlik
-# (c) 2019 Jakub Uhlik
+# (c) 2019, 2020 Jakub Uhlik
 
 bl_info = {"name": "PCV Instance Visualizer",
            "description": "",
            "author": "Jakub Uhlik",
            "version": (0, 0, 1),
-           "blender": (2, 81, 0),
-           "location": "View3D > Sidebar > Point Cloud Visualizer > PCV Instance Visualizer",
+           "blender": (2, 80, 0),
+           "location": "View3D > Sidebar > PCVIV",
            "warning": "",
            "wiki_url": "https://github.com/uhlik/bpy",
            "tracker_url": "https://github.com/uhlik/bpy/issues",
@@ -46,25 +46,18 @@ from gpu.types import GPUShader
 from gpu_extras.batch import batch_for_shader
 
 
-# TODO: remove last pcv dependency
-# TODO: make it register from outside with/without ui/debug ops, 2 sets of classes
-# TODO: make init/deinit automatic. whole setup is register psys
-# TODO: maybe do not load shaders from files, it will be more self-contained
+def debug_mode():
+    # return True
+    return (bpy.app.debug_value != 0)
 
 
-try:
-    from .debug import log, debug_mode
-except ImportError:
-    def debug_mode():
-        return True
-        # return (bpy.app.debug_value != 0)
-    
-    def log(msg, indent=0, prefix='>', ):
-        m = "{}{} {}".format("    " * indent, prefix, msg)
-        if(debug_mode()):
-            print(m)
+def log(msg, indent=0, prefix='>', ):
+    m = "{}{} {}".format("    " * indent, prefix, msg)
+    if(debug_mode()):
+        print(m)
 
 
+"""
 shader_directory = os.path.join(os.path.dirname(__file__), 'shaders')
 shader_registry = {
     'instavis_rich': {'v': "instavis_rich.vert", 'f': "instavis_rich.frag", 'g': "instavis_rich.geom", },
@@ -105,6 +98,148 @@ def load_shader_code(name):
     }
     
     return vs, fs, gs
+"""
+
+
+class PCVIVShaders():
+    instavis_basic_vert = '''
+        in vec3 position;
+        in vec3 color;
+        
+        uniform mat4 perspective_matrix;
+        uniform mat4 object_matrix;
+        uniform float size;
+        
+        out vec3 f_color;
+        
+        void main()
+        {
+            gl_Position = perspective_matrix * object_matrix * vec4(position, 1.0f);
+            gl_PointSize = size;
+            f_color = color;
+        }
+    '''
+    instavis_basic_frag = '''
+        in vec3 f_color;
+        
+        uniform float alpha = 1.0;
+        
+        out vec4 fragColor;
+        
+        void main()
+        {
+            fragColor = vec4(f_color, alpha);
+        }
+    '''
+    instavis_rich_vert = '''
+        layout (location = 0) in vec3 position;
+        layout (location = 1) in vec3 normal;
+        layout (location = 2) in vec3 color;
+        
+        uniform mat4 model_matrix;
+        
+        out vec3 g_position;
+        out vec3 g_normal;
+        out vec3 g_color;
+        
+        void main()
+        {
+            gl_Position = model_matrix * vec4(position, 1.0);
+            g_position = vec3(model_matrix * vec4(position, 1.0));
+            g_normal = mat3(transpose(inverse(model_matrix))) * normal;
+            g_color = color;
+        }
+    '''
+    instavis_rich_frag = '''
+        layout (location = 0) out vec4 frag_color;
+        
+        in vec3 f_position;
+        in vec3 f_normal;
+        in vec3 f_color;
+        
+        uniform float alpha = 1.0;
+        uniform vec3 light_position;
+        uniform vec3 light_color = vec3(0.8, 0.8, 0.8);
+        uniform vec3 view_position;
+        uniform float ambient_strength = 0.5;
+        uniform float specular_strength = 0.5;
+        uniform float specular_exponent = 8.0;
+        
+        void main()
+        {
+            vec3 ambient = ambient_strength * light_color;
+            
+            vec3 nor = normalize(f_normal);
+            vec3 light_direction = normalize(light_position - f_position);
+            vec3 diffuse = max(dot(nor, light_direction), 0.0) * light_color;
+            
+            vec3 view_direction = normalize(view_position - f_position);
+            vec3 reflection_direction = reflect(-light_direction, nor);
+            float spec = pow(max(dot(view_direction, reflection_direction), 0.0), specular_exponent);
+            vec3 specular = specular_strength * spec * light_color;
+            
+            vec3 col = (ambient + diffuse + specular) * f_color.rgb;
+            frag_color = vec4(col, alpha);
+            
+            // if(!gl_FrontFacing){
+            //     discard;
+            // }
+            
+        }
+    '''
+    instavis_rich_geom = '''
+        layout (points) in;
+        layout (triangle_strip, max_vertices = 4) out;
+        
+        in vec3 g_position[];
+        in vec3 g_normal[];
+        in vec3 g_color[];
+        
+        uniform mat4 view_matrix;
+        uniform mat4 window_matrix;
+        uniform float size[];
+        
+        out vec3 f_position;
+        out vec3 f_normal;
+        out vec3 f_color;
+        
+        void main()
+        {
+            f_position = g_position[0];
+            f_normal = g_normal[0];
+            f_color = g_color[0];
+            
+            float s = size[0] / 2;
+            
+            vec4 pos = view_matrix * gl_in[0].gl_Position;
+            vec2 xyloc = vec2(-1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, -1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(-1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            xyloc = vec2(1 * s, 1 * s);
+            gl_Position = window_matrix * (pos + vec4(xyloc, 0, 0));
+            EmitVertex();
+            
+            EndPrimitive();
+        }
+    '''
+    
+    types = {'BASIC': (instavis_basic_vert, instavis_basic_frag, None, ),
+             'RICH': (instavis_rich_vert, instavis_rich_frag, instavis_rich_geom, ), }
+    
+    @classmethod
+    def get_shader(cls, type, ):
+        if(type not in cls.types.keys()):
+            raise Exception("Unknown shader type")
+        return cls.types[type]
 
 
 class PCVIVFacesSampler():
@@ -422,7 +557,7 @@ class PCVIVManager():
             cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
-    def depsgraph_update_pre(cls, scene, depsgraph, ):
+    def depsgraph_update_pre(cls, scene, depsgraph=None, ):
         # if registered psys was removed, remove from registry as well
         rm = []
         for k, v in cls.registry.items():
@@ -432,7 +567,7 @@ class PCVIVManager():
             del cls.registry[k]
     
     @classmethod
-    def depsgraph_update_post(cls, scene, depsgraph, ):
+    def depsgraph_update_post(cls, scene, depsgraph=None, ):
         if(not cls.viewport_render_active):
             r = cls._all_viewports_shading_type()
             if('RENDERED' in r):
@@ -443,6 +578,9 @@ class PCVIVManager():
             if('RENDERED' not in r):
                 cls.viewport_render_active = False
                 cls.viewport_render_post(scene, depsgraph, )
+        
+        if(depsgraph is None):
+            depsgraph = bpy.context.evaluated_depsgraph_get()
         
         cls.update(scene, depsgraph)
     
@@ -584,11 +722,13 @@ class PCVIVManager():
                         vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                         
                         if(quality == 'BASIC'):
-                            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
+                            # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
+                            shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
                             shader = GPUShader(shader_data_vert, shader_data_frag, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                         else:
-                            shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
+                            # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
+                            shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
                             shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                             batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
                         
@@ -639,14 +779,16 @@ class PCVIVManager():
             origins_cs = origins_cs[:oc]
             
             if(quality == 'BASIC'):
-                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
+                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
+                shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
                 shader = GPUShader(shader_data_vert, shader_data_frag, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
                 
                 draw_size = prefs.origins_point_size
                 draw_quality = 0
             else:
-                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
+                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
+                shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
                 
@@ -795,7 +937,7 @@ class PCVIVManager():
         cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
-    def render_pre(cls, scene, depsgraph, ):
+    def render_pre(cls, scene, depsgraph=None, ):
         # do not draw point cloud during render
         log("render_pre", prefix='>>>', )
         cls.render_active = True
@@ -804,7 +946,7 @@ class PCVIVManager():
             psys.settings.pcv_instavis.draw = False
     
     @classmethod
-    def render_post(cls, scene, depsgraph, ):
+    def render_post(cls, scene, depsgraph=None, ):
         # restore drawing point cloud after render
         log("render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
@@ -815,7 +957,7 @@ class PCVIVManager():
         cls.render_active = False
     
     @classmethod
-    def viewport_render_pre(cls, scene, depsgraph, ):
+    def viewport_render_pre(cls, scene, depsgraph=None, ):
         # do not draw point cloud during viewport render
         log("viewport_render_pre", prefix='>>>', )
         for k, psys in cls.registry.items():
@@ -829,7 +971,7 @@ class PCVIVManager():
                 o.display_type = 'BOUNDS'
     
     @classmethod
-    def viewport_render_post(cls, scene, depsgraph, ):
+    def viewport_render_post(cls, scene, depsgraph=None, ):
         # restore drawing point cloud after viewport render
         log("viewport_render_post", prefix='>>>', )
         for k, psys in cls.registry.items():
@@ -845,7 +987,7 @@ class PCVIVManager():
         cls.pre_viewport_render_state = {}
     
     @classmethod
-    def save_pre(cls, scene, depsgraph, ):
+    def save_pre(cls, scene, depsgraph=None, ):
         # switch to exit display mode before file save to not get hidden instances after file is opened again
         log("save_pre", prefix='>>>', )
         cls.save_active = True
@@ -860,7 +1002,7 @@ class PCVIVManager():
                 o.display_type = prefs.exit_object_display_type
     
     @classmethod
-    def save_post(cls, scene, depsgraph, ):
+    def save_post(cls, scene, depsgraph=None, ):
         # switch back after file save
         log("save_post", prefix='>>>', )
         for k, psys in cls.registry.items():
@@ -1200,7 +1342,7 @@ class PCVIV_OT_reset_viewport_draw(Operator):
 class PCVIV_PT_base(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "PCVIV base"
     bl_options = {'DEFAULT_CLOSED'}
     
@@ -1233,7 +1375,7 @@ class PCVIV_PT_main(PCVIV_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "PCV Instance Visualizer"
     # bl_parent_id = "PCV_PT_panel"
     # bl_options = {'DEFAULT_CLOSED'}
@@ -1314,7 +1456,7 @@ class PCVIV_PT_particles(PCVIV_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "Particle System"
     bl_parent_id = "PCVIV_PT_main"
     # bl_options = {'DEFAULT_CLOSED'}
@@ -1412,7 +1554,7 @@ class PCVIV_PT_instances(PCVIV_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "Instance Options"
     bl_parent_id = "PCVIV_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
@@ -1526,7 +1668,7 @@ class PCVIV_PT_preferences(PCVIV_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "Preferences"
     bl_parent_id = "PCVIV_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
@@ -1560,7 +1702,7 @@ class PCVIV_PT_debug(PCVIV_PT_base):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     # bl_category = "View"
-    bl_category = "Point Cloud Visualizer"
+    bl_category = "PCVIV"
     bl_label = "Debug"
     bl_parent_id = "PCVIV_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
@@ -1635,12 +1777,18 @@ class PCVIV_PT_debug(PCVIV_PT_base):
         r.operator('script.reload')
 
 
-classes = (
+classes_debug = (
     PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties,
     PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_register_all, PCVIV_OT_force_update,
     PCVIV_OT_apply_generator_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches,
     PCVIV_UL_instances, PCVIV_PT_main, PCVIV_PT_particles, PCVIV_PT_instances, PCVIV_PT_preferences, PCVIV_PT_debug,
 )
+classes_release = (
+    PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties,
+)
+classes = classes_release
+if(debug_mode() != 0):
+    classes = classes_debug
 
 
 def register():
