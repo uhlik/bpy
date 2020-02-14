@@ -557,6 +557,29 @@ class PCVIVManager():
             cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
+    def unregister(cls, o, psys, ):
+        pset = psys.settings
+        pcviv = pset.pcv_instavis
+        if(pcviv.uuid in cls.registry.keys()):
+            del cls.registry[pcviv.uuid]
+        
+        if(cls.initialized):
+            scene = bpy.context.scene
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            cls.depsgraph_update_post(scene, depsgraph, )
+            cls._redraw_view_3d()
+            
+            prefs = bpy.context.scene.pcv_instavis
+            pset.display_method = prefs.exit_psys_display_method
+            if(pset.render_type == 'COLLECTION'):
+                col = pset.instance_collection
+                for co in col.objects:
+                    co.display_type = prefs.exit_object_display_type
+            elif(pset.render_type == 'OBJECT'):
+                co = pset.instance_object
+                co.display_type = prefs.exit_object_display_type
+    
+    @classmethod
     def depsgraph_update_pre(cls, scene, depsgraph=None, ):
         # if registered psys was removed, remove from registry as well
         rm = []
@@ -1226,6 +1249,32 @@ class PCVIV_OT_register(Operator):
         return {'FINISHED'}
 
 
+class PCVIV_OT_unregister(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_unregister"
+    bl_label = "Unregister"
+    bl_description = "Unregister particle system"
+    
+    @classmethod
+    def poll(cls, context):
+        ok = False
+        if(context.object is not None):
+            o = context.object
+            if(o.particle_systems.active is not None):
+                # ok = True
+                uuid = o.particle_systems.active.settings.pcv_instavis.uuid
+                if(uuid == ""):
+                    ok = False
+                if(uuid in PCVIVManager.registry.keys()):
+                    rpsys = PCVIVManager.registry[uuid]
+                    if(rpsys == o.particle_systems.active):
+                        ok = True
+        return ok
+    
+    def execute(self, context):
+        PCVIVManager.unregister(context.object, context.object.particle_systems.active)
+        return {'FINISHED'}
+
+
 class PCVIV_OT_register_all(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_register_all"
     bl_label = "Register All"
@@ -1247,6 +1296,30 @@ class PCVIV_OT_register_all(Operator):
         o = context.object
         for psys in o.particle_systems:
             PCVIVManager.register(o, psys)
+        return {'FINISHED'}
+
+
+class PCVIV_OT_unregister_all(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_unregister_all"
+    bl_label = "Unregister All"
+    bl_description = "Unregister all particle systems on active object"
+    
+    @classmethod
+    def poll(cls, context):
+        if(context.object is not None):
+            o = context.object
+            for psys in o.particle_systems:
+                uuid = psys.settings.pcv_instavis.uuid
+                if(uuid == ""):
+                    return False
+                if(uuid in PCVIVManager.registry.keys()):
+                    return True
+        return False
+    
+    def execute(self, context):
+        o = context.object
+        for psys in o.particle_systems:
+            PCVIVManager.unregister(o, psys)
         return {'FINISHED'}
 
 
@@ -1495,8 +1568,9 @@ class PCVIV_PT_particles(PCVIV_PT_base):
             c.label(text='{}: Particle Systems:'.format(o.name))
             c.template_list("PARTICLE_UL_particle_systems", "particle_systems", o, "particle_systems", o.particle_systems, "active_index", rows=3, )
             
-        r = c.row()
+        r = c.row(align=True)
         r.operator('point_cloud_visualizer.pcviv_register_all')
+        r.operator('point_cloud_visualizer.pcviv_unregister_all')
         c.separator()
         
         # psys if there is any..
@@ -1510,6 +1584,10 @@ class PCVIV_PT_particles(PCVIV_PT_base):
         if(PCVIV_OT_register.poll(context)):
             r.alert = True
         r.operator('point_cloud_visualizer.pcviv_register')
+        r = c.row()
+        if(PCVIV_OT_unregister.poll(context)):
+            r.alert = True
+        r.operator('point_cloud_visualizer.pcviv_unregister')
         
         ok = False
         if(context.object is not None):
@@ -1784,7 +1862,7 @@ class PCVIV_PT_debug(PCVIV_PT_base):
 
 classes_debug = (
     PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties,
-    PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_register_all, PCVIV_OT_force_update,
+    PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_register_all, PCVIV_OT_force_update, PCVIV_OT_unregister, PCVIV_OT_unregister_all,
     PCVIV_OT_apply_generator_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches,
     PCVIV_UL_instances, PCVIV_PT_main, PCVIV_PT_particles, PCVIV_PT_instances, PCVIV_PT_preferences, PCVIV_PT_debug,
 )
