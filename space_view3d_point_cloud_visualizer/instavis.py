@@ -1383,12 +1383,17 @@ class PCVIV_PT_main(PCVIV_PT_base):
     
     @classmethod
     def poll(cls, context):
-        o = context.active_object
-        if(o is None):
-            return False
+        # o = context.active_object
+        # if(o is None):
+        #     return False
         return True
     
     def draw(self, context):
+        o = context.active_object
+        if(not o):
+            self.layout.label(text='Select an object..', icon='ERROR', )
+            return
+        
         l = self.layout
         c = l.column()
         

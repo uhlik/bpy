@@ -45,7 +45,6 @@ if('bpy' in locals()):
     importlib.reload(render)
     importlib.reload(convert)
     importlib.reload(generate)
-    # importlib.reload(instavis)
 else:
     from . import debug
     from . import prefs
@@ -59,7 +58,6 @@ else:
     from . import render
     from . import convert
     from . import generate
-    # from . import instavis
 
 
 import bpy
@@ -98,7 +96,6 @@ classes = (
     ui.PCV_PT_debug,
     ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
 )
-# classes += instavis.classes
 
 
 def register():
@@ -111,7 +108,6 @@ def register():
 def unregister():
     machine.PCVSequence.deinit()
     machine.PCVManager.deinit()
-    # instavis.PCVIVManager.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
