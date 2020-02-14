@@ -18,7 +18,7 @@
 
 # part of "Point Cloud Visualizer" blender addon
 # author: Jakub Uhlik
-# (c) 2019 Jakub Uhlik
+# (c) 2019, 2020 Jakub Uhlik
 
 bl_info = {"name": "Point Cloud Visualizer",
            "description": "Display, edit, filter, render, convert, generate and export colored point cloud PLY files.",

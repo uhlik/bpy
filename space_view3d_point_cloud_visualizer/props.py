@@ -18,7 +18,7 @@
 
 # part of "Point Cloud Visualizer" blender addon
 # author: Jakub Uhlik
-# (c) 2019 Jakub Uhlik
+# (c) 2019, 2020 Jakub Uhlik
 
 import bpy
 from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
