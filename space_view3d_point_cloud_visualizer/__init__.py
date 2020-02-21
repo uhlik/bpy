@@ -84,6 +84,7 @@ def unregister():
 
 # NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
+
 if __name__ == "__main__":
     """
     > Well, that doesn't explain... why you've come all the way out here, all the way out here to hell.
