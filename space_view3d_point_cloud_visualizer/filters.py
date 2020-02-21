@@ -1578,3 +1578,11 @@ class PCV_OT_color_adjustment_shader_apply(Operator):
         PCVManager.update(pcv.uuid, vs, ns, cs, )
         
         return {'FINISHED'}
+
+
+classes = (
+    PCV_OT_filter_simplify, PCV_OT_filter_remove_color, PCV_OT_filter_remove_color_delete_selected,
+    PCV_OT_filter_remove_color_deselect, PCV_OT_filter_project, PCV_OT_filter_merge,
+    PCV_OT_filter_boolean_intersect, PCV_OT_filter_boolean_exclude, PCV_OT_color_adjustment_shader_reset,
+    PCV_OT_color_adjustment_shader_apply, PCV_OT_filter_join,
+)

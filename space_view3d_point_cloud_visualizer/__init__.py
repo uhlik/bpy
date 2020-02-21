@@ -59,43 +59,12 @@ else:
     from . import convert
     from . import generate
 
-
 import bpy
 
-
-# NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
-
-
-classes = (
-    props.PCV_properties,
-    prefs.PCV_preferences,
-    
-    ui.PCV_PT_panel, ui.PCV_PT_clip, ui.PCV_PT_edit, ui.PCV_PT_filter, ui.PCV_PT_filter_simplify, ui.PCV_PT_filter_project, ui.PCV_PT_filter_boolean,
-    ui.PCV_PT_filter_remove_color, ui.PCV_PT_filter_merge, ui.PCV_PT_filter_join, ui.PCV_PT_filter_color_adjustment, ui.PCV_PT_render, ui.PCV_PT_convert,
-    ui.PCV_PT_generate, ui.PCV_PT_export, ui.PCV_PT_sequence,
-    
-    ops.PCV_OT_load, ops.PCV_OT_draw, ops.PCV_OT_erase,
-    ops.PCV_OT_reload, ops.PCV_OT_export,
-    ops.PCV_OT_sequence_preload, ops.PCV_OT_sequence_clear,
-    ops.PCV_OT_reset_runtime,
-    ops.PCV_OT_clip_planes_from_bbox, ops.PCV_OT_clip_planes_reset, ops.PCV_OT_clip_planes_from_camera_view,
-    
-    convert.PCV_OT_convert,
-    render.PCV_OT_render, render.PCV_OT_render_animation,
-    edit.PCV_OT_edit_start, edit.PCV_OT_edit_update, edit.PCV_OT_edit_end, edit.PCV_OT_edit_cancel,
-    generate.PCV_OT_generate_point_cloud,
-    
-    filters.PCV_OT_filter_simplify, filters.PCV_OT_filter_remove_color, filters.PCV_OT_filter_remove_color_delete_selected,
-    filters.PCV_OT_filter_remove_color_deselect, filters.PCV_OT_filter_project, filters.PCV_OT_filter_merge,
-    filters.PCV_OT_filter_boolean_intersect, filters.PCV_OT_filter_boolean_exclude, filters.PCV_OT_color_adjustment_shader_reset,
-    filters.PCV_OT_color_adjustment_shader_apply, filters.PCV_OT_filter_join,
-    
-    ui.PCV_PT_development,
-    generate.PCV_OT_generate_volume_point_cloud,
-    
-    ui.PCV_PT_debug,
-    ops.PCV_OT_init, ops.PCV_OT_deinit, ops.PCV_OT_gc, ops.PCV_OT_seq_init, ops.PCV_OT_seq_deinit,
-)
+classes = props.classes + prefs.classes + ui.classes + ops.classes + convert.classes + render.classes + edit.classes + generate.classes + filters.classes
+if(debug.debug_mode()):
+    classes += generate.classes_dev + ui.classes_dev
+    classes += ops.classes_debug + ui.classes_debug
 
 
 def register():
@@ -112,6 +81,8 @@ def unregister():
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
+
+# NOTE $ pycodestyle --ignore=W293,E501,E741,E402 --exclude='io_mesh_fast_obj/blender' .
 
 if __name__ == "__main__":
     """

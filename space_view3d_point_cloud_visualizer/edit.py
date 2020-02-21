@@ -249,3 +249,6 @@ class PCV_OT_edit_cancel(Operator):
         bpy.ops.point_cloud_visualizer.reload()
         
         return {'FINISHED'}
+
+
+classes = (PCV_OT_edit_start, PCV_OT_edit_update, PCV_OT_edit_end, PCV_OT_edit_cancel, )

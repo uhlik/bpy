@@ -474,3 +474,6 @@ class PCV_OT_render_animation(Operator):
         print("PCV: Animation completed in {}.".format(_d))
         
         return {'FINISHED'}
+
+
+classes = (PCV_OT_render, PCV_OT_render_animation, )

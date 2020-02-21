@@ -1062,3 +1062,7 @@ class PCV_OT_generate_volume_point_cloud(Operator):
         log("completed in {}.".format(_d), 1)
         
         return {'FINISHED'}
+
+
+classes = (PCV_OT_generate_point_cloud, )
+classes_dev = (PCV_OT_generate_volume_point_cloud, )

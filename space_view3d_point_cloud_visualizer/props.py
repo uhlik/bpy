@@ -682,3 +682,6 @@ class PCV_properties(PropertyGroup):
     @classmethod
     def unregister(cls):
         del bpy.types.Object.point_cloud_visualizer
+
+
+classes = (PCV_properties, )

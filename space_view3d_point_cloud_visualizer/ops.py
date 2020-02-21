@@ -842,3 +842,13 @@ class PCV_OT_clip_planes_from_camera_view(Operator):
         pcv.clip_plane5_enabled = False
         
         return {'FINISHED'}
+
+
+classes = (
+    PCV_OT_load, PCV_OT_draw, PCV_OT_erase,
+    PCV_OT_reload, PCV_OT_export,
+    PCV_OT_sequence_preload, PCV_OT_sequence_clear,
+    PCV_OT_reset_runtime,
+    PCV_OT_clip_planes_from_bbox, PCV_OT_clip_planes_reset, PCV_OT_clip_planes_from_camera_view,
+)
+classes_debug = (PCV_OT_init, PCV_OT_deinit, PCV_OT_gc, PCV_OT_seq_init, PCV_OT_seq_deinit, )

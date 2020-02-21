@@ -40,12 +40,11 @@ from . import generate
 def update_panel_bl_category(self, context, ):
     _main_panel = PCV_PT_panel
     # NOTE: maybe generate those from 'classes' tuple, or, just don't forget to append new panel also here..
-    _sub_panels = (
-        PCV_PT_clip,
-        PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean, PCV_PT_filter_remove_color,
-        PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment, PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
-        PCV_PT_development, PCV_PT_debug,
-    )
+    _sub_panels = (PCV_PT_clip, PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean,
+                   PCV_PT_filter_remove_color, PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment,
+                   PCV_PT_render, PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence, )
+    if(debug_mode()):
+        _sub_panels += (PCV_PT_development, PCV_PT_debug, )
     try:
         p = _main_panel
         bpy.utils.unregister_class(p)
@@ -1293,3 +1292,12 @@ class PCV_PT_debug(Panel):
                     c.label(text="{}: {}".format('uuid', v['uuid']))
                     c.label(text="{}: {}".format('pcv', v['pcv']))
                     c.label(text="{}: {}".format('data', '{} item(s)'.format(len(v['data']))))
+
+
+classes = (
+    PCV_PT_panel, PCV_PT_clip, PCV_PT_edit, PCV_PT_filter, PCV_PT_filter_simplify, PCV_PT_filter_project, PCV_PT_filter_boolean,
+    PCV_PT_filter_remove_color, PCV_PT_filter_merge, PCV_PT_filter_join, PCV_PT_filter_color_adjustment, PCV_PT_render,
+    PCV_PT_convert, PCV_PT_generate, PCV_PT_export, PCV_PT_sequence,
+)
+classes_dev = (PCV_PT_development, )
+classes_debug = (PCV_PT_debug, )

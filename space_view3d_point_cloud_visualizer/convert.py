@@ -1012,3 +1012,6 @@ class PCV_OT_convert(Operator):
         log("completed in {}.".format(_d))
         
         return {'FINISHED'}
+
+
+classes = (PCV_OT_convert, )

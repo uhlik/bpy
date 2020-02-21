@@ -76,3 +76,6 @@ class PCV_preferences(AddonPreferences):
     #     if(context is None):
     #         context = bpy.context
     #     return context.preferences.addons[__name__].preferences
+
+
+classes = (PCV_preferences, )
