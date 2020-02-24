@@ -261,6 +261,7 @@ class PCVManager():
     
     @classmethod
     def render(cls, uuid, ):
+        # TODO: unify all inputs to shaders
         # TODO: split this, to bloated and messy, and also shader choosing logic is bad
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
