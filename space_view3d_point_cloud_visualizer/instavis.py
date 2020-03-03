@@ -57,50 +57,6 @@ def log(msg, indent=0, prefix='>', ):
         print(m)
 
 
-"""
-shader_directory = os.path.join(os.path.dirname(__file__), 'shaders')
-shader_registry = {
-    'instavis_rich': {'v': "instavis_rich.vert", 'f': "instavis_rich.frag", 'g': "instavis_rich.geom", },
-    'instavis_basic': {'v': "instavis_basic.vert", 'f': "instavis_basic.frag", },
-}
-shader_cache = {}
-
-
-def load_shader_code(name):
-    if(name not in shader_registry.keys()):
-        raise TypeError("Unknown shader requested..")
-    
-    if(name in shader_cache.keys()):
-        c = shader_cache[name]
-        return c['v'], c['f'], c['g']
-    
-    d = shader_registry[name]
-    vf = d['v']
-    ff = d['f']
-    gf = None
-    if('g' in d.keys()):
-        gf = d['g']
-    
-    with open(os.path.join(shader_directory, vf), mode='r', encoding='utf-8') as f:
-        vs = f.read()
-    with open(os.path.join(shader_directory, ff), mode='r', encoding='utf-8') as f:
-        fs = f.read()
-    
-    gs = None
-    if(gf is not None):
-        with open(os.path.join(shader_directory, gf), mode='r', encoding='utf-8') as f:
-            gs = f.read()
-    
-    shader_cache[name] = {
-        'v': vs,
-        'f': fs,
-        'g': gs,
-    }
-    
-    return vs, fs, gs
-"""
-
-
 class PCVIVShaders():
     instavis_basic_vert = '''
         in vec3 position;
@@ -460,13 +416,7 @@ class PCVIVManager():
     viewport_render_active = False
     
     msgbus_handle = object()
-    msgbus_subs = (
-        bpy.types.ParticleSettingsTextureSlot,
-        bpy.types.ParticleSystems,
-        bpy.types.ParticleSettings,
-        bpy.types.ImageTexture,
-        bpy.types.CloudsTexture,
-    )
+    msgbus_subs = ()
     
     @classmethod
     def init(cls):
@@ -478,7 +428,7 @@ class PCVIVManager():
         if(prefs.update_method == 'MSGBUS'):
             bpy.msgbus.clear_by_owner(cls.msgbus_handle)
             for sub in cls.msgbus_subs:
-                bpy.msgbus.subscribe_rna(key=sub, owner=cls.handle, args=(), notify=msgbus_update, )
+                bpy.msgbus.subscribe_rna(key=sub, owner=cls.handle, args=(), notify=msgbus_update, options=set(), )
             # for sub in cls.msgbus_subs:
             #     bpy.msgbus.publish_rna(key=sub)
         else:
@@ -632,13 +582,13 @@ class PCVIVManager():
     def update(cls, scene, depsgraph, ):
         _t = time.time()
         
-        prefs = scene.pcv_instavis
-        quality = prefs.quality
-        
         # flag prevents recursion because i will fire depsgraph update a few times from now on
         if(cls.flag):
             return
         cls.flag = True
+        
+        prefs = scene.pcv_instavis
+        quality = prefs.quality
         
         # auto switch to origins only
         if(prefs.switch_origins_only):
@@ -1085,11 +1035,9 @@ class PCVIVManager():
                     area.tag_redraw()
 
 
+# NOTE: cannot be method, bpy.msgbus.subscribe_rna complains if it is, so it is here instead in PCVIVManager, i think @classmethod should be allowed, but whatever..
 def msgbus_update():
-    # TODO: in same cases, PCVIVManager.update is called more time then it should, investigate that..
-    # FIXME: when using msgbus, some props need thier own listeners, viewport visibility (monitor icon), draw button does not work, there might be more, test all and subscribe
-    
-    log("msgbus_update", prefix='>>>', )
+    # log("msgbus_update", prefix='>>>', )
     scene = bpy.context.scene
     depsgraph = bpy.context.evaluated_depsgraph_get()
     PCVIVManager.depsgraph_update_pre(scene, depsgraph, )
@@ -1135,9 +1083,9 @@ class PCVIV_preferences(PropertyGroup):
             for psys in ls:
                 PCVIVManager.register(None, psys, )
     
-    update_method: EnumProperty(name="Update Method", items=[('DEPSGRAPH', "DEPSGRAPH", "Update using 'app.handlers.depsgraph_update_pre/post'", ),
-                                                             ('MSGBUS', "MSGBUS", "Update using 'msgbus.subscribe_rna'", ),
-                                                             ], default='DEPSGRAPH', description="Switch update method of point cloud instance visualization", update=_switch_update_method, )
+    update_method: EnumProperty(name="Update Method", items=[('MSGBUS', "MSGBUS", "Update using 'msgbus.subscribe_rna'", ),
+                                                             ('DEPSGRAPH', "DEPSGRAPH", "Update using 'app.handlers.depsgraph_update_pre/post'", ),
+                                                             ], default='MSGBUS', description="Switch update method of point cloud instance visualization", update=_switch_update_method, )
     
     @classmethod
     def register(cls):
@@ -1908,6 +1856,17 @@ class PCVIV_PT_debug(PCVIV_PT_base):
         r.alert = True
         r.operator('script.reload')
 
+
+# add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
+PCVIVManager.msgbus_subs += (bpy.types.ParticleSystems,
+                             bpy.types.ParticleSettings,
+                             bpy.types.ParticleSystemModifier,
+                             bpy.types.ParticleSettingsTextureSlot, bpy.types.ImageTexture, bpy.types.CloudsTexture,
+                             (bpy.types.View3DShading, 'type', ), )
+PCVIVManager.msgbus_subs += (PCVIV_preferences,
+                             # FIXME: because i subscribe to ParticleSettings and PCVIV_psys_properties which are on ParticleSettings, after first notify (strange) any change from within PCVIV_psys_properties somehow propagates to ParticleSettings too and fires second notify. at least after i think it is, after an hour of debugging.. somehow i am not much surprised and on the other hand i did not expect it.. isolate to an example and report as bug. for now keep it firing twice, the rest seems to be alright.
+                             PCVIV_psys_properties,
+                             PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
 
 classes_debug = (
     PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties,
