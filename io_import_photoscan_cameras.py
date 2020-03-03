@@ -193,6 +193,11 @@ class PSCSensor():
             # self.calibration['k2'] = float(cal.find("k2").text)
             # self.calibration['k3'] = float(cal.find("k3").text)
         
+        if('pixel_width' not in self.props):
+            self.props['pixel_width'] = self.calibration['resolution']['width']
+            self.props['pixel_height'] = self.calibration['resolution']['height']
+            self.props['focal_length'] = self.calibration['f']
+        
         sw = 0
         sh = 0
         ver = 0
@@ -334,13 +339,19 @@ class PSCChunk():
         
         sens = self.xml.findall(".//sensor")
         for s in sens:
-            sd = PSCSensor(s)
+            try:
+                sd = PSCSensor(s)
+            except:
+                sd = None
             self.sensors.append(sd)
         
         self.cameras = []
         cams = self.xml.findall(".//camera")
         for c in cams:
             sensor = self.sensors[int(c.attrib["sensor_id"])]
+            if(sensor is None):
+                # TODO: unparsed sensor, skip that, deal with that later somehow.. at least notify user
+                continue
             cam = PSCCamera(c, sensor)
             self.cameras.append(cam)
         
