@@ -459,14 +459,31 @@ class PCVIVManager():
     pre_viewport_render_state = {}
     viewport_render_active = False
     
+    msgbus_handle = object()
+    msgbus_subs = (
+        bpy.types.ParticleSettingsTextureSlot,
+        bpy.types.ParticleSystems,
+        bpy.types.ParticleSettings,
+        bpy.types.ImageTexture,
+        bpy.types.CloudsTexture,
+    )
+    
     @classmethod
     def init(cls):
         if(cls.initialized):
             return
         log("init", prefix='>>>', )
         
-        bpy.app.handlers.depsgraph_update_pre.append(cls.depsgraph_update_pre)
-        bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
+        prefs = bpy.context.scene.pcv_instavis
+        if(prefs.update_method == 'MSGBUS'):
+            bpy.msgbus.clear_by_owner(cls.msgbus_handle)
+            for sub in cls.msgbus_subs:
+                bpy.msgbus.subscribe_rna(key=sub, owner=cls.handle, args=(), notify=msgbus_update, )
+            # for sub in cls.msgbus_subs:
+            #     bpy.msgbus.publish_rna(key=sub)
+        else:
+            bpy.app.handlers.depsgraph_update_pre.append(cls.depsgraph_update_pre)
+            bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
         
         bpy.app.handlers.render_pre.append(cls.render_pre)
         bpy.app.handlers.render_post.append(cls.render_post)
@@ -489,8 +506,12 @@ class PCVIVManager():
             return
         log("deinit", prefix='>>>', )
         
-        bpy.app.handlers.depsgraph_update_pre.remove(cls.depsgraph_update_pre)
-        bpy.app.handlers.depsgraph_update_post.remove(cls.depsgraph_update_post)
+        if(cls.depsgraph_update_pre in bpy.app.handlers.depsgraph_update_pre):
+            bpy.app.handlers.depsgraph_update_pre.remove(cls.depsgraph_update_pre)
+        if(cls.depsgraph_update_post in bpy.app.handlers.depsgraph_update_post):
+            bpy.app.handlers.depsgraph_update_post.remove(cls.depsgraph_update_post)
+        
+        bpy.msgbus.clear_by_owner(cls.msgbus_handle)
         
         bpy.app.handlers.render_pre.remove(cls.render_pre)
         bpy.app.handlers.render_post.remove(cls.render_post)
@@ -951,10 +972,14 @@ class PCVIVManager():
             return False
     
     @classmethod
-    def force_update(cls):
+    def force_update(cls, with_caches=False, ):
         # force PCVIVManager.update call
         if(not cls.initialized):
             return
+        
+        if(with_caches):
+            cls.cache = {}
+        
         scene = bpy.context.scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
         cls.depsgraph_update_post(scene, depsgraph, )
@@ -1060,6 +1085,17 @@ class PCVIVManager():
                     area.tag_redraw()
 
 
+def msgbus_update():
+    # TODO: in same cases, PCVIVManager.update is called more time then it should, investigate that..
+    # FIXME: when using msgbus, some props need thier own listeners, viewport visibility (monitor icon), draw button does not work, there might be more, test all and subscribe
+    
+    log("msgbus_update", prefix='>>>', )
+    scene = bpy.context.scene
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    PCVIVManager.depsgraph_update_pre(scene, depsgraph, )
+    PCVIVManager.depsgraph_update_post(scene, depsgraph, )
+
+
 @bpy.app.handlers.persistent
 def watcher(undefined):
     PCVIVManager.deinit()
@@ -1090,6 +1126,18 @@ class PCVIV_preferences(PropertyGroup):
     
     switch_origins_only: BoolProperty(name="Switch To Origins Only", default=True, description="Switch display to Origins Only for high instance counts", )
     switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2 ** 31 - 1, description="Switch display to Origins Only when instance count exceeds this value", )
+    
+    def _switch_update_method(self, context, ):
+        if(PCVIVManager.initialized):
+            ls = PCVIVManager.registry.values()
+            PCVIVManager.deinit()
+            PCVIVManager.init()
+            for psys in ls:
+                PCVIVManager.register(None, psys, )
+    
+    update_method: EnumProperty(name="Update Method", items=[('DEPSGRAPH', "DEPSGRAPH", "Update using 'app.handlers.depsgraph_update_pre/post'", ),
+                                                             ('MSGBUS', "MSGBUS", "Update using 'msgbus.subscribe_rna'", ),
+                                                             ], default='DEPSGRAPH', description="Switch update method of point cloud instance visualization", update=_switch_update_method, )
     
     @classmethod
     def register(cls):
@@ -1335,7 +1383,7 @@ class PCVIV_OT_force_update(Operator):
         return True
     
     def execute(self, context):
-        PCVIVManager.force_update()
+        PCVIVManager.force_update(with_caches=True, )
         return {'FINISHED'}
 
 
@@ -1771,6 +1819,7 @@ class PCVIV_PT_preferences(PCVIV_PT_base):
         pcviv_prefs = context.scene.pcv_instavis
         c.label(text="Global Settings:")
         self.third_label_two_thirds_prop(pcviv_prefs, 'quality', c, )
+        self.third_label_two_thirds_prop(pcviv_prefs, 'update_method', c, )
         c.separator()
         c.label(text="Exit Display Settings:")
         self.third_label_two_thirds_prop(pcviv_prefs, 'exit_object_display_type', c, )
