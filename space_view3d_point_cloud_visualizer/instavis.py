@@ -428,7 +428,7 @@ class PCVIVManager():
         if(prefs.update_method == 'MSGBUS'):
             bpy.msgbus.clear_by_owner(cls.msgbus_handle)
             for sub in cls.msgbus_subs:
-                bpy.msgbus.subscribe_rna(key=sub, owner=cls.handle, args=(), notify=msgbus_update, options=set(), )
+                bpy.msgbus.subscribe_rna(key=sub, owner=cls.msgbus_handle, args=(), notify=msgbus_update, options=set(), )
             # for sub in cls.msgbus_subs:
             #     bpy.msgbus.publish_rna(key=sub)
         else:
@@ -1865,6 +1865,7 @@ PCVIVManager.msgbus_subs += (bpy.types.ParticleSystems,
                              (bpy.types.View3DShading, 'type', ), )
 PCVIVManager.msgbus_subs += (PCVIV_preferences,
                              # FIXME: because i subscribe to ParticleSettings and PCVIV_psys_properties which are on ParticleSettings, after first notify (strange) any change from within PCVIV_psys_properties somehow propagates to ParticleSettings too and fires second notify. at least after i think it is, after an hour of debugging.. somehow i am not much surprised and on the other hand i did not expect it.. isolate to an example and report as bug. for now keep it firing twice, the rest seems to be alright.
+                             # FIXME: update: seems like the problem is on my side (as usual), in simple example it works as it should.
                              PCVIV_psys_properties,
                              PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
 
