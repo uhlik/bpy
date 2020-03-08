@@ -1341,35 +1341,42 @@ class PCVIV_OT_force_update(Operator):
 
 class PCVIV_OT_apply_generator_settings(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_apply_generator_settings"
-    bl_label = "Apply Settings To Selected"
-    bl_description = "Apply generator settings to all selected objects"
+    bl_label = "Apply Settings To Collection"
+    bl_description = "Apply generator settings to all objects in current collection"
     
     @classmethod
     def poll(cls, context):
+        ok = False
         if(context.object is not None):
-            return True
-        return False
+            o = context.object
+            if(o.particle_systems.active is not None):
+                pset = o.particle_systems.active.settings
+                if(pset.render_type == 'COLLECTION'):
+                    if(pset.instance_collection is not None):
+                        ok = True
+        return ok
     
     def execute(self, context):
-        o = context.object
-        pcviv = o.pcv_instavis
-        for so in context.selected_objects:
-            if(so is o):
+        col = context.object.particle_systems.active.settings.instance_collection
+        ao = col.objects[col.pcv_instavis.active_index]
+        aoset = ao.pcv_instavis
+        changed = []
+        for o in col.objects:
+            if(o is ao):
                 continue
-            ps = so.pcv_instavis
-            ps.source = pcviv.source
-            ps.max_points = pcviv.max_points
-            ps.color_source = pcviv.color_source
-            ps.color_constant = pcviv.color_constant
-            ps.use_face_area = pcviv.use_face_area
-            ps.use_material_factors = pcviv.use_material_factors
-            ps.point_size = pcviv.point_size
-            ps.point_size_f = pcviv.point_size_f
+            ps = o.pcv_instavis
+            ps.source = aoset.source
+            ps.max_points = aoset.max_points
+            ps.color_source = aoset.color_source
+            ps.color_constant = aoset.color_constant
+            ps.use_face_area = aoset.use_face_area
+            ps.use_material_factors = aoset.use_material_factors
+            ps.point_size = aoset.point_size
+            ps.point_size_f = aoset.point_size_f
+            changed.append(o)
         
-        for so in context.selected_objects:
-            if(so is o):
-                continue
-            PCVIVManager.invalidate_object_cache(so.name)
+        for o in changed:
+            PCVIVManager.invalidate_object_cache(o.name)
         
         return {'FINISHED'}
 
