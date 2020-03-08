@@ -1859,15 +1859,25 @@ class PCVIV_PT_debug(PCVIV_PT_base):
 
 # add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
 PCVIVManager.msgbus_subs += (bpy.types.ParticleSystems,
-                             bpy.types.ParticleSettings,
+                             # bpy.types.ParticleSettings,
                              bpy.types.ParticleSystemModifier,
                              bpy.types.ParticleSettingsTextureSlot, bpy.types.ImageTexture, bpy.types.CloudsTexture,
                              (bpy.types.View3DShading, 'type', ), )
-PCVIVManager.msgbus_subs += (PCVIV_preferences,
-                             # FIXME: because i subscribe to ParticleSettings and PCVIV_psys_properties which are on ParticleSettings, after first notify (strange) any change from within PCVIV_psys_properties somehow propagates to ParticleSettings too and fires second notify. at least after i think it is, after an hour of debugging.. somehow i am not much surprised and on the other hand i did not expect it.. isolate to an example and report as bug. for now keep it firing twice, the rest seems to be alright.
-                             # FIXME: update: seems like the problem is on my side (as usual), in simple example it works as it should.
-                             PCVIV_psys_properties,
-                             PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
+
+
+def generate_pset_subs():
+    l = bpy.types.ParticleSettings.bl_rna.properties.keys()
+    l.remove('render_type')
+    l.remove('display_method')
+    t = bpy.types.ParticleSettings
+    r = tuple([(t, i, ) for i in l])
+    return r
+
+
+# NOTE: because in PCVIVManager.update i modify 'render_type' and 'display_method', update is executed twice, subscribing to all props except those two is an easy fix, may not be the best, but somehow msgbus notification fires after all is done so i can't be sure where change came from..
+# TODO: would be nice to identify all props to subscribe to keep functionality while leaving unnecessary props unsubscribed
+PCVIVManager.msgbus_subs += generate_pset_subs()
+PCVIVManager.msgbus_subs += (PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
 
 classes_debug = (
     PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties,
