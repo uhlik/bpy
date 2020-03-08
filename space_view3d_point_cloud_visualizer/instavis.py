@@ -211,7 +211,10 @@ class PCVIVFacesSampler():
             colorize = 'CONSTANT'
         if(constant_color is None):
             constant_color = self.sampler_constant_color
-        if(use_material_factors is None and colorize == 'VIEWPORT_DISPLAY_COLOR'):
+        if(colorize == 'OBJECT_VIEWPORT_DISPLAY_COLOR'):
+            colorize = 'CONSTANT'
+            constant_color = tuple(target.color[:3])
+        if(use_material_factors is None and colorize == 'MATERIAL_VIEWPORT_DISPLAY_COLOR'):
             use_material_factors = False
         if(use_material_factors):
             if(colorize == 'CONSTANT'):
@@ -229,7 +232,7 @@ class PCVIVFacesSampler():
             self.ns = np.array(((0.0, 0.0, 1.0, ), ), dtype=np.float32, )
             self.cs = np.array((self.sampler_error_color, ), dtype=np.float32, )
             return
-        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+        if(colorize == 'MATERIAL_VIEWPORT_DISPLAY_COLOR'):
             if(len(target.data.materials) == 0):
                 # no materials, set to constant
                 colorize = 'CONSTANT'
@@ -266,7 +269,7 @@ class PCVIVFacesSampler():
         weights *= 1.0 / np.sum(weights)
         indices = np.random.choice(choices, size=count, replace=False, p=weights, )
         
-        if(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+        if(colorize == 'MATERIAL_VIEWPORT_DISPLAY_COLOR'):
             material_indices = np.zeros(l, dtype=np.int, )
             me.polygons.foreach_get('material_index', material_indices, )
             material_colors = np.zeros((len(materials), 3), dtype=np.float32, )
@@ -292,7 +295,7 @@ class PCVIVFacesSampler():
             colors = np.column_stack((np.full(l, constant_color[0] ** (1 / 2.2), dtype=np.float32, ),
                                       np.full(l, constant_color[1] ** (1 / 2.2), dtype=np.float32, ),
                                       np.full(l, constant_color[2] ** (1 / 2.2), dtype=np.float32, ), ))
-        elif(colorize == 'VIEWPORT_DISPLAY_COLOR'):
+        elif(colorize == 'MATERIAL_VIEWPORT_DISPLAY_COLOR'):
             colors = np.zeros((li, 3), dtype=np.float32, )
             colors = np.take(material_colors, material_indices, axis=0, )
         
@@ -1128,8 +1131,9 @@ class PCVIV_object_properties(PropertyGroup):
     # max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     max_points: IntProperty(name="Max. Points", default=500, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
-                                                           ('VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
-                                                           ], default='VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_object_cache, )
+                                                           ('OBJECT_VIEWPORT_DISPLAY_COLOR', "Object Viewport Display Color", "Use object viewport display color property"),
+                                                           ('MATERIAL_VIEWPORT_DISPLAY_COLOR', "Material Viewport Display Color", "Use material viewport display color property"),
+                                                           ], default='MATERIAL_VIEWPORT_DISPLAY_COLOR', description="Color source for generated point cloud", update=_invalidate_object_cache, )
     color_constant: FloatVectorProperty(name="Color", description="Constant color", default=(0.7, 0.7, 0.7, ), min=0, max=1, subtype='COLOR', size=3, update=_invalidate_object_cache, )
     
     use_face_area: BoolProperty(name="Use Face Area", default=True, description="Use mesh face area as probability factor during point cloud generation", update=_invalidate_object_cache, )
