@@ -421,6 +421,9 @@ class PCVIVManager():
     msgbus_handle = object()
     msgbus_subs = ()
     
+    # FIXME: solve undo/redo crash, the best would be to have undo_pre to store current state by names and undo_post to restore state with current references. the same with redo
+    undo_state = {}
+    
     @classmethod
     def init(cls):
         if(cls.initialized):
@@ -442,6 +445,11 @@ class PCVIVManager():
         bpy.app.handlers.render_post.append(cls.render_post)
         bpy.app.handlers.save_pre.append(cls.save_pre)
         bpy.app.handlers.save_post.append(cls.save_post)
+        
+        bpy.app.handlers.undo_pre.append(cls.undo_pre)
+        bpy.app.handlers.undo_post.append(cls.undo_post)
+        bpy.app.handlers.redo_pre.append(cls.undo_pre)
+        bpy.app.handlers.redo_post.append(cls.undo_post)
         
         bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
@@ -470,6 +478,11 @@ class PCVIVManager():
         bpy.app.handlers.render_post.remove(cls.render_post)
         bpy.app.handlers.save_pre.remove(cls.save_pre)
         bpy.app.handlers.save_post.remove(cls.save_post)
+        
+        bpy.app.handlers.undo_pre.remove(cls.undo_pre)
+        bpy.app.handlers.undo_post.remove(cls.undo_post)
+        bpy.app.handlers.redo_pre.remove(cls.undo_pre)
+        bpy.app.handlers.redo_post.remove(cls.undo_post)
         
         bpy.app.handlers.load_pre.remove(watcher)
         cls.initialized = False
@@ -1017,6 +1030,54 @@ class PCVIVManager():
         
         cls.pre_save_state = {}
         cls.save_active = False
+    
+    @classmethod
+    def undo_pre(cls, scene, depsgraph=None, ):
+        log("undo_pre", prefix='>>>', )
+        for k, v in cls.registry.items():
+            cls.undo_state[k] = v.name
+    
+    @classmethod
+    def undo_post(cls, scene, depsgraph=None, ):
+        log("undo_post", prefix='>>>', )
+        for k, v in cls.undo_state.items():
+            psys = None
+            # search all objects for particle system with matching uuid in settings.pcv_instavis
+            for o in bpy.data.objects:
+                for p in o.particle_systems:
+                    if(p.settings.pcv_instavis.uuid == k):
+                        psys = p
+                        break
+                if(psys is not None):
+                    break
+            
+            # FIXME: undo/redo related to particle systems, like remove psys, undo (now it is added again), redo (now it is removed again), result in psys being unregistered which is not quite well, but at least blender does not crash accessing stale data.. maybe do something about it, but having parallel undo system is not practical nor effective. such immediate undo/redo might work, but if there are more steps between, it will become parallel undo system and i don't want deal with it..
+            # TODO: what does not work: 1) with MSGBUS, remove psys, it stays drawn, 2) with MSGBUS, remove all psys one by one and go deinit, 3) with MSGBUS, remove all psys one by one and go force update > crash > looks like bpy.types.ParticleSystems does not send any messages, in fact, no collections send notifications
+            
+            if(psys is not None):
+                # if psys is found, put it into registry with that uuid
+                if(k in cls.registry):
+                    # but only when it is already there
+                    cls.registry[k] = psys
+                else:
+                    log("undo_post: uuid is not found", prefix='>>>', )
+            else:
+                # if psys is not found, undo/redo action might be related to it
+                if(k in cls.registry):
+                    # do if the uuid is in registry, remove it, because psys is not in scene..
+                    log("undo_post: psys is not found, deleting uuid from registry", prefix='>>>', )
+                    del cls.registry[k]
+                else:
+                    # now what..
+                    log("undo_post: psys and uuid is not found", prefix='>>>', )
+        
+        # reset state for next undo/redo
+        cls.undo_state = {}
+        
+        # update all in the end..
+        if(depsgraph is None):
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+        cls.update(scene, depsgraph)
     
     @classmethod
     def _all_viewports_shading_type(cls):
@@ -1870,6 +1931,8 @@ class PCVIV_PT_debug(PCVIV_PT_base):
 
 # add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
 PCVIVManager.msgbus_subs += (bpy.types.ParticleSystems,
+                             # (bpy.types.ParticleSystems, 'active', ),
+                             (bpy.types.Object, 'particle_systems', ),
                              # bpy.types.ParticleSettings,
                              bpy.types.ParticleSystemModifier,
                              bpy.types.ParticleSettingsTextureSlot, bpy.types.ImageTexture, bpy.types.CloudsTexture,
