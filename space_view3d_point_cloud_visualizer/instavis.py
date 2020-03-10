@@ -23,7 +23,7 @@
 bl_info = {"name": "PCV Instance Visualizer",
            "description": "",
            "author": "Jakub Uhlik",
-           "version": (0, 0, 1),
+           "version": (0, 0, 5),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > PCVIV",
            "warning": "",
@@ -32,7 +32,6 @@ bl_info = {"name": "PCV Instance Visualizer",
            "category": "3D View", }
 
 import os
-import uuid
 import time
 import datetime
 import numpy as np
@@ -47,7 +46,6 @@ from gpu_extras.batch import batch_for_shader
 
 
 def debug_mode():
-    # return True
     return (bpy.app.debug_value != 0)
 
 
@@ -390,29 +388,20 @@ class PCVIVVertsSampler():
         self.cs = cs
 
 
-class PCVIVManager():
+class PCVIVMechanist():
     initialized = False
     
-    registry = {}
+    handle = None
+    buffer = []
+    
     cache = {}
     flag = False
-    buffer = []
-    handle = None
     
     stats_enabled = debug_mode()
     stats_num_points = 0
     stats_num_instances = 0
     stats_num_draws = 0
     
-    # origins only
-    origins_shader = None
-    origins_batch = None
-    origins_quality = None
-    origins_size = None
-    # origins only
-    
-    pre_render_state = {}
-    render_active = False
     pre_save_state = {}
     save_active = False
     pre_viewport_render_state = {}
@@ -421,7 +410,10 @@ class PCVIVManager():
     msgbus_handle = object()
     msgbus_subs = ()
     
-    undo_state = {}
+    origins_shader = None
+    origins_batch = None
+    origins_quality = None
+    origins_size = None
     
     @classmethod
     def init(cls):
@@ -429,36 +421,26 @@ class PCVIVManager():
             return
         log("init", prefix='>>>', )
         
+        bpy.app.handlers.load_pre.append(watcher)
+        
         prefs = bpy.context.scene.pcv_instavis
         if(prefs.update_method == 'MSGBUS'):
             bpy.msgbus.clear_by_owner(cls.msgbus_handle)
             for sub in cls.msgbus_subs:
-                bpy.msgbus.subscribe_rna(key=sub, owner=cls.msgbus_handle, args=(), notify=msgbus_update, options=set(), )
-            # for sub in cls.msgbus_subs:
-            #     bpy.msgbus.publish_rna(key=sub)
+                bpy.msgbus.subscribe_rna(key=sub, owner=cls.msgbus_handle, args=(), notify=mechanist_msgbus_update, options=set(), )
         else:
-            bpy.app.handlers.depsgraph_update_pre.append(cls.depsgraph_update_pre)
-            bpy.app.handlers.depsgraph_update_post.append(cls.depsgraph_update_post)
+            bpy.app.handlers.depsgraph_update_post.append(cls.update)
         
-        bpy.app.handlers.render_pre.append(cls.render_pre)
-        bpy.app.handlers.render_post.append(cls.render_post)
         bpy.app.handlers.save_pre.append(cls.save_pre)
         bpy.app.handlers.save_post.append(cls.save_post)
+        bpy.app.handlers.undo_post.append(cls.update)
+        bpy.app.handlers.redo_post.append(cls.update)
         
-        bpy.app.handlers.undo_pre.append(cls.undo_pre)
-        bpy.app.handlers.undo_post.append(cls.undo_post)
-        bpy.app.handlers.redo_pre.append(cls.undo_pre)
-        bpy.app.handlers.redo_post.append(cls.undo_post)
-        
-        bpy.app.handlers.load_pre.append(watcher)
         cls.initialized = True
         
         cls.handle = bpy.types.SpaceView3D.draw_handler_add(cls.draw, (), 'WINDOW', 'POST_VIEW')
+        cls.update()
         cls._redraw_view_3d()
-        
-        scene = bpy.context.scene
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        cls.depsgraph_update_post(scene, depsgraph, )
     
     @classmethod
     def deinit(cls):
@@ -466,117 +448,59 @@ class PCVIVManager():
             return
         log("deinit", prefix='>>>', )
         
-        if(cls.depsgraph_update_pre in bpy.app.handlers.depsgraph_update_pre):
-            bpy.app.handlers.depsgraph_update_pre.remove(cls.depsgraph_update_pre)
-        if(cls.depsgraph_update_post in bpy.app.handlers.depsgraph_update_post):
-            bpy.app.handlers.depsgraph_update_post.remove(cls.depsgraph_update_post)
-        
+        if(cls.update in bpy.app.handlers.depsgraph_update_post):
+            bpy.app.handlers.depsgraph_update_post.remove(cls.update)
         bpy.msgbus.clear_by_owner(cls.msgbus_handle)
         
-        bpy.app.handlers.render_pre.remove(cls.render_pre)
-        bpy.app.handlers.render_post.remove(cls.render_post)
         bpy.app.handlers.save_pre.remove(cls.save_pre)
         bpy.app.handlers.save_post.remove(cls.save_post)
-        
-        bpy.app.handlers.undo_pre.remove(cls.undo_pre)
-        bpy.app.handlers.undo_post.remove(cls.undo_post)
-        bpy.app.handlers.redo_pre.remove(cls.undo_pre)
-        bpy.app.handlers.redo_post.remove(cls.undo_post)
+        bpy.app.handlers.undo_post.remove(cls.update)
+        bpy.app.handlers.redo_post.remove(cls.update)
         
         bpy.app.handlers.load_pre.remove(watcher)
+        
         cls.initialized = False
         
         bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
         
-        prefs = bpy.context.scene.pcv_instavis
-        for k, psys in cls.registry.items():
-            psys.settings.display_method = prefs.exit_psys_display_method
+        scene = bpy.context.scene
+        prefs = scene.pcv_instavis
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        psystems = set([p for o in targets for p in o.particle_systems])
+        psettings = set([p.settings for p in psystems])
+        for pset in psettings:
+            pset.display_method = prefs.exit_psys_display_method
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
                 o.display_type = prefs.exit_object_display_type
         
-        cls.registry = {}
+        cls.initialized = False
+        
+        cls.handle = None
+        cls.buffer = []
         cls.cache = {}
         cls.flag = False
-        cls.buffer = []
-        cls.handle = None
-        
+        cls.stats_enabled = debug_mode()
         cls.stats_num_points = 0
         cls.stats_num_instances = 0
         cls.stats_num_draws = 0
         
-        cls.origins_shader = None
-        cls.origins_batch = None
-        cls.origins_quality = None
-        cls.origins_size = None
-        cls.pre_render_state = {}
-        cls.render_active = False
         cls.pre_save_state = {}
         cls.save_active = False
         cls.pre_viewport_render_state = {}
         cls.viewport_render_active = False
         
+        cls.origins_shader = None
+        cls.origins_batch = None
+        cls.origins_quality = None
+        cls.origins_size = None
+        
         cls._redraw_view_3d()
     
     @classmethod
-    def register(cls, o, psys, ):
-        pset = psys.settings
-        pcviv = pset.pcv_instavis
-        if(pcviv.uuid == ''):
-            # not used before..
-            pcviv.uuid = str(uuid.uuid1())
-        else:
-            if(pcviv.uuid in cls.registry.keys()):
-                # is already registered
-                pass
-            else:
-                # was registered, then unregistered or removed, make new uuid
-                pcviv.uuid = str(uuid.uuid1())
-        
-        cls.registry[pcviv.uuid] = psys
-        
-        if(cls.initialized):
-            # run update to draw psys just registered
-            scene = bpy.context.scene
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            cls.depsgraph_update_post(scene, depsgraph, )
-    
-    @classmethod
-    def unregister(cls, o, psys, ):
-        pset = psys.settings
-        pcviv = pset.pcv_instavis
-        if(pcviv.uuid in cls.registry.keys()):
-            del cls.registry[pcviv.uuid]
-        
-        if(cls.initialized):
-            scene = bpy.context.scene
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-            cls.depsgraph_update_post(scene, depsgraph, )
-            cls._redraw_view_3d()
-            
-            prefs = bpy.context.scene.pcv_instavis
-            pset.display_method = prefs.exit_psys_display_method
-            if(pset.render_type == 'COLLECTION'):
-                col = pset.instance_collection
-                for co in col.objects:
-                    co.display_type = prefs.exit_object_display_type
-            elif(pset.render_type == 'OBJECT'):
-                co = pset.instance_object
-                co.display_type = prefs.exit_object_display_type
-    
-    @classmethod
-    def depsgraph_update_pre(cls, scene, depsgraph=None, ):
-        # if registered psys was removed, remove from registry as well
-        rm = []
-        for k, v in cls.registry.items():
-            if(v.settings is None):
-                rm.append(k)
-        for k in rm:
-            del cls.registry[k]
-    
-    @classmethod
-    def depsgraph_update_post(cls, scene, depsgraph=None, ):
+    def update(cls, scene=None, depsgraph=None, ):
+        # disable drawing when viewport render is detected or enable back again when finished
         if(not cls.viewport_render_active):
             r = cls._all_viewports_shading_type()
             if('RENDERED' in r):
@@ -588,32 +512,10 @@ class PCVIVManager():
                 cls.viewport_render_active = False
                 cls.viewport_render_post(scene, depsgraph, )
         
-        if(depsgraph is None):
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-        
-        cls.update(scene, depsgraph)
-    
-    @classmethod
-    def update(cls, scene, depsgraph, ):
-        _t = time.time()
-        
         # flag prevents recursion because i will fire depsgraph update a few times from now on
         if(cls.flag):
             return
         cls.flag = True
-        
-        prefs = scene.pcv_instavis
-        quality = prefs.quality
-        
-        # auto switch to origins only
-        if(prefs.switch_origins_only):
-            registered = tuple([v for k, v in cls.registry.items()])
-            for psys in registered:
-                pset = psys.settings
-                if(pset.count >= prefs.switch_origins_only_threshold):
-                    pset.pcv_instavis.use_origins_only = True
-                # else:
-                #     pset.pcv_instavis.use_origins_only = False
         
         # import cProfile
         # import pstats
@@ -621,174 +523,165 @@ class PCVIVManager():
         # pr = cProfile.Profile()
         # pr.enable()
         
-        registered = tuple([v for k, v in cls.registry.items()])
+        _t = time.time()
+        
+        if(scene is None):
+            scene = bpy.context.scene
+        if(depsgraph is None):
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+        
+        # collect all targets
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # and all particle systems on targets
+        psystems = set([p for o in targets for p in o.particle_systems])
+        # and their settings
+        psettings = set([p.settings for p in psystems])
+        
+        prefs = scene.pcv_instavis
+        quality = prefs.quality
+        
+        # auto switch to origins only
+        if(prefs.switch_origins_only):
+            for pset in psettings:
+                if(pset.count >= prefs.switch_origins_only_threshold):
+                    pset.pcv_instavis.use_origins_only = True
         
         # store viewport draw settings of objects in pre() to be able to restore them in post()
         dt = {}
         
         def pre():
             # turn on invisible instances to be able to get their matrices
-            for o in bpy.data.objects:
-                if(len(o.particle_systems) > 0):
-                    for psys in o.particle_systems:
-                        # skip unregistered systems
-                        if(psys not in registered):
-                            continue
-                        
-                        pset = psys.settings
-                        if(pset.render_type == 'COLLECTION'):
-                            col = pset.instance_collection
-                            for co in col.objects:
-                                if(co.name not in dt.keys()):
-                                    dt[co.name] = (co, co.display_type, )
-                                co.display_type = 'BOUNDS'
-                        elif(pset.render_type == 'OBJECT'):
-                            co = pset.instance_object
+            for pset in psettings:
+                if(pset.render_type == 'COLLECTION'):
+                    col = pset.instance_collection
+                    if(col is not None):
+                        for co in col.objects:
                             if(co.name not in dt.keys()):
                                 dt[co.name] = (co, co.display_type, )
                             co.display_type = 'BOUNDS'
-                        pset.display_method = 'RENDER'
+                elif(pset.render_type == 'OBJECT'):
+                    co = pset.instance_object
+                    if(co is not None):
+                        if(co.name not in dt.keys()):
+                            dt[co.name] = (co, co.display_type, )
+                        co.display_type = 'BOUNDS'
+                pset.display_method = 'RENDER'
         
         def post():
             # hide instance back when i am finished
-            for o in bpy.data.objects:
-                if(len(o.particle_systems) > 0):
-                    for psys in o.particle_systems:
-                        # skip unregistered systems
-                        if(psys not in registered):
-                            continue
-                        
-                        pset = psys.settings
-                        pset.display_method = 'NONE'
-                        for co, t in dt.values():
-                            co.display_type = t
+            for pset in psettings:
+                pset.display_method = 'NONE'
+                for co, t in dt.values():
+                    co.display_type = t
         
-        if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
+        # if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
+        if(not cls.viewport_render_active and not cls.save_active):
             pre()
         
-        # instance are visible, update depsgraph
+        # instances are visible, update depsgraph
         depsgraph.update()
         
-        # zero out old draw buffer
+        # prepopulate buffer
         buffer = [None] * len(depsgraph.object_instances)
         c = 0
-        registered_uuids = tuple(cls.registry.keys())
         
         # zero out stats
         cls.stats_num_points = 0
         cls.stats_num_instances = 0
         
-        # origins only
         l = len(depsgraph.object_instances)
         origins_vs = np.zeros((l, 3, ), dtype=np.float32, )
         origins_ns = np.zeros((l, 3, ), dtype=np.float32, )
         origins_cs = np.zeros((l, 3, ), dtype=np.float32, )
         oc = 0
-        # origins only
         
+        # set seed to prevent changes between updates
         np.random.seed(seed=0, )
         
-        # loop over all instances in scene, choose and process those originating from registered psys
+        # loop over all instances in scene, choose and process those originating from psys on targets
         for instance in depsgraph.object_instances:
-            if(instance.is_instance):
-                ipsys = instance.particle_system
-                ipset = ipsys.settings
+            ipsys = instance.particle_system
+            if(ipsys is None):
+                continue
+            ipset = ipsys.settings
+            ipset_eval = ipset.evaluated_get(depsgraph)
+            
+            if(ipset_eval.original in psettings):
                 ipcviv = ipset.pcv_instavis
-                iuuid = ipcviv.uuid
                 iscale = ipcviv.point_scale
-                if(iuuid in registered_uuids):
-                    # if(ipcviv.display < 100.0):
-                    if(ipcviv.display <= 99.0):
-                        if(np.random.random() > ipcviv.display / 100.0):
-                            # skip all processing and drawing.. also at this stage i can determine to which psys instance belongs and i can have display percentage per psys.
-                            continue
-                    
-                    if(cls.stats_enabled):
-                        cls.stats_num_instances += 1
-                    
-                    m = instance.matrix_world.copy()
-                    base = instance.object
-                    instance_options = base.pcv_instavis
-                    
-                    if(base.name not in cls.cache.keys()):
-                        # generate point cloud from object and store in cache, if object is changed it won't be updated until invalidate_object_cache is called, this is done with generator properties, but if user changes mesh directly, it won't be noticed..
-                        count = instance_options.max_points
-                        color_constant = instance_options.color_constant
-                        if(instance_options.source == 'VERTICES'):
-                            sampler = PCVIVVertsSampler(base,
-                                                        count=count,
-                                                        seed=0,
-                                                        constant_color=color_constant, )
-                        else:
-                            sampler = PCVIVFacesSampler(base,
-                                                        count=count,
-                                                        seed=0,
-                                                        colorize=instance_options.color_source,
-                                                        constant_color=color_constant,
-                                                        use_face_area=instance_options.use_face_area,
-                                                        use_material_factors=instance_options.use_material_factors, )
-                        
-                        vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
-                        
-                        if(quality == 'BASIC'):
-                            # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
-                            shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
-                            shader = GPUShader(shader_data_vert, shader_data_frag, )
-                            batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
-                        else:
-                            # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
-                            shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
-                            shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
-                            batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
-                        
-                        cls.cache[base.name] = (vs, ns, cs, shader, batch, )
+                if(ipcviv.display <= 99.0):
+                    if(np.random.random() > ipcviv.display / 100.0):
+                        # skip all processing and drawing.. also at this stage i can determine to which psys instance belongs and i can have display percentage per psys.
+                        continue
+                
+                if(cls.stats_enabled):
+                    cls.stats_num_instances += 1
+                
+                m = instance.matrix_world.copy()
+                base = instance.object
+                instance_options = base.pcv_instavis
+                
+                if(base.name not in cls.cache.keys()):
+                    # generate point cloud from object and store in cache, if object is changed it won't be updated until invalidate_object_cache is called, this is done with generator properties, but if user changes mesh directly, it won't be noticed..
+                    count = instance_options.max_points
+                    color_constant = instance_options.color_constant
+                    if(instance_options.source == 'VERTICES'):
+                        sampler = PCVIVVertsSampler(base, count=count, seed=0, constant_color=color_constant, )
                     else:
-                        vs, ns, cs, shader, batch = cls.cache[base.name]
+                        sampler = PCVIVFacesSampler(base, count=count, seed=0, colorize=instance_options.color_source, constant_color=color_constant, use_face_area=instance_options.use_face_area, use_material_factors=instance_options.use_material_factors, )
+                    vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                     
-                    # size data for draw buffer
                     if(quality == 'BASIC'):
-                        draw_size = int(instance_options.point_size * iscale)
-                        draw_quality = 0
+                        shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
+                        shader = GPUShader(shader_data_vert, shader_data_frag, )
+                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                     else:
-                        draw_size = instance_options.point_size_f * iscale
-                        draw_quality = 1
+                        shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
+                        shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
+                        batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
                     
-                    # origins only
-                    if(ipcviv.draw and not ipcviv.use_origins_only):
-                        buffer[c] = (draw_quality, shader, batch, m, draw_size, )
-                        c += 1
-                        
-                        if(cls.stats_enabled):
-                            cls.stats_num_points += vs.shape[0]
-                    
-                    # origins only
-                    if(ipcviv.draw and ipcviv.use_origins_only):
-                        v = m.translation
-                        origins_vs[oc][0] = v[0]
-                        origins_vs[oc][1] = v[1]
-                        origins_vs[oc][2] = v[2]
-                        # q = m.to_quaternion()
-                        n = Vector((0.0, 0.0, 1.0, ))
-                        # n.rotate(q)
-                        origins_ns[oc][0] = n[0]
-                        origins_ns[oc][1] = n[1]
-                        origins_ns[oc][2] = n[2]
-                        origins_cs[oc] = cs[0]
-                        oc += 1
-                    # origins only
+                    cls.cache[base.name] = (vs, ns, cs, shader, batch, )
+                else:
+                    vs, ns, cs, shader, batch = cls.cache[base.name]
+                
+                # size data for draw buffer
+                if(quality == 'BASIC'):
+                    draw_size = int(instance_options.point_size * iscale)
+                    draw_quality = 0
+                else:
+                    draw_size = instance_options.point_size_f * iscale
+                    draw_quality = 1
+                
+                if(ipcviv.draw and not ipcviv.use_origins_only):
+                    buffer[c] = (draw_quality, shader, batch, m, draw_size, )
+                    c += 1
+                    if(cls.stats_enabled):
+                        cls.stats_num_points += vs.shape[0]
+                
+                if(ipcviv.draw and ipcviv.use_origins_only):
+                    v = m.translation
+                    origins_vs[oc][0] = v[0]
+                    origins_vs[oc][1] = v[1]
+                    origins_vs[oc][2] = v[2]
+                    # q = m.to_quaternion()
+                    n = Vector((0.0, 0.0, 1.0, ))
+                    # n.rotate(q)
+                    origins_ns[oc][0] = n[0]
+                    origins_ns[oc][1] = n[1]
+                    origins_ns[oc][2] = n[2]
+                    origins_cs[oc] = cs[0]
+                    oc += 1
         
         # i count elements, so i can slice here without expensive filtering None out..
         buffer = buffer[:c]
         cls.buffer = buffer
         
-        # origins only
         if(oc != 0):
             origins_vs = origins_vs[:oc]
             origins_ns = origins_ns[:oc]
             origins_cs = origins_cs[:oc]
             
             if(quality == 'BASIC'):
-                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_basic')
                 shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
                 shader = GPUShader(shader_data_vert, shader_data_frag, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
@@ -796,7 +689,6 @@ class PCVIVManager():
                 draw_size = prefs.origins_point_size
                 draw_quality = 0
             else:
-                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('instavis_rich')
                 shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
@@ -816,9 +708,8 @@ class PCVIVManager():
             cls.origins_batch = None
             cls.origins_quality = None
             cls.origins_size = None
-        # origins only
         
-        if(not cls.viewport_render_active and not cls.render_active and not cls.save_active):
+        if(not cls.viewport_render_active and not cls.save_active):
             post()
         
         cls.flag = False
@@ -841,7 +732,7 @@ class PCVIVManager():
         # pr = cProfile.Profile()
         # pr.enable()
         
-        # _t = time.time()
+        _t = time.time()
         
         bgl.glEnable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glEnable(bgl.GL_DEPTH_TEST)
@@ -887,7 +778,6 @@ class PCVIVManager():
             if(cls.stats_enabled):
                 cls.stats_num_draws += 1
         
-        # origins only
         if(cls.origins_shader is not None):
             shader = cls.origins_shader
             batch = cls.origins_batch
@@ -911,13 +801,12 @@ class PCVIVManager():
             
             if(cls.stats_enabled):
                 cls.stats_num_draws += 1
-        # origins only
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
         # bgl.glDisable(bgl.GL_BLEND)
         
-        # _d = datetime.timedelta(seconds=time.time() - _t)
+        _d = datetime.timedelta(seconds=time.time() - _t)
         # log("draw: {}".format(_d), prefix='>>>', )
         
         # pr.disable()
@@ -928,69 +817,58 @@ class PCVIVManager():
         # print(s.getvalue())
     
     @classmethod
-    def invalidate_object_cache(cls, name, ):
-        # force regenerating object point cloud
-        if(name in PCVIVManager.cache.keys()):
-            del PCVIVManager.cache[name]
-            return True
-        else:
-            return False
-    
-    @classmethod
     def force_update(cls, with_caches=False, ):
-        # force PCVIVManager.update call
         if(not cls.initialized):
             return
         
         if(with_caches):
             cls.cache = {}
-        
-        scene = bpy.context.scene
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        cls.depsgraph_update_post(scene, depsgraph, )
+        cls.update()
     
     @classmethod
-    def render_pre(cls, scene, depsgraph=None, ):
-        # do not draw point cloud during render
-        log("render_pre", prefix='>>>', )
-        cls.render_active = True
-        for k, psys in cls.registry.items():
-            cls.pre_render_state[psys.name] = psys.settings.pcv_instavis.draw
-            psys.settings.pcv_instavis.draw = False
+    def invalidate_object_cache(cls, name, ):
+        # force regenerating instanced object point cloud fragment
+        if(name in cls.cache.keys()):
+            del cls.cache[name]
+            return True
+        return False
     
     @classmethod
-    def render_post(cls, scene, depsgraph=None, ):
-        # restore drawing point cloud after render
-        log("render_post", prefix='>>>', )
-        for k, psys in cls.registry.items():
-            if(psys.name in cls.pre_render_state.keys()):
-                psys.settings.pcv_instavis.draw = cls.pre_render_state[psys.name]
-        
-        cls.pre_render_state = {}
-        cls.render_active = False
-    
-    @classmethod
-    def viewport_render_pre(cls, scene, depsgraph=None, ):
+    def viewport_render_pre(cls, scene, depsgraph, ):
         # do not draw point cloud during viewport render
         log("viewport_render_pre", prefix='>>>', )
-        for k, psys in cls.registry.items():
-            cls.pre_viewport_render_state[psys.name] = psys.settings.pcv_instavis.draw
-            psys.settings.pcv_instavis.draw = False
-            psys.settings.display_method = 'RENDER'
+        
+        if(scene is None):
+            scene = bpy.context.scene
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        psystems = set([p for o in targets for p in o.particle_systems])
+        psettings = set([p.settings for p in psystems])
+        
+        for pset in psettings:
+            cls.pre_viewport_render_state[pset.name] = pset.pcv_instavis.draw
+            pset.pcv_instavis.draw = False
+            pset.display_method = 'RENDER'
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
                 cls.pre_viewport_render_state[o.name] = o.display_type
-                o.display_type = 'BOUNDS'
+                o.display_type = 'TEXTURED'
     
     @classmethod
-    def viewport_render_post(cls, scene, depsgraph=None, ):
+    def viewport_render_post(cls, scene, depsgraph, ):
         # restore drawing point cloud after viewport render
         log("viewport_render_post", prefix='>>>', )
-        for k, psys in cls.registry.items():
-            if(psys.name in cls.pre_viewport_render_state.keys()):
-                psys.settings.pcv_instavis.draw = cls.pre_viewport_render_state[psys.name]
-                psys.settings.display_method = 'NONE'
+        
+        if(scene is None):
+            scene = bpy.context.scene
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        psystems = set([p for o in targets for p in o.particle_systems])
+        psettings = set([p.settings for p in psystems])
+        
+        for pset in psettings:
+            if(pset.name in cls.pre_viewport_render_state.keys()):
+                pset.pcv_instavis.draw = cls.pre_viewport_render_state[pset.name]
+                pset.display_method = 'NONE'
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
@@ -1005,9 +883,16 @@ class PCVIVManager():
         log("save_pre", prefix='>>>', )
         cls.save_active = True
         prefs = bpy.context.scene.pcv_instavis
-        for k, psys in cls.registry.items():
-            cls.pre_save_state[psys.name] = psys.settings.display_method
-            psys.settings.display_method = prefs.exit_psys_display_method
+        
+        if(scene is None):
+            scene = bpy.context.scene
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        psystems = set([p for o in targets for p in o.particle_systems])
+        psettings = set([p.settings for p in psystems])
+        
+        for pset in psettings:
+            cls.pre_save_state[pset.name] = pset.display_method
+            pset.display_method = prefs.exit_psys_display_method
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
@@ -1018,9 +903,16 @@ class PCVIVManager():
     def save_post(cls, scene, depsgraph=None, ):
         # switch back after file save
         log("save_post", prefix='>>>', )
-        for k, psys in cls.registry.items():
-            if(psys.name in cls.pre_save_state.keys()):
-                psys.settings.display_method = cls.pre_save_state[psys.name]
+        
+        if(scene is None):
+            scene = bpy.context.scene
+        targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        psystems = set([p for o in targets for p in o.particle_systems])
+        psettings = set([p.settings for p in psystems])
+        
+        for pset in psettings:
+            if(pset.name in cls.pre_save_state.keys()):
+                pset.display_method = cls.pre_save_state[pset.name]
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
@@ -1029,54 +921,6 @@ class PCVIVManager():
         
         cls.pre_save_state = {}
         cls.save_active = False
-    
-    @classmethod
-    def undo_pre(cls, scene, depsgraph=None, ):
-        log("undo_pre", prefix='>>>', )
-        for k, v in cls.registry.items():
-            cls.undo_state[k] = v.name
-    
-    @classmethod
-    def undo_post(cls, scene, depsgraph=None, ):
-        log("undo_post", prefix='>>>', )
-        for k, v in cls.undo_state.items():
-            psys = None
-            # search all objects for particle system with matching uuid in settings.pcv_instavis
-            for o in bpy.data.objects:
-                for p in o.particle_systems:
-                    if(p.settings.pcv_instavis.uuid == k):
-                        psys = p
-                        break
-                if(psys is not None):
-                    break
-            
-            # FIXME: undo/redo related to particle systems, like remove psys, undo (now it is added again), redo (now it is removed again), result in psys being unregistered which is not quite well, but at least blender does not crash accessing stale data.. maybe do something about it, but having parallel undo system is not practical nor effective. such immediate undo/redo might work, but if there are more steps between, it will become parallel undo system and i don't want deal with it..
-            # TODO: what does not work: 1) with MSGBUS, remove psys, it stays drawn, 2) with MSGBUS, remove all psys one by one and go deinit, 3) with MSGBUS, remove all psys one by one and go force update > crash > looks like bpy.types.ParticleSystems does not send any messages, in fact, no collections send notifications
-            
-            if(psys is not None):
-                # if psys is found, put it into registry with that uuid
-                if(k in cls.registry):
-                    # but only when it is already there
-                    cls.registry[k] = psys
-                else:
-                    log("undo_post: uuid is not found", prefix='>>>', )
-            else:
-                # if psys is not found, undo/redo action might be related to it
-                if(k in cls.registry):
-                    # do if the uuid is in registry, remove it, because psys is not in scene..
-                    log("undo_post: psys is not found, deleting uuid from registry", prefix='>>>', )
-                    del cls.registry[k]
-                else:
-                    # now what..
-                    log("undo_post: psys and uuid is not found", prefix='>>>', )
-        
-        # reset state for next undo/redo
-        cls.undo_state = {}
-        
-        # update all in the end..
-        if(depsgraph is None):
-            depsgraph = bpy.context.evaluated_depsgraph_get()
-        cls.update(scene, depsgraph)
     
     @classmethod
     def _all_viewports_shading_type(cls):
@@ -1098,98 +942,20 @@ class PCVIVManager():
                     area.tag_redraw()
 
 
-# NOTE: cannot be method, bpy.msgbus.subscribe_rna complains if it is, so it is here instead in PCVIVManager, i think @classmethod should be allowed, but whatever..
-def msgbus_update():
-    # log("msgbus_update", prefix='>>>', )
-    scene = bpy.context.scene
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    PCVIVManager.depsgraph_update_pre(scene, depsgraph, )
-    PCVIVManager.depsgraph_update_post(scene, depsgraph, )
-
-
-class PCVIVMechanist():
-    initialized = False
-    
-    handle = None
-    buffer = []
-    
-    # targets = set()
-    cache = {}
-    flag = False
-    
-    @classmethod
-    def init(cls):
-        if(cls.initialized):
-            return
-        log("init", prefix='>>>', )
-        
-        bpy.app.handlers.load_pre.append(watcher)
-        
-        pass
-        
-        cls.initialized = True
-        
-        cls.handle = bpy.types.SpaceView3D.draw_handler_add(cls.draw, (), 'WINDOW', 'POST_VIEW')
-        cls._redraw_view_3d()
-    
-    @classmethod
-    def deinit(cls):
-        if(not cls.initialized):
-            return
-        log("deinit", prefix='>>>', )
-        
-        pass
-        
-        cls.initialized = False
-        
-        bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
-        cls._redraw_view_3d()
-    
-    @classmethod
-    def update(cls):
-        log('update')
-        targets = [o for o in bpy.data.objects is o.is_target]
-        print(targets)
-    
-    @classmethod
-    def draw(cls):
-        log('draw')
-    
-    @classmethod
-    def force_update(cls, with_caches=False, ):
-        if(not cls.initialized):
-            return
-        
-        if(with_caches):
-            cls.cache = {}
-        cls.update()
-        
-        # scene = bpy.context.scene
-        # depsgraph = bpy.context.evaluated_depsgraph_get()
-        # cls.depsgraph_update_post(scene, depsgraph, )
-    
-    @classmethod
-    def _redraw_view_3d(cls):
-        for window in bpy.context.window_manager.windows:
-            for area in window.screen.areas:
-                if(area.type == 'VIEW_3D'):
-                    area.tag_redraw()
+def mechanist_msgbus_update():
+    PCVIVMechanist.update()
 
 
 @bpy.app.handlers.persistent
 def watcher(undefined):
-    # PCVIVManager.deinit()
     PCVIVMechanist.deinit()
 
 
 class PCVIV_preferences(PropertyGroup):
     
     def _switch_shader(self, context, ):
-        PCVIVManager.cache = {}
-        
-        scene = bpy.context.scene
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        PCVIVManager.depsgraph_update_post(scene, depsgraph, )
+        PCVIVMechanist.cache = {}
+        PCVIVMechanist.update()
     
     # shader quality, switch between basic pixel based and rich shaded geometry based, can be changed on the fly
     quality: EnumProperty(name="Quality", items=[('BASIC', "Basic", "Basic pixel point based shader with flat colors", ),
@@ -1200,21 +966,16 @@ class PCVIV_preferences(PropertyGroup):
     exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='BOUNDS', description="To what set instance base objects Display Type when point cloud mode is exited", )
     exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
-    # origins only
     origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.05, min=0.001, max=1.0, description="Point size", precision=6, )
-    # origins only
     
     switch_origins_only: BoolProperty(name="Switch To Origins Only", default=True, description="Switch display to Origins Only for high instance counts", )
     switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2 ** 31 - 1, description="Switch display to Origins Only when instance count exceeds this value", )
     
     def _switch_update_method(self, context, ):
-        if(PCVIVManager.initialized):
-            ls = PCVIVManager.registry.values()
-            PCVIVManager.deinit()
-            PCVIVManager.init()
-            for psys in ls:
-                PCVIVManager.register(None, psys, )
+        if(PCVIVMechanist.initialized):
+            PCVIVMechanist.deinit()
+            PCVIVMechanist.init()
     
     update_method: EnumProperty(name="Update Method", items=[('MSGBUS', "MSGBUS", "Update using 'msgbus.subscribe_rna'", ),
                                                              ('DEPSGRAPH', "DEPSGRAPH", "Update using 'app.handlers.depsgraph_update_pre/post'", ),
@@ -1230,16 +991,12 @@ class PCVIV_preferences(PropertyGroup):
 
 
 class PCVIV_psys_properties(PropertyGroup):
-    # this is going to be assigned during runtime by manager if it detects new psys creation on depsgraph update
-    uuid: StringProperty(default="", options={'HIDDEN', }, )
-    
     # global point scale for all points, handy when points get too small to be visible, but you still want to keep different sizes per object
     point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, description="Adjust point size of all points", precision=6, )
+    # drawing on/off, monitor icon on particles system works too and is more general, so this is just some future special case if needed..
     draw: BoolProperty(name="Draw", default=True, description="Draw point cloud to viewport", )
     display: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of displayed instances", )
-    # origins only
     use_origins_only: BoolProperty(name="Draw Origins Only", default=False, description="Draw only instance origins in a single draw pass", )
-    # origins only
     
     @classmethod
     def register(cls):
@@ -1252,8 +1009,7 @@ class PCVIV_psys_properties(PropertyGroup):
 
 class PCVIV_object_properties(PropertyGroup):
     def _invalidate_object_cache(self, context, ):
-        # PCVIVManager.invalidate_object_cache(context.object.name)
-        PCVIVManager.invalidate_object_cache(self.id_data.name)
+        PCVIVMechanist.invalidate_object_cache(self.id_data.name)
     
     source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
                                                ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
@@ -1273,7 +1029,10 @@ class PCVIV_object_properties(PropertyGroup):
     point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
-    is_target: BoolProperty(default=False, options={'HIDDEN', }, )
+    def _target_update(self, context, ):
+        pass
+    
+    target: BoolProperty(default=False, options={'HIDDEN', }, update=_target_update, )
     
     @classmethod
     def register(cls):
@@ -1299,13 +1058,12 @@ class PCVIV_collection_properties(PropertyGroup):
 class PCVIV_material_properties(PropertyGroup):
     
     def _invalidate_object_cache(self, context, ):
-        # PCVIVManager.invalidate_object_cache(context.object.name)
         m = self.id_data
         for o in bpy.data.objects:
             for s in o.material_slots:
                 if(s.material == m):
                     if(o.pcv_instavis.use_material_factors):
-                        PCVIVManager.invalidate_object_cache(o.name)
+                        PCVIVMechanist.invalidate_object_cache(o.name)
     
     # this serves as material weight value for polygon point generator, higher value means that it is more likely for polygon to be used as point source
     factor: FloatProperty(name="Factor", default=0.5, min=0.001, max=1.0, precision=3, subtype='FACTOR', description="Probability factor of choosing polygon with this material", update=_invalidate_object_cache, )
@@ -1328,13 +1086,11 @@ class PCVIV_OT_init(Operator):
     def poll(cls, context):
         if(context.object is None):
             return False
-        # if(PCVIVManager.initialized):
         if(PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        # PCVIVManager.init()
         PCVIVMechanist.init()
         return {'FINISHED'}
 
@@ -1348,131 +1104,27 @@ class PCVIV_OT_deinit(Operator):
     def poll(cls, context):
         if(context.object is None):
             return False
-        # if(not PCVIVManager.initialized):
         if(not PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        # PCVIVManager.deinit()
         PCVIVMechanist.deinit()
-        return {'FINISHED'}
-
-
-class PCVIV_OT_register(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_register"
-    bl_label = "Register"
-    bl_description = "Register particle system"
-    
-    @classmethod
-    def poll(cls, context):
-        ok = False
-        if(context.object is not None):
-            o = context.object
-            if(o.particle_systems.active is not None):
-                ok = True
-                uuid = o.particle_systems.active.settings.pcv_instavis.uuid
-                if(uuid == ""):
-                    ok = True
-                if(uuid in PCVIVManager.registry.keys()):
-                    rpsys = PCVIVManager.registry[uuid]
-                    if(rpsys == o.particle_systems.active):
-                        ok = False
-        return ok
-    
-    def execute(self, context):
-        PCVIVManager.register(context.object, context.object.particle_systems.active)
-        return {'FINISHED'}
-
-
-class PCVIV_OT_unregister(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_unregister"
-    bl_label = "Unregister"
-    bl_description = "Unregister particle system"
-    
-    @classmethod
-    def poll(cls, context):
-        ok = False
-        if(context.object is not None):
-            o = context.object
-            if(o.particle_systems.active is not None):
-                # ok = True
-                uuid = o.particle_systems.active.settings.pcv_instavis.uuid
-                if(uuid == ""):
-                    ok = False
-                if(uuid in PCVIVManager.registry.keys()):
-                    rpsys = PCVIVManager.registry[uuid]
-                    if(rpsys == o.particle_systems.active):
-                        ok = True
-        return ok
-    
-    def execute(self, context):
-        PCVIVManager.unregister(context.object, context.object.particle_systems.active)
-        return {'FINISHED'}
-
-
-class PCVIV_OT_register_all(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_register_all"
-    bl_label = "Register All"
-    bl_description = "Register all particle systems on active object"
-    
-    @classmethod
-    def poll(cls, context):
-        if(context.object is not None):
-            o = context.object
-            for psys in o.particle_systems:
-                uuid = psys.settings.pcv_instavis.uuid
-                if(uuid == ""):
-                    return True
-                if(uuid not in PCVIVManager.registry.keys()):
-                    return True
-        return False
-    
-    def execute(self, context):
-        o = context.object
-        for psys in o.particle_systems:
-            PCVIVManager.register(o, psys)
-        return {'FINISHED'}
-
-
-class PCVIV_OT_unregister_all(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_unregister_all"
-    bl_label = "Unregister All"
-    bl_description = "Unregister all particle systems on active object"
-    
-    @classmethod
-    def poll(cls, context):
-        if(context.object is not None):
-            o = context.object
-            for psys in o.particle_systems:
-                uuid = psys.settings.pcv_instavis.uuid
-                if(uuid == ""):
-                    return False
-                if(uuid in PCVIVManager.registry.keys()):
-                    return True
-        return False
-    
-    def execute(self, context):
-        o = context.object
-        for psys in o.particle_systems:
-            PCVIVManager.unregister(o, psys)
         return {'FINISHED'}
 
 
 class PCVIV_OT_force_update(Operator):
     bl_idname = "point_cloud_visualizer.pcviv_force_update"
     bl_label = "Force Update All"
-    bl_description = "Force update all registered particle systems drawing"
+    bl_description = "Force update all particle systems drawing"
     
     @classmethod
     def poll(cls, context):
-        # if(not PCVIVManager.initialized):
         if(not PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        # PCVIVManager.force_update(with_caches=True, )
         PCVIVMechanist.force_update(with_caches=True, )
         return {'FINISHED'}
 
@@ -1514,7 +1166,7 @@ class PCVIV_OT_apply_generator_settings(Operator):
             changed.append(o)
         
         for o in changed:
-            PCVIVManager.invalidate_object_cache(o.name)
+            PCVIVMechanist.invalidate_object_cache(o.name)
         
         return {'FINISHED'}
 
@@ -1529,12 +1181,8 @@ class PCVIV_OT_invalidate_caches(Operator):
         return True
     
     def execute(self, context):
-        PCVIVManager.cache = {}
-        
-        scene = bpy.context.scene
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        PCVIVManager.depsgraph_update_post(scene, depsgraph, )
-        
+        PCVIVMechanist.cache = {}
+        PCVIVMechanist.update()
         return {'FINISHED'}
 
 
@@ -1615,21 +1263,25 @@ class PCVIV_PT_main(PCVIV_PT_base):
         l = self.layout
         c = l.column()
         
+        # active object
+        c.label(text="Active Object:")
+        r = c.row(align=True)
+        cc = r.column(align=True)
+        if(not o.pcv_instavis.target):
+            cc.alert = True
+        cc.prop(o.pcv_instavis, 'target', text='Target', toggle=True, )
+        
         # manager
-        # c.label(text='PCVIV Manager:')
         c.label(text='PCVIV Mechanist:')
         r = c.row(align=True)
         cc = r.column(align=True)
-        # if(not PCVIVManager.initialized):
         if(not PCVIVMechanist.initialized):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv_init')
         cc = r.column(align=True)
-        # if(PCVIVManager.initialized):
         if(PCVIVMechanist.initialized):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv_deinit')
-        
         r = c.row()
         r.alert = PCVIV_OT_force_update.poll(context)
         r.operator('point_cloud_visualizer.pcviv_force_update')
@@ -1640,7 +1292,7 @@ class PCVIV_PT_particles(PCVIV_PT_base):
     bl_region_type = 'UI'
     # bl_category = "View"
     bl_category = "PCVIV"
-    bl_label = "Particle System"
+    bl_label = "Particle Systems"
     bl_parent_id = "PCVIV_PT_main"
     # bl_options = {'DEFAULT_CLOSED'}
     bl_options = set()
@@ -1656,27 +1308,10 @@ class PCVIV_PT_particles(PCVIV_PT_base):
         l = self.layout
         c = l.column()
         
-        # # manager
-        # c.label(text='PCVIV Manager:')
-        # r = c.row(align=True)
-        # cc = r.column(align=True)
-        # if(not PCVIVManager.initialized):
-        #     cc.alert = True
-        # cc.operator('point_cloud_visualizer.pcviv_init')
-        # cc = r.column(align=True)
-        # if(PCVIVManager.initialized):
-        #     cc.alert = True
-        # cc.operator('point_cloud_visualizer.pcviv_deinit')
-        
         if(context.object is not None):
             o = context.object
             c.label(text='{}: Particle Systems:'.format(o.name))
             c.template_list("PARTICLE_UL_particle_systems", "particle_systems", o, "particle_systems", o.particle_systems, "active_index", rows=3, )
-            
-        r = c.row(align=True)
-        r.operator('point_cloud_visualizer.pcviv_register_all')
-        r.operator('point_cloud_visualizer.pcviv_unregister_all')
-        c.separator()
         
         # psys if there is any..
         n = 'n/a'
@@ -1685,14 +1320,6 @@ class PCVIV_PT_particles(PCVIV_PT_base):
             if(o.particle_systems.active is not None):
                 n = o.particle_systems.active.name
         c.label(text='Active Particle System: {}'.format(n))
-        r = c.row()
-        if(PCVIV_OT_register.poll(context)):
-            r.alert = True
-        r.operator('point_cloud_visualizer.pcviv_register')
-        r = c.row()
-        if(PCVIV_OT_unregister.poll(context)):
-            r.alert = True
-        r.operator('point_cloud_visualizer.pcviv_unregister')
         
         ok = False
         if(context.object is not None):
@@ -1709,7 +1336,6 @@ class PCVIV_PT_particles(PCVIV_PT_base):
             r = c.row()
             r.prop(pset_pcviv, 'point_scale')
             
-            # origins only
             if(pset_pcviv.use_origins_only):
                 r.enabled = False
             c.prop(pset_pcviv, 'use_origins_only')
@@ -1722,14 +1348,6 @@ class PCVIV_PT_particles(PCVIV_PT_base):
                 cc.prop(pcviv_prefs, 'origins_point_size_f')
             if(not pset_pcviv.use_origins_only):
                 cc.enabled = False
-            # origins only
-        
-        # c.separator()
-        # r = c.row()
-        # r.operator('point_cloud_visualizer.pcviv_register_all')
-        # r = c.row()
-        # r.alert = PCVIV_OT_force_update.poll(context)
-        # r.operator('point_cloud_visualizer.pcviv_force_update')
 
 
 class PCVIV_UL_instances(UIList):
@@ -1755,7 +1373,6 @@ class PCVIV_PT_instances(PCVIV_PT_base):
         return True
     
     def draw(self, context):
-        # pcviv = context.object.pcv_instavis
         l = self.layout
         c = l.column()
         
@@ -1776,7 +1393,6 @@ class PCVIV_PT_instances(PCVIV_PT_base):
                     co = col.objects[col.objects.keys()[pcvcol.active_index]]
                     pcvco = co.pcv_instavis
                     
-                    # c.separator()
                     c.label(text='Base Object "{}" Settings:'.format(co.name), )
                     
                     pcviv_prefs = context.scene.pcv_instavis
@@ -1814,7 +1430,6 @@ class PCVIV_PT_instances(PCVIV_PT_base):
                     b = c.box()
                     b.label(text=co.name, icon='OBJECT_DATA', )
                     
-                    # c.separator()
                     c.label(text='Base Object "{}" Settings:'.format(co.name), )
                     
                     pcvco = co.pcv_instavis
@@ -1898,11 +1513,6 @@ class PCVIV_PT_debug(PCVIV_PT_base):
     
     @classmethod
     def poll(cls, context):
-        # o = context.active_object
-        # if(o is None):
-        #     return False
-        # return True
-        
         o = context.active_object
         if(o is not None):
             if(debug_mode()):
@@ -1916,15 +1526,19 @@ class PCVIV_PT_debug(PCVIV_PT_base):
         
         tab = '    '
         
+        targets = [o for o in context.scene.objects if o.pcv_instavis.target]
         b = c.box()
-        b.scale_y = 0.5
-        b.label(text='registry: ({})'.format(len(PCVIVManager.registry.keys())))
-        for k, v in PCVIVManager.registry.items():
-            b.label(text='{}{}'.format(tab, k))
+        b.scale_y = 0.333
+        b.label(text='targets: ({})'.format(len(targets)))
+        for t in targets:
+            b.label(text='{}o: {}'.format(tab, t.name))
+            for p in t.particle_systems:
+                b.label(text='{}ps: {}'.format(tab * 2, p.name))
+        
         b = c.box()
-        b.scale_y = 0.5
-        b.label(text='cache: ({})'.format(len(PCVIVManager.cache.keys())))
-        for k, v in PCVIVManager.cache.items():
+        b.scale_y = 0.333
+        b.label(text='cache: ({})'.format(len(PCVIVMechanist.cache.keys())))
+        for k, v in PCVIVMechanist.cache.items():
             b.label(text='{}{}'.format(tab, k))
         
         def human_readable_number(num, suffix='', ):
@@ -1948,10 +1562,10 @@ class PCVIV_PT_debug(PCVIV_PT_base):
             s.alignment = 'RIGHT'
             s.label(text=ct2)
         
-        if(PCVIVManager.stats_enabled):
-            table_row(cc, 'points: ', '{}'.format(human_readable_number(PCVIVManager.stats_num_points)), f, )
-            table_row(cc, 'instances: ', '{}'.format(human_readable_number(PCVIVManager.stats_num_instances)), f, )
-            table_row(cc, 'draws: ', '{}'.format(human_readable_number(PCVIVManager.stats_num_draws)), f, )
+        if(PCVIVMechanist.stats_enabled):
+            table_row(cc, 'points: ', '{}'.format(human_readable_number(PCVIVMechanist.stats_num_points)), f, )
+            table_row(cc, 'instances: ', '{}'.format(human_readable_number(PCVIVMechanist.stats_num_instances)), f, )
+            table_row(cc, 'draws: ', '{}'.format(human_readable_number(PCVIVMechanist.stats_num_draws)), f, )
         else:
             table_row(cc, 'points: ', 'n/a', f, )
             table_row(cc, 'instances: ', 'n/a', f, )
@@ -1967,15 +1581,15 @@ class PCVIV_PT_debug(PCVIV_PT_base):
 
 
 # add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
-PCVIVManager.msgbus_subs += (# bpy.types.ParticleSystems,
-                             # (bpy.types.ParticleSystems, 'active', ),
-                             # (bpy.types.Object, 'particle_systems', ),
-                             bpy.types.ParticleSettings,
-                             # bpy.types.ParticleSystemModifier,
-                             # bpy.types.ParticleSettingsTextureSlot,
-                             bpy.types.ImageTexture,
-                             bpy.types.CloudsTexture,
-                             (bpy.types.View3DShading, 'type', ), )
+PCVIVMechanist.msgbus_subs += (bpy.types.ParticleSettings,
+                               # bpy.types.ParticleSystems,
+                               # (bpy.types.ParticleSystems, 'active', ),
+                               # (bpy.types.Object, 'particle_systems', ),
+                               # bpy.types.ParticleSystemModifier,
+                               # bpy.types.ParticleSettingsTextureSlot,
+                               bpy.types.ImageTexture,
+                               bpy.types.CloudsTexture,
+                               (bpy.types.View3DShading, 'type', ), )
 
 
 def generate_pset_subs():
@@ -1987,14 +1601,12 @@ def generate_pset_subs():
     return r
 
 
-# NOTE: because in PCVIVManager.update i modify 'render_type' and 'display_method', update is executed twice, subscribing to all props except those two is an easy fix, may not be the best, but somehow msgbus notification fires after all is done so i can't be sure where change came from..
-# TODO: would be nice to identify all props to subscribe to keep functionality while leaving unnecessary props unsubscribed
-PCVIVManager.msgbus_subs += generate_pset_subs()
-PCVIVManager.msgbus_subs += (PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
+PCVIVMechanist.msgbus_subs += generate_pset_subs()
+PCVIVMechanist.msgbus_subs += (PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
 
 classes_debug = (
     PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties,
-    PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_register, PCVIV_OT_register_all, PCVIV_OT_force_update, PCVIV_OT_unregister, PCVIV_OT_unregister_all,
+    PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_force_update,
     PCVIV_OT_apply_generator_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches,
     PCVIV_UL_instances, PCVIV_PT_main, PCVIV_PT_particles, PCVIV_PT_instances, PCVIV_PT_preferences, PCVIV_PT_debug,
 )
@@ -2012,7 +1624,6 @@ def register():
 
 
 def unregister():
-    # PCVIVManager.deinit()
     PCVIVMechanist.deinit()
     
     for cls in reversed(classes):
