@@ -1107,9 +1107,79 @@ def msgbus_update():
     PCVIVManager.depsgraph_update_post(scene, depsgraph, )
 
 
+class PCVIVMechanist():
+    initialized = False
+    
+    handle = None
+    buffer = []
+    
+    # targets = set()
+    cache = {}
+    flag = False
+    
+    @classmethod
+    def init(cls):
+        if(cls.initialized):
+            return
+        log("init", prefix='>>>', )
+        
+        bpy.app.handlers.load_pre.append(watcher)
+        
+        pass
+        
+        cls.initialized = True
+        
+        cls.handle = bpy.types.SpaceView3D.draw_handler_add(cls.draw, (), 'WINDOW', 'POST_VIEW')
+        cls._redraw_view_3d()
+    
+    @classmethod
+    def deinit(cls):
+        if(not cls.initialized):
+            return
+        log("deinit", prefix='>>>', )
+        
+        pass
+        
+        cls.initialized = False
+        
+        bpy.types.SpaceView3D.draw_handler_remove(cls.handle, 'WINDOW')
+        cls._redraw_view_3d()
+    
+    @classmethod
+    def update(cls):
+        log('update')
+        targets = [o for o in bpy.data.objects is o.is_target]
+        print(targets)
+    
+    @classmethod
+    def draw(cls):
+        log('draw')
+    
+    @classmethod
+    def force_update(cls, with_caches=False, ):
+        if(not cls.initialized):
+            return
+        
+        if(with_caches):
+            cls.cache = {}
+        cls.update()
+        
+        # scene = bpy.context.scene
+        # depsgraph = bpy.context.evaluated_depsgraph_get()
+        # cls.depsgraph_update_post(scene, depsgraph, )
+    
+    @classmethod
+    def _redraw_view_3d(cls):
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if(area.type == 'VIEW_3D'):
+                    area.tag_redraw()
+
+
 @bpy.app.handlers.persistent
 def watcher(undefined):
-    PCVIVManager.deinit()
+    # PCVIVManager.deinit()
+    PCVIVMechanist.deinit()
 
 
 class PCVIV_preferences(PropertyGroup):
@@ -1203,6 +1273,8 @@ class PCVIV_object_properties(PropertyGroup):
     point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
+    is_target: BoolProperty(default=False, options={'HIDDEN', }, )
+    
     @classmethod
     def register(cls):
         bpy.types.Object.pcv_instavis = PointerProperty(type=cls)
@@ -1256,12 +1328,14 @@ class PCVIV_OT_init(Operator):
     def poll(cls, context):
         if(context.object is None):
             return False
-        if(PCVIVManager.initialized):
+        # if(PCVIVManager.initialized):
+        if(PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        PCVIVManager.init()
+        # PCVIVManager.init()
+        PCVIVMechanist.init()
         return {'FINISHED'}
 
 
@@ -1274,12 +1348,14 @@ class PCVIV_OT_deinit(Operator):
     def poll(cls, context):
         if(context.object is None):
             return False
-        if(not PCVIVManager.initialized):
+        # if(not PCVIVManager.initialized):
+        if(not PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        PCVIVManager.deinit()
+        # PCVIVManager.deinit()
+        PCVIVMechanist.deinit()
         return {'FINISHED'}
 
 
@@ -1390,12 +1466,14 @@ class PCVIV_OT_force_update(Operator):
     
     @classmethod
     def poll(cls, context):
-        if(not PCVIVManager.initialized):
+        # if(not PCVIVManager.initialized):
+        if(not PCVIVMechanist.initialized):
             return False
         return True
     
     def execute(self, context):
-        PCVIVManager.force_update(with_caches=True, )
+        # PCVIVManager.force_update(with_caches=True, )
+        PCVIVMechanist.force_update(with_caches=True, )
         return {'FINISHED'}
 
 
@@ -1538,60 +1616,20 @@ class PCVIV_PT_main(PCVIV_PT_base):
         c = l.column()
         
         # manager
-        c.label(text='PCVIV Manager:')
+        # c.label(text='PCVIV Manager:')
+        c.label(text='PCVIV Mechanist:')
         r = c.row(align=True)
         cc = r.column(align=True)
-        if(not PCVIVManager.initialized):
+        # if(not PCVIVManager.initialized):
+        if(not PCVIVMechanist.initialized):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv_init')
         cc = r.column(align=True)
-        if(PCVIVManager.initialized):
+        # if(PCVIVManager.initialized):
+        if(PCVIVMechanist.initialized):
             cc.alert = True
         cc.operator('point_cloud_visualizer.pcviv_deinit')
         
-        # # psys if there is any..
-        # n = 'n/a'
-        # if(context.object is not None):
-        #     o = context.object
-        #     if(o.particle_systems.active is not None):
-        #         n = o.particle_systems.active.name
-        # c.label(text='Active Particle System: {}'.format(n))
-        # r = c.row()
-        # if(PCVIV_OT_register.poll(context)):
-        #     r.alert = True
-        # r.operator('point_cloud_visualizer.pcviv_register')
-        #
-        # ok = False
-        # if(context.object is not None):
-        #     o = context.object
-        #     if(o.particle_systems.active is not None):
-        #         ok = True
-        # if(ok):
-        #     pset_pcviv = o.particle_systems.active.settings.pcv_instavis
-        #     r = c.row()
-        #     r.prop(pset_pcviv, 'draw', toggle=True, )
-        #     r.scale_y = 1.5
-        #     r = c.row()
-        #     r.prop(pset_pcviv, 'point_scale')
-        #
-        #     # origins only
-        #     if(pset_pcviv.use_origins_only):
-        #         r.enabled = False
-        #     c.prop(pset_pcviv, 'use_origins_only')
-        #
-        #     cc = c.column(align=True)
-        #     pcviv_prefs = context.scene.pcv_instavis
-        #     if(pcviv_prefs.quality == 'BASIC'):
-        #         cc.prop(pcviv_prefs, 'origins_point_size')
-        #     else:
-        #         cc.prop(pcviv_prefs, 'origins_point_size_f')
-        #     if(not pset_pcviv.use_origins_only):
-        #         cc.enabled = False
-        #     # origins only
-        
-        # c.separator()
-        # r = c.row()
-        # r.operator('point_cloud_visualizer.pcviv_register_all')
         r = c.row()
         r.alert = PCVIV_OT_force_update.poll(context)
         r.operator('point_cloud_visualizer.pcviv_force_update')
@@ -1974,7 +2012,8 @@ def register():
 
 
 def unregister():
-    PCVIVManager.deinit()
+    # PCVIVManager.deinit()
+    PCVIVMechanist.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
