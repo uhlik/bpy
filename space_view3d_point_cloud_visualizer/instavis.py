@@ -55,6 +55,41 @@ def log(msg, indent=0, prefix='>', ):
         print(m)
 
 
+shader_directory = os.path.join(os.path.dirname(__file__), 'space_view3d_point_cloud_visualizer', 'shaders')
+shader_registry = {'RICH': {'v': "instavis_rich.vert", 'f': "instavis_rich.frag", 'g': "instavis_rich.geom", },
+                   'BASIC': {'v': "instavis_basic.vert", 'f': "instavis_basic.frag", }, }
+shader_cache = {}
+
+
+def load_shader_code(name):
+    if(name not in shader_registry.keys()):
+        raise TypeError("Unknown shader requested..")
+    
+    if(name in shader_cache.keys()):
+        c = shader_cache[name]
+        return c['v'], c['f'], c['g']
+    
+    d = shader_registry[name]
+    vf = d['v']
+    ff = d['f']
+    gf = None
+    if('g' in d.keys()):
+        gf = d['g']
+    
+    with open(os.path.join(shader_directory, vf), mode='r', encoding='utf-8') as f:
+        vs = f.read()
+    with open(os.path.join(shader_directory, ff), mode='r', encoding='utf-8') as f:
+        fs = f.read()
+    gs = None
+    if(gf is not None):
+        with open(os.path.join(shader_directory, gf), mode='r', encoding='utf-8') as f:
+            gs = f.read()
+    
+    shader_cache[name] = {'v': vs, 'f': fs, 'g': gs, }
+    return vs, fs, gs
+
+
+"""
 class PCVIVShaders():
     instavis_basic_vert = '''
         in vec3 position;
@@ -194,6 +229,7 @@ class PCVIVShaders():
         if(type not in cls.types.keys()):
             raise Exception("Unknown shader type")
         return cls.types[type]
+"""
 
 
 class PCVIVFacesSampler():
@@ -632,11 +668,13 @@ class PCVIVMechanist():
                     vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                     
                     if(quality == 'BASIC'):
-                        shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
+                        # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
+                        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
                         shader = GPUShader(shader_data_vert, shader_data_frag, )
                         batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                     else:
-                        shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
+                        # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
+                        shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
                         shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                         batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
                     
@@ -682,14 +720,16 @@ class PCVIVMechanist():
             origins_cs = origins_cs[:oc]
             
             if(quality == 'BASIC'):
-                shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
+                # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
                 shader = GPUShader(shader_data_vert, shader_data_frag, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
                 
                 draw_size = prefs.origins_point_size
                 draw_quality = 0
             else:
-                shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
+                # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
                 
@@ -749,6 +789,10 @@ class PCVIVMechanist():
         light = view_matrix.copy().inverted()
         lt = light.translation
         vp = lt
+        if(not bpy.context.region_data.is_perspective):
+            # "A long time ago in a galaxy far, far away...."
+            lt = view_matrix.copy().inverted() @ Vector((0.0, 0.0, 10.0 ** 6))
+            vp = lt
         
         for quality, shader, batch, matrix, size in buffer:
             shader.bind()
