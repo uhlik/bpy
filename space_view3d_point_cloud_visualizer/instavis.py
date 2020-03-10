@@ -421,7 +421,6 @@ class PCVIVManager():
     msgbus_handle = object()
     msgbus_subs = ()
     
-    # FIXME: solve undo/redo crash, the best would be to have undo_pre to store current state by names and undo_post to restore state with current references. the same with redo
     undo_state = {}
     
     @classmethod
@@ -1930,12 +1929,14 @@ class PCVIV_PT_debug(PCVIV_PT_base):
 
 
 # add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
-PCVIVManager.msgbus_subs += (bpy.types.ParticleSystems,
+PCVIVManager.msgbus_subs += (# bpy.types.ParticleSystems,
                              # (bpy.types.ParticleSystems, 'active', ),
-                             (bpy.types.Object, 'particle_systems', ),
-                             # bpy.types.ParticleSettings,
-                             bpy.types.ParticleSystemModifier,
-                             bpy.types.ParticleSettingsTextureSlot, bpy.types.ImageTexture, bpy.types.CloudsTexture,
+                             # (bpy.types.Object, 'particle_systems', ),
+                             bpy.types.ParticleSettings,
+                             # bpy.types.ParticleSystemModifier,
+                             # bpy.types.ParticleSettingsTextureSlot,
+                             bpy.types.ImageTexture,
+                             bpy.types.CloudsTexture,
                              (bpy.types.View3DShading, 'type', ), )
 
 
