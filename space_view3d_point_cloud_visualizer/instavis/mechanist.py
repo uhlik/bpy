@@ -198,11 +198,9 @@ class PCVIVMechanist():
         
         # add classes to subscribe if MSGBUS is used for update, this is not quite elegant, but at least it is easily accesible. i expect more types to be added..
         cls.msgbus_subs += (bpy.types.ParticleSettings,
-                            # bpy.types.ParticleSystems,
-                            # (bpy.types.ParticleSystems, 'active', ),
-                            # (bpy.types.Object, 'particle_systems', ),
-                            # bpy.types.ParticleSystemModifier,
-                            # bpy.types.ParticleSettingsTextureSlot,
+                            bpy.types.ParticleSystems,
+                            bpy.types.ParticleSystemModifier,
+                            bpy.types.ParticleSettingsTextureSlot,
                             bpy.types.ImageTexture,
                             bpy.types.CloudsTexture,
                             (bpy.types.View3DShading, 'type', ), )
