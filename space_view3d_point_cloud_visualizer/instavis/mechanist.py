@@ -34,12 +34,12 @@ from gpu_extras.batch import batch_for_shader
 from .debug import debug_mode, log
 from . import generators
 
-# FIXME: fix shading on origins only shader, or which should be better make it flat color, normals are not calculated so shading has no purpose
 # TODO: maybe try to make origins float a bit above surface to be a bit more useable, moving a tiny bit towards camera may be enough
 shader_directory = os.path.realpath(os.path.join(os.path.dirname(__file__), 'shaders'))
 if(not os.path.exists(shader_directory)):
     raise OSError("Did you point me to an imaginary directory? ('{}')".format(shader_directory))
 shader_registry = {'RICH': {'v': "instavis_rich.vert", 'f': "instavis_rich.frag", 'g': "instavis_rich.geom", },
+                   'RICH_ORIGINS': {'v': "instavis_rich_origins.vert", 'f': "instavis_rich_origins.frag", 'g': "instavis_rich_origins.geom", },
                    'BASIC': {'v': "instavis_basic.vert", 'f': "instavis_basic.frag", }, }
 shader_cache = {}
 
@@ -309,7 +309,7 @@ class PCVIVMechanist():
         
         l = len(depsgraph.object_instances)
         origins_vs = np.zeros((l, 3, ), dtype=np.float32, )
-        origins_ns = np.zeros((l, 3, ), dtype=np.float32, )
+        # origins_ns = np.zeros((l, 3, ), dtype=np.float32, )
         origins_cs = np.zeros((l, 3, ), dtype=np.float32, )
         oc = 0
         
@@ -350,12 +350,10 @@ class PCVIVMechanist():
                     vs, ns, cs = (sampler.vs, sampler.ns, sampler.cs, )
                     
                     if(quality == 'BASIC'):
-                        # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
                         shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
                         shader = GPUShader(shader_data_vert, shader_data_frag, )
                         batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
                     else:
-                        # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
                         shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
                         shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
                         batch = batch_for_shader(shader, 'POINTS', {"position": vs, "normal": ns, "color": cs, }, )
@@ -384,11 +382,11 @@ class PCVIVMechanist():
                     origins_vs[oc][1] = v[1]
                     origins_vs[oc][2] = v[2]
                     # q = m.to_quaternion()
-                    n = Vector((0.0, 0.0, 1.0, ))
-                    # n.rotate(q)
-                    origins_ns[oc][0] = n[0]
-                    origins_ns[oc][1] = n[1]
-                    origins_ns[oc][2] = n[2]
+                    # n = Vector((0.0, 0.0, 1.0, ))
+                    # # n.rotate(q)
+                    # origins_ns[oc][0] = n[0]
+                    # origins_ns[oc][1] = n[1]
+                    # origins_ns[oc][2] = n[2]
                     origins_cs[oc] = cs[0]
                     oc += 1
         
@@ -398,11 +396,10 @@ class PCVIVMechanist():
         
         if(oc != 0):
             origins_vs = origins_vs[:oc]
-            origins_ns = origins_ns[:oc]
+            # origins_ns = origins_ns[:oc]
             origins_cs = origins_cs[:oc]
             
             if(quality == 'BASIC'):
-                # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('BASIC')
                 shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
                 shader = GPUShader(shader_data_vert, shader_data_frag, )
                 batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
@@ -410,10 +407,11 @@ class PCVIVMechanist():
                 draw_size = prefs.origins_point_size
                 draw_quality = 0
             else:
-                # shader_data_vert, shader_data_frag, shader_data_geom = PCVIVShaders.get_shader('RICH')
-                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
+                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
+                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH_ORIGINS')
                 shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
-                batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
+                # batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
+                batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
                 
                 draw_size = prefs.origins_point_size_f
                 draw_quality = 1
@@ -521,8 +519,8 @@ class PCVIVMechanist():
                 shader.uniform_float("view_matrix", view_matrix)
                 shader.uniform_float("window_matrix", window_matrix)
                 shader.uniform_float("size", size)
-                shader.uniform_float("light_position", lt)
-                shader.uniform_float("view_position", vp)
+                # shader.uniform_float("light_position", lt)
+                # shader.uniform_float("view_position", vp)
             batch.draw(shader)
             
             if(cls.stats_enabled):
