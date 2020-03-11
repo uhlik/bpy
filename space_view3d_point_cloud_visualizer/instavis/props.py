@@ -40,6 +40,7 @@ class PCVIV_preferences(PropertyGroup):
                                                  ], default='RICH', description="Global quality settings for all", update=_switch_shader, )
     
     # exit display settings is used for file save and when instavis is deinitialized, just to prevent viewport slowdown
+    use_exit_display: BoolProperty(name="Exit Display Setting Enabled", default=True, description="Switch display method/type of particles and instances objects when visualization is exited. When disabled, default values are used.", )
     exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='BOUNDS', description="To what set instance base objects Display Type when point cloud mode is exited", )
     exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
@@ -107,7 +108,24 @@ class PCVIV_object_properties(PropertyGroup):
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     
     def _target_update(self, context, ):
-        pass
+        if(not self.target):
+            # if target is set to False, swap display to exit types
+            prefs = context.scene.pcv_instavis
+            if(not prefs.use_exit_display):
+                return
+            o = self.id_data
+            ls = [ps.settings for ps in o.particle_systems]
+            for pset in ls:
+                pset.display_method = prefs.exit_psys_display_method
+                if(pset.render_type == 'COLLECTION'):
+                    col = pset.instance_collection
+                    if(col is not None):
+                        for co in col.objects:
+                            co.display_type = prefs.exit_object_display_type
+                elif(pset.render_type == 'OBJECT'):
+                    co = pset.instance_object
+                    if(co is not None):
+                        co.display_type = prefs.exit_object_display_type
     
     target: BoolProperty(default=False, options={'HIDDEN', }, update=_target_update, )
     

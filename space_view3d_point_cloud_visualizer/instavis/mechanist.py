@@ -153,12 +153,20 @@ class PCVIVMechanist():
         targets = set([o for o in scene.objects if o.pcv_instavis.target])
         psystems = set([p for o in targets for p in o.particle_systems])
         psettings = set([p.settings for p in psystems])
+        
+        if(prefs.use_exit_display):
+            display_method = prefs.exit_psys_display_method
+            display_type = prefs.exit_object_display_type
+        else:
+            display_method = 'RENDER'
+            display_type = 'TEXTURED'
+        
         for pset in psettings:
-            pset.display_method = prefs.exit_psys_display_method
+            pset.display_method = display_method
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
-                o.display_type = prefs.exit_object_display_type
+                o.display_type = display_type
         
         cls.initialized = False
         
@@ -614,14 +622,21 @@ class PCVIVMechanist():
         psystems = set([p for o in targets for p in o.particle_systems])
         psettings = set([p.settings for p in psystems])
         
+        if(prefs.use_exit_display):
+            display_method = prefs.exit_psys_display_method
+            display_type = prefs.exit_object_display_type
+        else:
+            display_method = 'RENDER'
+            display_type = 'TEXTURED'
+        
         for pset in psettings:
             cls.pre_save_state[pset.name] = pset.display_method
-            pset.display_method = prefs.exit_psys_display_method
+            pset.display_method = display_method
         for n in cls.cache.keys():
             o = bpy.data.objects.get(n)
             if(o is not None):
                 cls.pre_save_state[o.name] = o.display_type
-                o.display_type = prefs.exit_object_display_type
+                o.display_type = display_type
     
     @classmethod
     def save_post(cls, scene, depsgraph=None, ):
