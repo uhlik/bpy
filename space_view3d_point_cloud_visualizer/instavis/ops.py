@@ -79,10 +79,10 @@ class PCVIV_OT_force_update(Operator):
         return {'FINISHED'}
 
 
-class PCVIV_OT_apply_generator_settings(Operator):
-    bl_idname = "point_cloud_visualizer.pcviv_apply_generator_settings"
-    bl_label = "Apply Settings To Collection"
-    bl_description = "Apply generator settings to all objects in current collection"
+class PCVIV_OT_sync_instance_settings(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_sync_instance_settings"
+    bl_label = "Synchronize Settings To All"
+    bl_description = "Synchronize point cloud generation settings to all in current collection"
     
     @classmethod
     def poll(cls, context):
@@ -117,6 +117,44 @@ class PCVIV_OT_apply_generator_settings(Operator):
         
         for o in changed:
             PCVIVMechanist.invalidate_object_cache(o.name)
+        
+        return {'FINISHED'}
+
+
+class PCVIV_OT_sync_psys_settings(Operator):
+    bl_idname = "point_cloud_visualizer.pcviv_sync_psys_settings"
+    bl_label = "Synchronize Settings To All"
+    bl_description = "Synchronize visualization settings to all particle systems on current target"
+    
+    @classmethod
+    def poll(cls, context):
+        ok = False
+        if(context.object is not None):
+            o = context.object
+            if(o.particle_systems.active is not None):
+                if(len(o.particle_systems) > 1):
+                    ok = True        
+        return ok
+    
+    def execute(self, context):
+        o = context.object
+        apsys = o.particle_systems.active
+        apset = apsys.settings
+        apcviv = apset.pcv_instavis
+        update = False
+        for psys in o.particle_systems:
+            if(psys == apsys):
+                continue
+            pset = psys.settings
+            pcviv = pset.pcv_instavis
+            pcviv.point_scale = apcviv.point_scale
+            pcviv.draw = apcviv.draw
+            pcviv.display = apcviv.display
+            pcviv.use_origins_only = apcviv.use_origins_only
+            update = True
+        
+        if(update):
+            PCVIVMechanist.force_update(with_caches=False, )
         
         return {'FINISHED'}
 
@@ -156,4 +194,4 @@ class PCVIV_OT_reset_viewport_draw(Operator):
 
 
 classes = ()
-classes_debug = (PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_force_update, PCVIV_OT_apply_generator_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches, )
+classes_debug = (PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_force_update, PCVIV_OT_sync_instance_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches, PCVIV_OT_sync_psys_settings, )

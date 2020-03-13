@@ -171,6 +171,9 @@ class PCVIV_PT_particles(PCVIV_PT_base):
                 cc.prop(pcviv_prefs, 'origins_point_size_f')
             if(not pset_pcviv.use_origins_only):
                 cc.enabled = False
+            
+            c.separator()
+            c.operator('point_cloud_visualizer.pcviv_sync_psys_settings')
 
 
 class PCVIV_UL_instances(UIList):
@@ -245,7 +248,10 @@ class PCVIV_PT_instances(PCVIV_PT_base):
                         for slot in co.material_slots:
                             if(slot.material is not None):
                                 cc.prop(slot.material.pcv_instavis, 'factor', text=slot.material.name)
-                    c.operator('point_cloud_visualizer.pcviv_apply_generator_settings')
+                    
+                    c.separator()
+                    c.operator('point_cloud_visualizer.pcviv_sync_instance_settings')
+                
                 elif(pset.render_type == 'OBJECT' and pset.instance_object is not None):
                     c.label(text='{}: Instanced Object:'.format(pset.name))
                     
