@@ -34,8 +34,3 @@ class PCVIVOverseer():
     @classmethod
     def deinit(cls):
         PCVIVMechanist.deinit()
-
-
-def draw_instavis(self, context, ):
-    l = self.layout
-    l.label(text='hello')

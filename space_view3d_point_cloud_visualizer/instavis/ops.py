@@ -94,7 +94,6 @@ class PCVIV_OT_sync_instance_settings(Operator):
             o = context.object
             if(o.particle_systems.active is not None):
                 pset = o.particle_systems.active.settings
-                # if(pset.render_type == 'COLLECTION'):
                 if(pset.render_type in ('COLLECTION', 'OBJECT', )):
                     if(pset.instance_collection is not None):
                         ok = True
@@ -103,27 +102,6 @@ class PCVIV_OT_sync_instance_settings(Operator):
         return ok
     
     def execute(self, context):
-        # col = context.object.particle_systems.active.settings.instance_collection
-        # ao = col.objects[col.pcv_instavis.active_index]
-        # aoset = ao.pcv_instavis
-        # changed = []
-        # for o in col.objects:
-        #     if(o is ao):
-        #         continue
-        #     ps = o.pcv_instavis
-        #     ps.source = aoset.source
-        #     ps.max_points = aoset.max_points
-        #     ps.color_source = aoset.color_source
-        #     ps.color_constant = aoset.color_constant
-        #     ps.use_face_area = aoset.use_face_area
-        #     ps.use_material_factors = aoset.use_material_factors
-        #     ps.point_size = aoset.point_size
-        #     ps.point_size_f = aoset.point_size_f
-        #     changed.append(o)
-        #
-        # for o in changed:
-        #     PCVIVMechanist.invalidate_object_cache(o.name)
-        
         if(self.universal):
             scene = context.scene
             targets = [o for o in scene.objects if o.pcv_instavis.target]
@@ -145,13 +123,9 @@ class PCVIV_OT_sync_instance_settings(Operator):
             if(pset.instance_object is not None):
                 obs.append(pset.instance_object)
         
-        # props = ['source', 'max_points', 'color_source', 'color_constant', 'use_face_area', 'use_material_factors', 'point_size', 'point_size_f', ]
-        # master = {}
         acol = context.object.particle_systems.active.settings.instance_collection
         ao = acol.objects[acol.pcv_instavis.active_index]
         aopcviv = ao.pcv_instavis
-        # for p in props:
-        #     master[p] = getattr(aopcviv, p, None)
         
         changed = []
         for col in cols:
@@ -206,25 +180,6 @@ class PCVIV_OT_sync_psys_settings(Operator):
         return ok
     
     def execute(self, context):
-        # o = context.object
-        # apsys = o.particle_systems.active
-        # apset = apsys.settings
-        # apcviv = apset.pcv_instavis
-        # update = False
-        # for psys in o.particle_systems:
-        #     if(psys == apsys):
-        #         continue
-        #     pset = psys.settings
-        #     pcviv = pset.pcv_instavis
-        #     pcviv.point_scale = apcviv.point_scale
-        #     pcviv.draw = apcviv.draw
-        #     pcviv.display = apcviv.display
-        #     pcviv.use_origins_only = apcviv.use_origins_only
-        #     update = True
-        #
-        # if(update):
-        #     PCVIVMechanist.force_update(with_caches=False, )
-        
         if(self.universal):
             targets = [o for o in context.scene.objects if o.pcv_instavis.target]
         else:
