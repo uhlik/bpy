@@ -289,4 +289,4 @@ class PCVIV_OT_reset_viewport_draw(Operator):
 
 
 classes = ()
-classes_debug = (PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_force_update, PCVIV_OT_sync_instance_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches, PCVIV_OT_sync_psys_settings, )
+classes_debug = (PCVIV_OT_init, PCVIV_OT_deinit, PCVIV_OT_force_update, PCVIV_OT_sync_instance_settings, PCVIV_OT_sync_psys_settings, PCVIV_OT_reset_viewport_draw, PCVIV_OT_invalidate_caches, )

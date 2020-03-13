@@ -23,7 +23,7 @@
 bl_info = {"name": "PCV Instance Visualizer",
            "description": "",
            "author": "Jakub Uhlik",
-           "version": (0, 0, 5),
+           "version": (0, 0, 6),
            "blender": (2, 80, 0),
            "location": "View3D > Sidebar > PCVIV",
            "warning": "",
@@ -35,12 +35,14 @@ if('bpy' in locals()):
     import importlib
     importlib.reload(debug)
     importlib.reload(mechanist)
+    importlib.reload(overseer)
     importlib.reload(props)
     importlib.reload(ops)
     importlib.reload(ui)
 else:
     from . import debug
     from . import mechanist
+    from . import overseer
     from . import props
     from . import ops
     from . import ui
