@@ -22,6 +22,7 @@
 
 import bpy
 from bpy.types import Operator
+from bpy.props import BoolProperty
 
 from .debug import debug_mode, log
 from .mechanist import PCVIVMechanist
@@ -84,6 +85,8 @@ class PCVIV_OT_sync_instance_settings(Operator):
     bl_label = "Synchronize Settings To All"
     bl_description = "Synchronize point cloud generation settings to all in current collection"
     
+    universal: BoolProperty(default=False, options={'HIDDEN', 'SKIP_SAVE', }, )
+    
     @classmethod
     def poll(cls, context):
         ok = False
@@ -91,28 +94,93 @@ class PCVIV_OT_sync_instance_settings(Operator):
             o = context.object
             if(o.particle_systems.active is not None):
                 pset = o.particle_systems.active.settings
-                if(pset.render_type == 'COLLECTION'):
+                # if(pset.render_type == 'COLLECTION'):
+                if(pset.render_type in ('COLLECTION', 'OBJECT', )):
                     if(pset.instance_collection is not None):
+                        ok = True
+                    if(pset.instance_object is not None):
                         ok = True
         return ok
     
     def execute(self, context):
-        col = context.object.particle_systems.active.settings.instance_collection
-        ao = col.objects[col.pcv_instavis.active_index]
-        aoset = ao.pcv_instavis
+        # col = context.object.particle_systems.active.settings.instance_collection
+        # ao = col.objects[col.pcv_instavis.active_index]
+        # aoset = ao.pcv_instavis
+        # changed = []
+        # for o in col.objects:
+        #     if(o is ao):
+        #         continue
+        #     ps = o.pcv_instavis
+        #     ps.source = aoset.source
+        #     ps.max_points = aoset.max_points
+        #     ps.color_source = aoset.color_source
+        #     ps.color_constant = aoset.color_constant
+        #     ps.use_face_area = aoset.use_face_area
+        #     ps.use_material_factors = aoset.use_material_factors
+        #     ps.point_size = aoset.point_size
+        #     ps.point_size_f = aoset.point_size_f
+        #     changed.append(o)
+        #
+        # for o in changed:
+        #     PCVIVMechanist.invalidate_object_cache(o.name)
+        
+        if(self.universal):
+            scene = context.scene
+            targets = [o for o in scene.objects if o.pcv_instavis.target]
+            psystems = [p for o in targets for p in o.particle_systems]
+            psettings = [p.settings for p in psystems]
+            cols = [p.instance_collection for p in psettings if p.instance_collection is not None]
+            obs = [p.instance_object for p in psettings if p.instance_object is not None]
+        else:
+            o = context.object
+            targets = [o, ]
+            psys = o.particle_systems.active
+            psystems = [psys, ]
+            pset = psys.settings
+            psettings = [pset, ]
+            cols = []
+            obs = []
+            if(pset.instance_collection is not None):
+                cols.append(pset.instance_collection)
+            if(pset.instance_object is not None):
+                obs.append(pset.instance_object)
+        
+        # props = ['source', 'max_points', 'color_source', 'color_constant', 'use_face_area', 'use_material_factors', 'point_size', 'point_size_f', ]
+        # master = {}
+        acol = context.object.particle_systems.active.settings.instance_collection
+        ao = acol.objects[acol.pcv_instavis.active_index]
+        aopcviv = ao.pcv_instavis
+        # for p in props:
+        #     master[p] = getattr(aopcviv, p, None)
+        
         changed = []
-        for o in col.objects:
+        for col in cols:
+            for o in col.objects:
+                if(o is ao):
+                    continue
+                ps = o.pcv_instavis
+                ps.source = aopcviv.source
+                ps.max_points = aopcviv.max_points
+                ps.color_source = aopcviv.color_source
+                ps.color_constant = aopcviv.color_constant
+                ps.use_face_area = aopcviv.use_face_area
+                ps.use_material_factors = aopcviv.use_material_factors
+                ps.point_size = aopcviv.point_size
+                ps.point_size_f = aopcviv.point_size_f
+                changed.append(o)
+        
+        for o in obs:
             if(o is ao):
                 continue
             ps = o.pcv_instavis
-            ps.source = aoset.source
-            ps.max_points = aoset.max_points
-            ps.color_source = aoset.color_source
-            ps.color_constant = aoset.color_constant
-            ps.use_face_area = aoset.use_face_area
-            ps.use_material_factors = aoset.use_material_factors
-            ps.point_size = aoset.point_size
-            ps.point_size_f = aoset.point_size_f
+            ps.source = aopcviv.source
+            ps.max_points = aopcviv.max_points
+            ps.color_source = aopcviv.color_source
+            ps.color_constant = aopcviv.color_constant
+            ps.use_face_area = aopcviv.use_face_area
+            ps.use_material_factors = aopcviv.use_material_factors
+            ps.point_size = aopcviv.point_size
+            ps.point_size_f = aopcviv.point_size_f
             changed.append(o)
         
         for o in changed:
@@ -126,26 +194,53 @@ class PCVIV_OT_sync_psys_settings(Operator):
     bl_label = "Synchronize Settings To All"
     bl_description = "Synchronize visualization settings to all particle systems on current target"
     
+    universal: BoolProperty(default=False, options={'HIDDEN', 'SKIP_SAVE', }, )
+    
     @classmethod
     def poll(cls, context):
         ok = False
         if(context.object is not None):
             o = context.object
             if(o.particle_systems.active is not None):
-                if(len(o.particle_systems) > 1):
-                    ok = True        
+                ok = True
         return ok
     
     def execute(self, context):
+        # o = context.object
+        # apsys = o.particle_systems.active
+        # apset = apsys.settings
+        # apcviv = apset.pcv_instavis
+        # update = False
+        # for psys in o.particle_systems:
+        #     if(psys == apsys):
+        #         continue
+        #     pset = psys.settings
+        #     pcviv = pset.pcv_instavis
+        #     pcviv.point_scale = apcviv.point_scale
+        #     pcviv.draw = apcviv.draw
+        #     pcviv.display = apcviv.display
+        #     pcviv.use_origins_only = apcviv.use_origins_only
+        #     update = True
+        #
+        # if(update):
+        #     PCVIVMechanist.force_update(with_caches=False, )
+        
+        if(self.universal):
+            targets = [o for o in context.scene.objects if o.pcv_instavis.target]
+        else:
+            targets = [context.object, ]
+        psystems = [p for o in targets for p in o.particle_systems]
+        psettings = [p.settings for p in psystems]
+        
+        update = False
         o = context.object
         apsys = o.particle_systems.active
         apset = apsys.settings
         apcviv = apset.pcv_instavis
-        update = False
-        for psys in o.particle_systems:
-            if(psys == apsys):
+        
+        for pset in psettings:
+            if(apset is pset):
                 continue
-            pset = psys.settings
             pcviv = pset.pcv_instavis
             pcviv.point_scale = apcviv.point_scale
             pcviv.draw = apcviv.draw

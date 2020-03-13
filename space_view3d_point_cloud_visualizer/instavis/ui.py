@@ -173,7 +173,9 @@ class PCVIV_PT_particles(PCVIV_PT_base):
                 cc.enabled = False
             
             c.separator()
-            c.operator('point_cloud_visualizer.pcviv_sync_psys_settings')
+            r = c.row(align=True)
+            r.operator('point_cloud_visualizer.pcviv_sync_psys_settings', text='Sync Target', )
+            r.operator('point_cloud_visualizer.pcviv_sync_psys_settings', text='Sync All', ).universal = True
 
 
 class PCVIV_UL_instances(UIList):
@@ -250,7 +252,9 @@ class PCVIV_PT_instances(PCVIV_PT_base):
                                 cc.prop(slot.material.pcv_instavis, 'factor', text=slot.material.name)
                     
                     c.separator()
-                    c.operator('point_cloud_visualizer.pcviv_sync_instance_settings')
+                    r = c.row(align=True)
+                    r.operator('point_cloud_visualizer.pcviv_sync_instance_settings', text='Sync Collection', )
+                    r.operator('point_cloud_visualizer.pcviv_sync_instance_settings', text='Sync All', ).universal = True
                 
                 elif(pset.render_type == 'OBJECT' and pset.instance_object is not None):
                     c.label(text='{}: Instanced Object:'.format(pset.name))
