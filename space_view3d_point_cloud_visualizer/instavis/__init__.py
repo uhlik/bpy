@@ -60,7 +60,8 @@ def register():
 
 
 def unregister():
-    mechanist.PCVIVMechanist.deinit()
+    # mechanist.PCVIVMechanist.deinit()
+    overseer.PCVIVOverseer.deinit()
     
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
