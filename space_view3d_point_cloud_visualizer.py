@@ -1074,8 +1074,24 @@ class PlyPointCloudReader():
         else:
             self._data_binary()
         log("loaded {} vertices".format(len(self.points)), 1)
-        # remove alpha if present
+        
+        # remove alpha if present (meshlab adds it)
         self.points = self.points[[b for b in list(self.points.dtype.names) if b != 'alpha']]
+        
+        # rename diffuse_rgb to rgb, if present
+        user_rgb = ('diffuse_red', 'diffuse_green', 'diffuse_blue', )
+        names = self.points.dtype.names
+        ls = list(names)
+        if(set(user_rgb).issubset(names)):
+            for ci, uc in enumerate(user_rgb):
+                for i, v in enumerate(ls):
+                    if(v == uc):
+                        ls[i] = ls[i].replace('diffuse_', '', )
+        self.points.dtype.names = tuple(ls)
+        
+        # remove anything that is not (x, y, z, nx, ny, nz, red, green, blue) to prevent problems later
+        self.points = self.points[[b for b in list(self.points.dtype.names) if b in ('x', 'y', 'z', 'nx', 'ny', 'nz', 'red', 'green', 'blue', )]]
+        
         # some info
         nms = self.points.dtype.names
         self.has_vertices = True
