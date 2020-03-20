@@ -137,11 +137,12 @@ def pcviv_draw_sc_ui(context, uilayout, ):
     # last selected particles
     tab = uilayout.box()
     h = tab.box()
-    h.operator("scatter.general_panel_toggle", emboss=False, text='Particle Visualization Options', icon="NONE", ).pref = "addon_prefs.A_instavis_controls_is_open"
+    h.operator("scatter.general_panel_toggle", emboss=False, text='Particle Visualization Options', icon='PARTICLES', ).pref = "addon_prefs.A_instavis_controls_is_open"
     if(addon_prefs.A_instavis_controls_is_open):
         if(last_sel is not None):
             pset_pcviv = last_sel.particle_system.settings.pcv_instavis
             cc = tab.column()
+            cc.label(text='{} > {} > {}'.format(terrain.name, last_sel.particle_system.name, last_sel.particle_system.settings.name))
             cc.prop(pset_pcviv, 'display')
             r = cc.row()
             r.prop(pset_pcviv, 'point_scale')
@@ -176,13 +177,13 @@ def pcviv_draw_sc_ui(context, uilayout, ):
     # last selected particles instanced objects
     tab = uilayout.box()
     h = tab.box()
-    h.operator("scatter.general_panel_toggle", emboss=False, text='Instance Visualization Options', icon="NONE", ).pref = "addon_prefs.A_instavis_instances_is_open"
+    h.operator("scatter.general_panel_toggle", emboss=False, text='Instance Visualization Options', icon='OUTLINER_OB_GROUP_INSTANCE', ).pref = "addon_prefs.A_instavis_instances_is_open"
     if(addon_prefs.A_instavis_instances_is_open):
         if(last_sel is not None):
             c = tab.column()
             pset = last_sel.particle_system.settings
             if(pset.render_type == 'COLLECTION' and pset.instance_collection is not None):
-                c.label(text='{}: Instanced Collection Objects:'.format(pset.name))
+                c.label(text='{} > {}'.format(last_sel.particle_system.settings.name, pset.instance_collection.name))
                 
                 col = pset.instance_collection
                 pcvcol = col.pcv_instavis
@@ -221,7 +222,7 @@ def pcviv_draw_sc_ui(context, uilayout, ):
                         if(slot.material is not None):
                             cc.prop(slot.material.pcv_instavis, 'factor', text=slot.material.name)
             elif(pset.render_type == 'OBJECT' and pset.instance_object is not None):
-                c.label(text='{}: Instanced Object:'.format(pset.name))
+                c.label(text='{} > {}'.format(last_sel.particle_system.settings.name, pset.instance_object.name))
                 
                 co = pset.instance_object
                 b = c.box()
@@ -279,7 +280,7 @@ def pcviv_draw_sc_ui(context, uilayout, ):
     # global settings
     tab = uilayout.box()
     h = tab.box()
-    h.operator("scatter.general_panel_toggle", emboss=False, text="Global Settings", icon='NONE', ).pref = "addon_prefs.A_instavis_global_is_open"
+    h.operator("scatter.general_panel_toggle", emboss=False, text="Global Settings", icon='SETTINGS', ).pref = "addon_prefs.A_instavis_global_is_open"
     if(addon_prefs.A_instavis_global_is_open):
         c = tab.column()
         pcviv_prefs = context.scene.pcv_instavis
