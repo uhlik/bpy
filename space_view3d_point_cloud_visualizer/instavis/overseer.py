@@ -22,8 +22,6 @@
 
 import bpy
 from bpy.types import Operator
-from bpy.types import PropertyGroup, UIList
-from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
 
 from .debug import debug_mode, log
 from .mechanist import PCVIVMechanist
@@ -41,13 +39,12 @@ class PCVIVOverseer():
     
     @classmethod
     def apply_settings_psys(cls, source, destinations, ):
-        psystems = [mod.particle_system for mod in destinations]
-        psettings = [p.settings for p in psystems]
-        
         update = False
         apsys = source.particle_system
         apset = apsys.settings
         apcviv = apset.pcv_instavis
+        psystems = [mod.particle_system for mod in destinations]
+        psettings = [p.settings for p in psystems]
         
         for pset in psettings:
             if(apset is pset):
@@ -64,7 +61,44 @@ class PCVIVOverseer():
     
     @classmethod
     def apply_settings_instances(cls, source, destinations, ):
-        pass
+        changed = []
+        aopcviv = source.pcv_instavis
+        psystems = [mod.particle_system for mod in destinations]
+        psettings = [p.settings for p in psystems]
+        cols = [p.instance_collection for p in psettings if p.instance_collection is not None]
+        obs = [p.instance_object for p in psettings if p.instance_object is not None]
+        
+        for col in cols:
+            for o in col.objects:
+                if(o is source):
+                    continue
+                ps = o.pcv_instavis
+                ps.source = aopcviv.source
+                ps.max_points = aopcviv.max_points
+                ps.color_source = aopcviv.color_source
+                ps.color_constant = aopcviv.color_constant
+                ps.use_face_area = aopcviv.use_face_area
+                ps.use_material_factors = aopcviv.use_material_factors
+                ps.point_size = aopcviv.point_size
+                ps.point_size_f = aopcviv.point_size_f
+                changed.append(o)
+        
+        for o in obs:
+            if(o is source):
+                continue
+            ps = o.pcv_instavis
+            ps.source = aopcviv.source
+            ps.max_points = aopcviv.max_points
+            ps.color_source = aopcviv.color_source
+            ps.color_constant = aopcviv.color_constant
+            ps.use_face_area = aopcviv.use_face_area
+            ps.use_material_factors = aopcviv.use_material_factors
+            ps.point_size = aopcviv.point_size
+            ps.point_size_f = aopcviv.point_size_f
+            changed.append(o)
+        
+        for o in changed:
+            PCVIVMechanist.invalidate_object_cache(o.name)
 
 
 class SCUtils():
@@ -138,12 +172,6 @@ def pcviv_draw_sc_ui(context, uilayout, ):
             t = "{} [Batch]".format(t)
         r = tab.row()
         r.operator('pcviv.sc_apply_settings_psys', text=t, )
-        if(len(scatter_selected) <= 1):
-            r.enabled = False
-        if(addon_prefs.A_instavis_influence in ('SCENE', )):
-            r.enabled = True
-        if(len(scatter_selected) == 0):
-            r.enabled = False
     
     # last selected particles instanced objects
     tab = uilayout.box()
@@ -247,12 +275,6 @@ def pcviv_draw_sc_ui(context, uilayout, ):
             t = "{} [Batch]".format(t)
         r = tab.row()
         r.operator('pcviv.sc_apply_settings_instances', text=t, )
-        if(len(scatter_selected) <= 1):
-            r.enabled = False
-        if(addon_prefs.A_instavis_influence_instances in ('SCENE', )):
-            r.enabled = True
-        if(len(scatter_selected) == 0):
-            r.enabled = False
     
     # global settings
     tab = uilayout.box()
@@ -283,7 +305,13 @@ class PCVIV_OT_sc_apply_settings_psys(Operator):
     @classmethod
     def poll(cls, context):
         if(PCVIVMechanist.initialized):
-            return True
+            addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+            scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+            if(len(scatter_selected) > 0):
+                if(addon_prefs.A_instavis_influence in ('SELECTED', )):
+                    if(len(scatter_selected) <= 1):
+                        return False
+                return True
         return False
     
     def execute(self, context):
@@ -293,7 +321,8 @@ class PCVIV_OT_sc_apply_settings_psys(Operator):
             destinations = scatter_particles
         else:
             destinations = scatter_selected
-        PCVIVOverseer.apply_settings_psys(last_sel, destinations, )
+        if(last_sel is not None):
+            PCVIVOverseer.apply_settings_psys(last_sel, destinations, )
         return {'FINISHED'}
 
 
@@ -305,7 +334,9 @@ class PCVIV_OT_sc_apply_settings_instances(Operator):
     @classmethod
     def poll(cls, context):
         if(PCVIVMechanist.initialized):
-            return True
+            scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+            if(len(scatter_selected) > 0):
+                return True
         return False
     
     def execute(self, context):
@@ -313,10 +344,19 @@ class PCVIV_OT_sc_apply_settings_instances(Operator):
         addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
         if(addon_prefs.A_instavis_influence == 'SCENE'):
             destinations = scatter_particles
-        else:
+        elif(addon_prefs.A_instavis_influence == 'SELECTED'):
             destinations = scatter_selected
-        # TODO: and get active object in collection to copy settings
-        PCVIVOverseer.apply_settings_instances(last_sel, destinations, )
+        else:
+            destinations = last_sel
+        pset = last_sel.particle_system.settings
+        if(pset.render_type == 'COLLECTION' and pset.instance_collection is not None):
+            col = pset.instance_collection
+            pcvcol = col.pcv_instavis
+            source = col.objects[col.objects.keys()[pcvcol.active_index]]
+        elif(pset.render_type == 'OBJECT' and pset.instance_object is not None):
+            source.pset.instance_object
+        if(source is not None):
+            PCVIVOverseer.apply_settings_instances(source, destinations, )
         return {'FINISHED'}
 
 
