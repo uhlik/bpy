@@ -49,9 +49,9 @@ else:
 
 import bpy
 
-classes = props.classes + ops.classes + ui.classes
+classes = props.classes + ops.classes + ui.classes + overseer.classes
 if(debug.debug_mode()):
-    classes += props.classes_debug + ops.classes_debug + ui.classes_debug
+    classes += props.classes_debug + ops.classes_debug + ui.classes_debug + overseer.classes_debug
 
 
 def register():

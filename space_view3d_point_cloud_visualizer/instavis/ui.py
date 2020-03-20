@@ -416,5 +416,5 @@ class PCVIV_PT_debug(PCVIV_PT_base):
         r.operator('script.reload')
 
 
-classes = ()
-classes_debug = (PCVIV_UL_instances, PCVIV_PT_main, PCVIV_PT_particles, PCVIV_PT_instances, PCVIV_PT_preferences, PCVIV_PT_debug, )
+classes = (PCVIV_UL_instances, )
+classes_debug = (PCVIV_PT_main, PCVIV_PT_particles, PCVIV_PT_instances, PCVIV_PT_preferences, PCVIV_PT_debug, )

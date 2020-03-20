@@ -219,8 +219,9 @@ class PCVIVMechanist():
         cls.msgbus_subs += (props.PCVIV_preferences,
                             props.PCVIV_psys_properties,
                             props.PCVIV_object_properties,
-                            props.PCVIV_material_properties,
-                            props.PCVIV_collection_properties, )
+                            props.PCVIV_material_properties, )
+        if(debug_mode()):
+            cls.msgbus_subs += (props.PCVIV_collection_properties, )
     
     @classmethod
     def update(cls, scene=None, depsgraph=None, ):

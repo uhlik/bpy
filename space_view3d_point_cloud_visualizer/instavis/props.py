@@ -41,7 +41,7 @@ class PCVIV_preferences(PropertyGroup):
     
     # exit display settings is used for file save and when instavis is deinitialized, just to prevent viewport slowdown
     use_exit_display: BoolProperty(name="Exit Display Setting Enabled", default=True, description="Switch display method/type of particles and instances objects when visualization is exited. When disabled, default values are used.", )
-    exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='BOUNDS', description="To what set instance base objects Display Type when point cloud mode is exited", )
+    exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='TEXTURED', description="To what set instance base objects Display Type when point cloud mode is exited", )
     exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
     origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
@@ -104,8 +104,10 @@ class PCVIV_object_properties(PropertyGroup):
     use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_object_cache, )
     
     # point_size is for basic shader, point_size_f if for rich shader
-    point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
-    point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
+    # point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
+    point_size: IntProperty(name="Size (Basic Shader)", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
+    # point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
+    point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.01, min=0.001, max=1.0, description="Point size", precision=6, )
     
     def _target_update(self, context, ):
         if(not self.target):
@@ -172,5 +174,5 @@ class PCVIV_material_properties(PropertyGroup):
         del bpy.types.Material.pcv_instavis
 
 
-classes = (PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, )
-classes_debug = (PCVIV_collection_properties, )
+classes = (PCVIV_preferences, PCVIV_psys_properties, PCVIV_object_properties, PCVIV_material_properties, PCVIV_collection_properties, )
+classes_debug = ()
