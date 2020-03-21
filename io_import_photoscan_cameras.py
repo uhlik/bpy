@@ -875,7 +875,8 @@ class PSC_OT_import(Operator):
         ps = bpy.context.scene.import_photoscan_cameras
         if(ps.align_to_active):
             ao = context.view_layer.objects.active
-            m = ao.matrix_world.copy()
+            if(ao is not None):
+                m = ao.matrix_world.copy()
         ed = {'TIFF': ".tiff", 'TIFF2': ".tif", 'JPEG': ".jpg", 'JPEG2': ".jpeg", 'PNG': ".png", 'BMP': ".bmp", 'OPENEXR': ".exr", 'TARGA': ".tga", }
         e = ed[ps.image_extension]
         d = {'xml_path': os.path.realpath(bpy.path.abspath(ps.xml_path)),
