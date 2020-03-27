@@ -85,13 +85,13 @@ class PCVIV_PT_main(PCVIV_PT_base):
         l = self.layout
         c = l.column()
         
-        # active object
-        c.label(text="Active Object:")
-        r = c.row(align=True)
-        cc = r.column(align=True)
-        if(not o.pcv_instavis.target):
-            cc.alert = True
-        cc.prop(o.pcv_instavis, 'target', text='Target', toggle=True, )
+        # # active object
+        # c.label(text="Active Object:")
+        # r = c.row(align=True)
+        # cc = r.column(align=True)
+        # if(not o.pcv_instavis.target):
+        #     cc.alert = True
+        # cc.prop(o.pcv_instavis, 'target', text='Target', toggle=True, )
         
         # manager
         c.label(text='PCVIV Mechanist:')
@@ -152,8 +152,10 @@ class PCVIV_PT_particles(PCVIV_PT_base):
         if(ok):
             pset_pcviv = o.particle_systems.active.settings.pcv_instavis
             r = c.row()
-            r.prop(pset_pcviv, 'draw', toggle=True, )
+            r.prop(pset_pcviv, 'use', toggle=True, )
             r.scale_y = 1.5
+            r = c.row()
+            r.prop(pset_pcviv, 'draw')
             r = c.row()
             r.prop(pset_pcviv, 'display')
             r = c.row()
@@ -362,14 +364,34 @@ class PCVIV_PT_debug(PCVIV_PT_base):
         
         tab = '    '
         
-        targets = [o for o in context.scene.objects if o.pcv_instavis.target]
+        # targets = [o for o in context.scene.objects if o.pcv_instavis.target]
+        # b = c.box()
+        # b.scale_y = 0.333
+        # b.label(text='targets: ({})'.format(len(targets)))
+        # for t in targets:
+        #     b.label(text='{}o: {}'.format(tab, t.name))
+        #     for p in t.particle_systems:
+        #         b.label(text='{}ps: {}'.format(tab * 2, p.name))
+        
+        # pobjects = set([o for o in scene.objects if len(o.particle_systems)])
+        # psystems = set([p for o in pobjects for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        # psetactive = set([s for s in psettings if s.pcv_instavis.use == True])
+        
+        active = []
+        for o in context.scene.objects:
+            if(len(o.particle_systems)):
+                for ps in o.particle_systems:
+                    pset = ps.settings
+                    if(pset.pcv_instavis.use):
+                        active.append((o, ps, pset, ))
         b = c.box()
         b.scale_y = 0.333
-        b.label(text='targets: ({})'.format(len(targets)))
-        for t in targets:
-            b.label(text='{}o: {}'.format(tab, t.name))
-            for p in t.particle_systems:
-                b.label(text='{}ps: {}'.format(tab * 2, p.name))
+        b.label(text='active: ({})'.format(len(active)))
+        for o, ps, pset in active:
+            b.label(text='{}o: {}'.format(tab, o.name))
+            b.label(text='{}ps: {}'.format(tab * 2, ps.name))
+            b.label(text='{}pset: {}'.format(tab * 2, pset.name))
         
         b = c.box()
         b.scale_y = 0.333

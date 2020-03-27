@@ -103,19 +103,31 @@ class PCVIV_OT_sync_instance_settings(Operator):
     
     def execute(self, context):
         if(self.universal):
-            scene = context.scene
-            targets = [o for o in scene.objects if o.pcv_instavis.target]
-            psystems = [p for o in targets for p in o.particle_systems]
-            psettings = [p.settings for p in psystems]
+            # scene = context.scene
+            # targets = [o for o in scene.objects if o.pcv_instavis.target]
+            # psystems = [p for o in targets for p in o.particle_systems]
+            # psettings = [p.settings for p in psystems]
+            psettings = PCVIVMechanist._collect()
             cols = [p.instance_collection for p in psettings if p.instance_collection is not None]
             obs = [p.instance_object for p in psettings if p.instance_object is not None]
         else:
-            o = context.object
-            targets = [o, ]
-            psys = o.particle_systems.active
-            psystems = [psys, ]
-            pset = psys.settings
-            psettings = [pset, ]
+            # o = context.object
+            # targets = [o, ]
+            # psys = o.particle_systems.active
+            # psystems = [psys, ]
+            # pset = psys.settings
+            # psettings = [pset, ]
+            
+            # psettings = []
+            # if(context.object.particle_systems.active.settings.pcv_instavis.use):
+            #     psettings = [context.object.particle_systems.active.settings, ]
+            
+            registry = PCVIVMechanist._collect(registry=True, )
+            psettings = []
+            for o, ps, pset in registry:
+                if(context.object == o):
+                    psettings.append(pset)
+            
             cols = []
             obs = []
             if(pset.instance_collection is not None):
@@ -180,12 +192,25 @@ class PCVIV_OT_sync_psys_settings(Operator):
         return ok
     
     def execute(self, context):
+        # if(self.universal):
+        #     targets = [o for o in context.scene.objects if o.pcv_instavis.target]
+        # else:
+        #     targets = [context.object, ]
+        # psystems = [p for o in targets for p in o.particle_systems]
+        # psettings = [p.settings for p in psystems]
+        
         if(self.universal):
-            targets = [o for o in context.scene.objects if o.pcv_instavis.target]
+            psettings = PCVIVMechanist._collect()
         else:
-            targets = [context.object, ]
-        psystems = [p for o in targets for p in o.particle_systems]
-        psettings = [p.settings for p in psystems]
+            # psettings = []
+            # if(context.object.particle_systems.active.settings.pcv_instavis.use):
+            #     psettings = [context.object.particle_systems.active.settings, ]
+            
+            registry = PCVIVMechanist._collect(registry=True, )
+            psettings = []
+            for o, ps, pset in registry:
+                if(context.object == o):
+                    psettings.append(pset)
         
         update = False
         o = context.object

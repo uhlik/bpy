@@ -76,6 +76,12 @@ class PCVIV_psys_properties(PropertyGroup):
     display: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of displayed instances", )
     use_origins_only: BoolProperty(name="Draw Origins Only", default=False, description="Draw only instance origins in a single draw pass", )
     
+    def _use_update(self, context, ):
+        pass
+    
+    # use: BoolProperty(default=False, options={'HIDDEN', }, update=_use_update, )
+    use: BoolProperty(name="Use", default=True, description="Enable/disable instance visualization", update=_use_update, )
+    
     @classmethod
     def register(cls):
         bpy.types.ParticleSettings.pcv_instavis = PointerProperty(type=cls)
@@ -109,27 +115,27 @@ class PCVIV_object_properties(PropertyGroup):
     # point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.01, min=0.001, max=1.0, description="Point size", precision=6, )
     
-    def _target_update(self, context, ):
-        if(not self.target):
-            # if target is set to False, swap display to exit types
-            prefs = context.scene.pcv_instavis
-            if(not prefs.use_exit_display):
-                return
-            o = self.id_data
-            ls = [ps.settings for ps in o.particle_systems]
-            for pset in ls:
-                pset.display_method = prefs.exit_psys_display_method
-                if(pset.render_type == 'COLLECTION'):
-                    col = pset.instance_collection
-                    if(col is not None):
-                        for co in col.objects:
-                            co.display_type = prefs.exit_object_display_type
-                elif(pset.render_type == 'OBJECT'):
-                    co = pset.instance_object
-                    if(co is not None):
-                        co.display_type = prefs.exit_object_display_type
-    
-    target: BoolProperty(default=False, options={'HIDDEN', }, update=_target_update, )
+    # def _target_update(self, context, ):
+    #     if(not self.target):
+    #         # if target is set to False, swap display to exit types
+    #         prefs = context.scene.pcv_instavis
+    #         if(not prefs.use_exit_display):
+    #             return
+    #         o = self.id_data
+    #         ls = [ps.settings for ps in o.particle_systems]
+    #         for pset in ls:
+    #             pset.display_method = prefs.exit_psys_display_method
+    #             if(pset.render_type == 'COLLECTION'):
+    #                 col = pset.instance_collection
+    #                 if(col is not None):
+    #                     for co in col.objects:
+    #                         co.display_type = prefs.exit_object_display_type
+    #             elif(pset.render_type == 'OBJECT'):
+    #                 co = pset.instance_object
+    #                 if(co is not None):
+    #                     co.display_type = prefs.exit_object_display_type
+    #
+    # target: BoolProperty(default=False, options={'HIDDEN', }, update=_target_update, )
     
     @classmethod
     def register(cls):

@@ -153,9 +153,19 @@ class PCVIVMechanist():
         
         scene = bpy.context.scene
         prefs = scene.pcv_instavis
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        psystems = set([p for o in targets for p in o.particle_systems])
-        psettings = set([p.settings for p in psystems])
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         if(prefs.use_exit_display):
             display_method = prefs.exit_psys_display_method
@@ -258,12 +268,23 @@ class PCVIVMechanist():
         if(depsgraph is None):
             depsgraph = bpy.context.evaluated_depsgraph_get()
         
-        # collect all targets
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        # and all particle systems on targets
-        psystems = set([p for o in targets for p in o.particle_systems])
-        # and their settings
-        psettings = set([p.settings for p in psystems])
+        # # collect all targets
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # # and all particle systems on targets
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # # and their settings
+        # psettings = set([p.settings for p in psystems])
+        
+        # collect all activated psystems
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         prefs = scene.pcv_instavis
         quality = prefs.quality
@@ -574,9 +595,19 @@ class PCVIVMechanist():
         
         if(scene is None):
             scene = bpy.context.scene
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        psystems = set([p for o in targets for p in o.particle_systems])
-        psettings = set([p.settings for p in psystems])
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         for pset in psettings:
             cls.pre_viewport_render_state[pset.name] = pset.pcv_instavis.draw
@@ -595,9 +626,19 @@ class PCVIVMechanist():
         
         if(scene is None):
             scene = bpy.context.scene
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        psystems = set([p for o in targets for p in o.particle_systems])
-        psettings = set([p.settings for p in psystems])
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         for pset in psettings:
             if(pset.name in cls.pre_viewport_render_state.keys()):
@@ -620,9 +661,19 @@ class PCVIVMechanist():
         
         if(scene is None):
             scene = bpy.context.scene
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        psystems = set([p for o in targets for p in o.particle_systems])
-        psettings = set([p.settings for p in psystems])
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         if(prefs.use_exit_display):
             display_method = prefs.exit_psys_display_method
@@ -647,9 +698,19 @@ class PCVIVMechanist():
         
         if(scene is None):
             scene = bpy.context.scene
-        targets = set([o for o in scene.objects if o.pcv_instavis.target])
-        psystems = set([p for o in targets for p in o.particle_systems])
-        psettings = set([p.settings for p in psystems])
+        # targets = set([o for o in scene.objects if o.pcv_instavis.target])
+        # psystems = set([p for o in targets for p in o.particle_systems])
+        # psettings = set([p.settings for p in psystems])
+        
+        # active = []
+        # for o in bpy.context.scene.objects:
+        #     if(len(o.particle_systems)):
+        #         for ps in o.particle_systems:
+        #             pset = ps.settings
+        #             if(pset.pcv_instavis.use):
+        #                 active.append((o, ps, pset, ))
+        # psettings = set([pset for _, _, pset in active])
+        psettings = cls._collect()
         
         for pset in psettings:
             if(pset.name in cls.pre_save_state.keys()):
@@ -681,6 +742,20 @@ class PCVIVMechanist():
             for area in window.screen.areas:
                 if(area.type == 'VIEW_3D'):
                     area.tag_redraw()
+    
+    @classmethod
+    def _collect(cls, registry=False, ):
+        active = []
+        for o in bpy.context.scene.objects:
+            if(len(o.particle_systems)):
+                for ps in o.particle_systems:
+                    pset = ps.settings
+                    if(pset.pcv_instavis.use):
+                        active.append((o, ps, pset, ))
+        if(registry):
+            return active
+        psettings = set([pset for _, _, pset in active])
+        return psettings
 
 
 def mechanist_msgbus_update():
