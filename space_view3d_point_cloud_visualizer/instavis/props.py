@@ -44,9 +44,6 @@ class PCVIV_preferences(PropertyGroup):
     exit_object_display_type: EnumProperty(name="Instanced Objects", items=[('BOUNDS', "Bounds", "", ), ('TEXTURED', "Textured", "", ), ], default='TEXTURED', description="To what set instance base objects Display Type when point cloud mode is exited", )
     exit_psys_display_method: EnumProperty(name="Particle Systems", items=[('NONE', "None", "", ), ('RENDER', "Render", "", ), ], default='RENDER', description="To what set particles system Display Method when point cloud mode is exited", )
     
-    origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
-    origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.05, min=0.001, max=1.0, description="Point size", precision=6, )
-    
     switch_origins_only: BoolProperty(name="Switch To Origins Only", default=True, description="Switch display to Origins Only for high instance counts", )
     switch_origins_only_threshold: IntProperty(name="Threshold", default=10000, min=1, max=2 ** 31 - 1, description="Switch display to Origins Only when instance count exceeds this value", )
     
@@ -74,13 +71,30 @@ class PCVIV_psys_properties(PropertyGroup):
     # drawing on/off, monitor icon on particles system works too and is more general, so this is just some future special case if needed..
     draw: BoolProperty(name="Draw", default=True, description="Draw point cloud to viewport", )
     display: FloatProperty(name="Display", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of displayed instances", )
+    
     use_origins_only: BoolProperty(name="Draw Origins Only", default=False, description="Draw only instance origins in a single draw pass", )
+    origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
+    origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.05, min=0.001, max=1.0, description="Point size", precision=6, )
     
     def _use_update(self, context, ):
-        pass
+        if(not self.use):
+            prefs = context.scene.pcv_instavis
+            if(not prefs.use_exit_display):
+                return
+            pset = self.id_data
+            pset.display_method = prefs.exit_psys_display_method
+            if(pset.render_type == 'COLLECTION'):
+                col = pset.instance_collection
+                if(col is not None):
+                    for co in col.objects:
+                        co.display_type = prefs.exit_object_display_type
+            elif(pset.render_type == 'OBJECT'):
+                co = pset.instance_object
+                if(co is not None):
+                    co.display_type = prefs.exit_object_display_type
     
     # use: BoolProperty(default=False, options={'HIDDEN', }, update=_use_update, )
-    use: BoolProperty(name="Use", default=True, description="Enable/disable instance visualization", update=_use_update, )
+    use: BoolProperty(name="Use", default=False, description="Enable/disable instance visualization", update=_use_update, )
     
     @classmethod
     def register(cls):

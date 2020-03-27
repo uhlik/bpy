@@ -124,7 +124,7 @@ class PCVIV_OT_sync_instance_settings(Operator):
             
             registry = PCVIVMechanist._collect(registry=True, )
             psettings = []
-            for o, ps, pset in registry:
+            for o, i, ps, pset in registry:
                 if(context.object == o):
                     psettings.append(pset)
             
@@ -208,7 +208,7 @@ class PCVIV_OT_sync_psys_settings(Operator):
             
             registry = PCVIVMechanist._collect(registry=True, )
             psettings = []
-            for o, ps, pset in registry:
+            for o, i, ps, pset in registry:
                 if(context.object == o):
                     psettings.append(pset)
         
@@ -226,6 +226,8 @@ class PCVIV_OT_sync_psys_settings(Operator):
             pcviv.draw = apcviv.draw
             pcviv.display = apcviv.display
             pcviv.use_origins_only = apcviv.use_origins_only
+            pcviv.origins_point_size = apcviv.origins_point_size
+            pcviv.origins_point_size_f = apcviv.origins_point_size_f
             update = True
         
         if(update):

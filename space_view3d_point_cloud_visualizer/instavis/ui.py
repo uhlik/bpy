@@ -168,9 +168,11 @@ class PCVIV_PT_particles(PCVIV_PT_base):
             cc = c.column(align=True)
             pcviv_prefs = context.scene.pcv_instavis
             if(pcviv_prefs.quality == 'BASIC'):
-                cc.prop(pcviv_prefs, 'origins_point_size')
+                # cc.prop(pcviv_prefs, 'origins_point_size')
+                cc.prop(pset_pcviv, 'origins_point_size')
             else:
-                cc.prop(pcviv_prefs, 'origins_point_size_f')
+                # cc.prop(pcviv_prefs, 'origins_point_size_f')
+                cc.prop(pset_pcviv, 'origins_point_size_f')
             if(not pset_pcviv.use_origins_only):
                 cc.enabled = False
             

@@ -34,8 +34,6 @@ from gpu_extras.batch import batch_for_shader
 from .debug import debug_mode, log
 from . import generators
 
-# TODO: enable psys drawing per system, not per target
-# TODO: origins mode per system, not global for all scene
 
 # TODO: maybe try to make origins float a bit above surface to be a bit more useable, moving a tiny bit towards camera may be enough
 shader_directory = os.path.realpath(os.path.join(os.path.dirname(__file__), 'shaders'))
@@ -97,10 +95,7 @@ class PCVIVMechanist():
     msgbus_handle = object()
     msgbus_subs = ()
     
-    origins_shader = None
-    origins_batch = None
-    origins_quality = None
-    origins_size = None
+    origins_buffer = []
     
     @classmethod
     def init(cls):
@@ -197,10 +192,7 @@ class PCVIVMechanist():
         cls.pre_viewport_render_state = {}
         cls.viewport_render_active = False
         
-        cls.origins_shader = None
-        cls.origins_batch = None
-        cls.origins_quality = None
-        cls.origins_size = None
+        cls.origins_buffer = []
         
         cls._redraw_view_3d()
     
@@ -338,11 +330,19 @@ class PCVIVMechanist():
         cls.stats_num_points = 0
         cls.stats_num_instances = 0
         
-        l = len(depsgraph.object_instances)
-        origins_vs = np.zeros((l, 3, ), dtype=np.float32, )
-        # origins_ns = np.zeros((l, 3, ), dtype=np.float32, )
-        origins_cs = np.zeros((l, 3, ), dtype=np.float32, )
-        oc = 0
+        cls.origins_buffer = []
+        origins = []
+        origins_pset_registry = {}
+        i = 0
+        for o in scene.objects:
+            for ps in o.particle_systems:
+                pset = ps.settings
+                psetpcviv = pset.pcv_instavis
+                if(psetpcviv.use_origins_only):
+                    epset = pset.evaluated_get(depsgraph)
+                    origins.append([[], [], [], o.evaluated_get(depsgraph), epset, ])
+                    origins_pset_registry[epset] = i
+                    i += 1
         
         # set seed to prevent changes between updates
         np.random.seed(seed=0, )
@@ -408,57 +408,44 @@ class PCVIVMechanist():
                         cls.stats_num_points += vs.shape[0]
                 
                 if(ipcviv.draw and ipcviv.use_origins_only):
-                    v = m.translation
-                    origins_vs[oc][0] = v[0]
-                    origins_vs[oc][1] = v[1]
-                    origins_vs[oc][2] = v[2]
-                    # q = m.to_quaternion()
-                    # n = Vector((0.0, 0.0, 1.0, ))
-                    # # n.rotate(q)
-                    # origins_ns[oc][0] = n[0]
-                    # origins_ns[oc][1] = n[1]
-                    # origins_ns[oc][2] = n[2]
-                    origins_cs[oc] = cs[0]
-                    oc += 1
+                    vec = m.translation.to_tuple()
+                    nor = (0.0, 0.0, 1.0, )
+                    col = cs[0]
+                    # (vs, ns, cs, shader, batch, evaluated psys settings, )
+                    i = origins_pset_registry[ipset_eval]
+                    origins[i][0].append(vec)
+                    origins[i][1].append(nor)
+                    origins[i][2].append(col)
         
         # i count elements, so i can slice here without expensive filtering None out..
         buffer = buffer[:c]
         cls.buffer = buffer
         
-        if(oc != 0):
-            origins_vs = origins_vs[:oc]
-            # origins_ns = origins_ns[:oc]
-            origins_cs = origins_cs[:oc]
-            
-            if(quality == 'BASIC'):
-                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
-                shader = GPUShader(shader_data_vert, shader_data_frag, )
-                batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
-                
-                draw_size = prefs.origins_point_size
-                draw_quality = 0
-            else:
-                # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
-                shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH_ORIGINS')
-                shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
-                # batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
-                batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "color": origins_cs, }, )
-                
-                draw_size = prefs.origins_point_size_f
-                draw_quality = 1
-            
-            cls.origins_shader = shader
-            cls.origins_batch = batch
-            cls.origins_quality = draw_quality
-            cls.origins_size = draw_size
-            
-            if(cls.stats_enabled):
-                cls.stats_num_points += origins_vs.shape[0]
-        else:
-            cls.origins_shader = None
-            cls.origins_batch = None
-            cls.origins_quality = None
-            cls.origins_size = None
+        if(len(origins)):
+            for i, b in enumerate(origins):
+                vs = np.array(b[0])
+                if(cls.stats_enabled):
+                    cls.stats_num_points += len(vs)
+                ns = np.array(b[1])
+                cs = np.array(b[2])
+                eo = b[3]
+                epset = b[4]
+                if(quality == 'BASIC'):
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('BASIC')
+                    shader = GPUShader(shader_data_vert, shader_data_frag, )
+                    batch = batch_for_shader(shader, 'POINTS', {"position": vs, "color": cs, }, )
+                    draw_size = epset.pcv_instavis.origins_point_size
+                    draw_quality = 0
+                else:
+                    # shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH')
+                    shader_data_vert, shader_data_frag, shader_data_geom = load_shader_code('RICH_ORIGINS')
+                    shader = GPUShader(shader_data_vert, shader_data_frag, geocode=shader_data_geom, )
+                    # batch = batch_for_shader(shader, 'POINTS', {"position": origins_vs, "normal": origins_ns, "color": origins_cs, }, )
+                    batch = batch_for_shader(shader, 'POINTS', {"position": b[0], "color": b[2], }, )
+                    draw_size = epset.pcv_instavis.origins_point_size_f
+                    draw_quality = 1
+                m = Matrix()
+                cls.origins_buffer.append((draw_quality, shader, batch, m, draw_size, ))
         
         if(not cls.viewport_render_active and not cls.save_active):
             post()
@@ -533,29 +520,24 @@ class PCVIVMechanist():
             if(cls.stats_enabled):
                 cls.stats_num_draws += 1
         
-        if(cls.origins_shader is not None):
-            shader = cls.origins_shader
-            batch = cls.origins_batch
-            quality = cls.origins_quality
-            size = cls.origins_size
-            matrix = Matrix()
-            
-            shader.bind()
-            if(quality == 0):
-                shader.uniform_float("perspective_matrix", perspective_matrix)
-                shader.uniform_float("object_matrix", matrix)
-                shader.uniform_float("size", size)
-            else:
-                shader.uniform_float("model_matrix", matrix)
-                shader.uniform_float("view_matrix", view_matrix)
-                shader.uniform_float("window_matrix", window_matrix)
-                shader.uniform_float("size", size)
-                # shader.uniform_float("light_position", lt)
-                # shader.uniform_float("view_position", vp)
-            batch.draw(shader)
-            
-            if(cls.stats_enabled):
-                cls.stats_num_draws += 1
+        if(len(cls.origins_buffer)):
+            for quality, shader, batch, matrix, size in cls.origins_buffer:
+                shader.bind()
+                if(quality == 0):
+                    shader.uniform_float("perspective_matrix", perspective_matrix)
+                    shader.uniform_float("object_matrix", matrix)
+                    shader.uniform_float("size", size)
+                else:
+                    shader.uniform_float("model_matrix", matrix)
+                    shader.uniform_float("view_matrix", view_matrix)
+                    shader.uniform_float("window_matrix", window_matrix)
+                    shader.uniform_float("size", size)
+                    # shader.uniform_float("light_position", lt)
+                    # shader.uniform_float("view_position", vp)
+                batch.draw(shader)
+                
+                if(cls.stats_enabled):
+                    cls.stats_num_draws += 1
         
         bgl.glDisable(bgl.GL_PROGRAM_POINT_SIZE)
         bgl.glDisable(bgl.GL_DEPTH_TEST)
@@ -748,13 +730,13 @@ class PCVIVMechanist():
         active = []
         for o in bpy.context.scene.objects:
             if(len(o.particle_systems)):
-                for ps in o.particle_systems:
+                for i, ps in enumerate(o.particle_systems):
                     pset = ps.settings
                     if(pset.pcv_instavis.use):
-                        active.append((o, ps, pset, ))
+                        active.append((o, i, ps, pset, ))
         if(registry):
             return active
-        psettings = set([pset for _, _, pset in active])
+        psettings = set([pset for _, _, _, pset in active])
         return psettings
 
 
