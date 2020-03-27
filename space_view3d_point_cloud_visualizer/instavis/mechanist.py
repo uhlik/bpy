@@ -34,6 +34,9 @@ from gpu_extras.batch import batch_for_shader
 from .debug import debug_mode, log
 from . import generators
 
+# TODO: enable psys drawing per system, not per target
+# TODO: origins mode per system, not global for all scene
+
 # TODO: maybe try to make origins float a bit above surface to be a bit more useable, moving a tiny bit towards camera may be enough
 shader_directory = os.path.realpath(os.path.join(os.path.dirname(__file__), 'shaders'))
 if(not os.path.exists(shader_directory)):

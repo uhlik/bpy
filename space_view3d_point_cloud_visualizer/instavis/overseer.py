@@ -22,6 +22,8 @@
 
 import bpy
 from bpy.types import Operator
+from bpy.props import PointerProperty, BoolProperty, StringProperty, FloatProperty, IntProperty, FloatVectorProperty, EnumProperty, CollectionProperty
+from bpy.types import PropertyGroup
 
 from .debug import debug_mode, log
 from .mechanist import PCVIVMechanist
@@ -99,6 +101,43 @@ class PCVIVOverseer():
         
         for o in changed:
             PCVIVMechanist.invalidate_object_cache(o.name)
+    
+    # @classmethod
+    # def set_draw(cls, destinations, draw, ):
+    #     addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+    #     addon_prefs.A_instavis_enabled = True
+    #
+    #     psettings = [mod.particle_system.settings for mod in destinations]
+    #     for pset in psettings:
+    #         pset.pcv_instavis.draw = draw
+    
+    @classmethod
+    def set_draw_type(cls, destinations, type, ):
+        psettings = [mod.particle_system.settings for mod in destinations]
+        for pset in psettings:
+            if(type == 'ORIGINS'):
+                pset.pcv_instavis.use_origins_only = True
+            else:
+                pset.pcv_instavis.use_origins_only = False
+        PCVIVMechanist.force_update(with_caches=True, )
+    
+    psys_prop_map = {
+        'point_scale': 'point_scale',
+        'point_percentage': 'display',
+    }
+    
+    @classmethod
+    def apply_psys_prop(cls, context, destinations, prop_name, ):
+        pcviv_master = context.scene.pcviv_master_properties
+        try:
+            v = pcviv_master[prop_name]
+        except Exception as e:
+            v = pcviv_master.bl_rna.properties[prop_name].default
+        n = cls.psys_prop_map[prop_name]
+        psettings = [mod.particle_system.settings for mod in destinations]
+        for pset in psettings:
+            pset.pcv_instavis[n] = v
+        PCVIVMechanist.force_update(with_caches=False, )
 
 
 class SCUtils():
@@ -123,7 +162,7 @@ class SCUtils():
         return tuple(sc_mods), tuple(user_sel), last_sel
 
 
-def pcviv_draw_sc_ui(context, uilayout, ):
+def pcviv_draw_sc_ui_obsolete(context, uilayout, ):
     addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
     terrain = bpy.context.scene.C_Slots_settings.Terrain_pointer
     scatter_particles, scatter_selected, last_sel = SCUtils.collect()
@@ -298,6 +337,44 @@ def pcviv_draw_sc_ui(context, uilayout, ):
         c.prop(pcviv_prefs, 'switch_origins_only_threshold')
 
 
+def pcviv_draw_sc_ui(context, uilayout, ):
+    addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+    terrain = bpy.context.scene.C_Slots_settings.Terrain_pointer
+    scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+    
+    tab = uilayout.box()
+    c = tab.column()
+    c.prop(addon_prefs, 'A_instavis_enabled', toggle=True, )
+    c.separator()
+    
+    c = tab.column()
+    r = c.row(align=True)
+    r.label(text="{}:".format(addon_prefs.bl_rna.properties['A_instavis_influence'].name))
+    r.prop(addon_prefs, 'A_instavis_influence', expand=True, )
+    c.separator()
+    
+    cc = c.column(align=True)
+    # cc.operator('pcviv.sc_draw', text="Start", ).draw = True
+    # cc.operator('pcviv.sc_draw', text="Stop", ).draw = False
+    # cc.separator()
+    cc.operator('pcviv.sc_draw_type', text="Full", ).type = 'FULL'
+    
+    pcviv_master = context.scene.pcviv_master_properties
+    r = cc.row(align=True, )
+    r.prop(pcviv_master, 'point_scale')
+    r.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'point_scale'
+    r = cc.row(align=True, )
+    r.prop(pcviv_master, 'point_percentage')
+    r.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'point_percentage'
+    
+    cc.separator()
+    cc.operator('pcviv.sc_draw_type', text="Origins", ).type = 'ORIGINS'
+    
+    if(addon_prefs.A_instavis_influence == 'SELECTED'):
+        if(not len(scatter_selected)):
+            cc.enabled = False
+    
+
 class PCVIV_OT_sc_apply_settings_psys(Operator):
     bl_idname = "pcviv.sc_apply_settings_psys"
     bl_label = "Apply Settings"
@@ -361,6 +438,117 @@ class PCVIV_OT_sc_apply_settings_instances(Operator):
         return {'FINISHED'}
 
 
+'''
+class PCVIV_OT_sc_draw(Operator):
+    bl_idname = "pcviv.sc_draw"
+    bl_label = "Draw"
+    bl_description = ""
+    
+    draw: BoolProperty(default=True, options={'HIDDEN', 'SKIP_SAVE', }, )
+    
+    @classmethod
+    def poll(cls, context):
+        if(PCVIVMechanist.initialized):
+            addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+            scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+            if(len(scatter_selected) > 0):
+                # if(addon_prefs.A_instavis_influence in ('SELECTED', )):
+                #     if(len(scatter_selected) <= 1):
+                #         return False
+                return True
+        return False
+    
+    def execute(self, context):
+        scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+        addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+        if(addon_prefs.A_instavis_influence == 'SCENE'):
+            destinations = scatter_particles
+        else:
+            destinations = scatter_selected
+        PCVIVOverseer.set_draw(destinations, self.draw, )
+        return {'FINISHED'}
+'''
+
+
+class PCVIV_OT_sc_draw_type(Operator):
+    bl_idname = "pcviv.sc_draw_type"
+    bl_label = "Type"
+    bl_description = ""
+    
+    type: EnumProperty(items=[('FULL', '', "", ), ('ORIGINS', '', "", ), ], default='FULL', options={'HIDDEN', 'SKIP_SAVE', }, )
+    
+    @classmethod
+    def poll(cls, context):
+        if(PCVIVMechanist.initialized):
+            addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+            if(addon_prefs.A_instavis_influence in ('SCENE', )):
+                return True
+            scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+            if(len(scatter_selected) > 0):
+                # if(addon_prefs.A_instavis_influence in ('SELECTED', )):
+                #     if(len(scatter_selected) <= 1):
+                #         return False
+                return True
+        return False
+    
+    def execute(self, context):
+        scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+        addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+        if(addon_prefs.A_instavis_influence == 'SCENE'):
+            destinations = scatter_particles
+        else:
+            destinations = scatter_selected
+        PCVIVOverseer.set_draw_type(destinations, self.type, )
+        return {'FINISHED'}
+
+
+class PCVIV_OT_sc_apply_psys_prop(Operator):
+    bl_idname = "pcviv.sc_apply_psys_prop"
+    bl_label = "Apply"
+    bl_description = ""
+    
+    prop_name: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE', }, )
+    
+    @classmethod
+    def poll(cls, context):
+        if(PCVIVMechanist.initialized):
+            addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+            if(addon_prefs.A_instavis_influence in ('SCENE', )):
+                return True
+            scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+            if(len(scatter_selected) > 0):
+                # if(addon_prefs.A_instavis_influence in ('SELECTED', )):
+                #     if(len(scatter_selected) <= 1):
+                #         return False
+                return True
+        return False
+    
+    def execute(self, context):
+        scatter_particles, scatter_selected, last_sel = SCUtils.collect()
+        addon_prefs = bpy.context.preferences.addons["Scatter"].preferences
+        if(addon_prefs.A_instavis_influence == 'SCENE'):
+            destinations = scatter_particles
+        else:
+            destinations = scatter_selected
+        PCVIVOverseer.apply_psys_prop(context, destinations, self.prop_name, )
+        return {'FINISHED'}
+
+
+class PCVIV_master_properties(PropertyGroup):
+    point_scale: FloatProperty(name="Point Scale", default=1.0, min=0.001, max=10.0, precision=6, description="Adjust point size of all points", )
+    point_percentage: FloatProperty(name="Point Percentage", default=100.0, min=0.0, max=100.0, precision=0, subtype='PERCENTAGE', description="Adjust percentage of displayed points", )
+    origins_point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
+    origins_point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.05, min=0.001, max=1.0, precision=6, description="Point size", )
+    
+    @classmethod
+    def register(cls):
+        bpy.types.Scene.pcviv_master_properties = PointerProperty(type=cls)
+    
+    @classmethod
+    def unregister(cls):
+        del bpy.types.Scene.pcviv_master_properties
+
+
 @bpy.app.handlers.persistent
 def auto_init(undefined):
     PCVIVOverseer.init()
@@ -369,5 +557,10 @@ def auto_init(undefined):
 # auto initialize, this will be called once when blend file is loaded, even startup file
 bpy.app.handlers.load_post.append(auto_init)
 
-classes = (PCVIV_OT_sc_apply_settings_psys, PCVIV_OT_sc_apply_settings_instances, )
+classes = (PCVIV_OT_sc_apply_settings_psys, PCVIV_OT_sc_apply_settings_instances,
+           PCVIV_master_properties,
+           # PCVIV_OT_sc_draw,
+           PCVIV_OT_sc_draw_type,
+           PCVIV_OT_sc_apply_psys_prop,
+           )
 classes_debug = ()
