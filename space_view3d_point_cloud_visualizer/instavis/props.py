@@ -93,7 +93,6 @@ class PCVIV_psys_properties(PropertyGroup):
                 if(co is not None):
                     co.display_type = prefs.exit_object_display_type
     
-    # use: BoolProperty(default=False, options={'HIDDEN', }, update=_use_update, )
     use: BoolProperty(name="Use", default=False, description="Enable/disable instance visualization", update=_use_update, )
     
     @classmethod
@@ -112,7 +111,6 @@ class PCVIV_object_properties(PropertyGroup):
     source: EnumProperty(name="Source", items=[('POLYGONS', "Polygons", "Mesh Polygons (constant or material viewport display color)"),
                                                ('VERTICES', "Vertices", "Mesh Vertices (constant color only)"),
                                                ], default='POLYGONS', description="Point cloud generation source", update=_invalidate_object_cache, )
-    # max_points: IntProperty(name="Max. Points", default=100, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     max_points: IntProperty(name="Max. Points", default=500, min=1, max=10000, description="Maximum number of points per instance", update=_invalidate_object_cache, )
     color_source: EnumProperty(name="Color Source", items=[('CONSTANT', "Constant Color", "Use constant color value"),
                                                            ('OBJECT_VIEWPORT_DISPLAY_COLOR', "Object Viewport Display Color", "Use object viewport display color property"),
@@ -124,32 +122,8 @@ class PCVIV_object_properties(PropertyGroup):
     use_material_factors: BoolProperty(name="Use Material Factors", default=False, description="Use material probability factor during point cloud generation", update=_invalidate_object_cache, )
     
     # point_size is for basic shader, point_size_f if for rich shader
-    # point_size: IntProperty(name="Size (Basic Shader)", default=6, min=1, max=10, subtype='PIXEL', description="Point size", )
     point_size: IntProperty(name="Size (Basic Shader)", default=3, min=1, max=10, subtype='PIXEL', description="Point size", )
-    # point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.02, min=0.001, max=1.0, description="Point size", precision=6, )
     point_size_f: FloatProperty(name="Size (Rich Shader)", default=0.01, min=0.001, max=1.0, description="Point size", precision=6, )
-    
-    # def _target_update(self, context, ):
-    #     if(not self.target):
-    #         # if target is set to False, swap display to exit types
-    #         prefs = context.scene.pcv_instavis
-    #         if(not prefs.use_exit_display):
-    #             return
-    #         o = self.id_data
-    #         ls = [ps.settings for ps in o.particle_systems]
-    #         for pset in ls:
-    #             pset.display_method = prefs.exit_psys_display_method
-    #             if(pset.render_type == 'COLLECTION'):
-    #                 col = pset.instance_collection
-    #                 if(col is not None):
-    #                     for co in col.objects:
-    #                         co.display_type = prefs.exit_object_display_type
-    #             elif(pset.render_type == 'OBJECT'):
-    #                 co = pset.instance_object
-    #                 if(co is not None):
-    #                     co.display_type = prefs.exit_object_display_type
-    #
-    # target: BoolProperty(default=False, options={'HIDDEN', }, update=_target_update, )
     
     @classmethod
     def register(cls):
