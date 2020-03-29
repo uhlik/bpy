@@ -283,44 +283,73 @@ def pcviv_draw_sc_ui(context, uilayout, ):
     sc_prefs = bpy.context.preferences.addons["Scatter"].preferences
     scatter_particles, scatter_selected, last_sel = SCUtils.collect()
     
-    tab = uilayout.box()
+    wrapper = uilayout.column()
     
-    c = tab.column()
-    r = c.row(align=True)
-    r.label(text="{}:".format(sc_prefs.bl_rna.properties['A_instavis_influence'].name))
-    r.prop(sc_prefs, 'A_instavis_influence', expand=True, )
+    tab = wrapper.box()
+    h = tab.box()
+    h.operator("scatter.general_panel_toggle", emboss=False, text='Visualization', icon='LIGHTPROBE_GRID', ).pref = "addon_prefs.A_instavis_visualization_is_open"
+    if(sc_prefs.A_instavis_visualization_is_open):
+        c = tab.column()
+        r = c.row(align=True)
+        r.label(text="{}:".format(sc_prefs.bl_rna.properties['A_instavis_influence'].name))
+        r.prop(sc_prefs, 'A_instavis_influence', expand=True, )
+        
+        c.label(text="Visualization:", )
+        
+        r = c.row(align=True)
+        r.operator('pcviv.sc_enable', text="Start", ).enable = True
+        r.operator('pcviv.sc_enable', text="Stop", ).enable = False
+        
+        scp = context.scene.pcv_instavis_sc_props
+        
+        c.label(text="Display:", )
+        cdt = c.column()
+        
+        cc = cdt.column(align=True)
+        cc.operator('pcviv.sc_draw_type', text="Full", ).draw_type = 'FULL'
+        r = cc.row(align=True)
+        s = r.split(factor=2.0 / 3.0, align=True, )
+        s.prop(scp, 'point_scale')
+        s = s.split(factor=1.0, align=True, )
+        s.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'point_scale'
+        
+        cc = cdt.column(align=True)
+        cc.operator('pcviv.sc_draw_type', text="Origins", ).draw_type = 'ORIGINS'
+        r = cc.row(align=True)
+        pcviv_prefs = context.scene.pcv_instavis
+        if(pcviv_prefs.quality == 'BASIC'):
+            s = r.split(factor=2.0 / 3.0, align=True, )
+            s.prop(scp, 'origins_point_size')
+            s = s.split(factor=1.0, align=True, )
+            s.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'origins_point_size'
+        else:
+            s = r.split(factor=2.0 / 3.0, align=True, )
+            s.prop(scp, 'origins_point_size_f')
+            s = s.split(factor=1.0, align=True, )
+            s.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'origins_point_size_f'
+        
+        if(sc_prefs.A_instavis_influence == 'SELECTED'):
+            if(not len(scatter_selected)):
+                cdt.enabled = False
     
-    c.label(text="Visualization:", )
-    
-    r = c.row(align=True)
-    r.operator('pcviv.sc_enable', text="Start", ).enable = True
-    r.operator('pcviv.sc_enable', text="Stop", ).enable = False
-    
-    scp = context.scene.pcv_instavis_sc_props
-    
-    c.label(text="Display:", )
-    cdt = c.column()
-    
-    cc = cdt.column(align=True)
-    cc.operator('pcviv.sc_draw_type', text="Full", ).draw_type = 'FULL'
-    r = cc.row(align=True)
-    r.prop(scp, 'point_scale')
-    r.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'point_scale'
-    
-    cc = cdt.column(align=True)
-    cc.operator('pcviv.sc_draw_type', text="Origins", ).draw_type = 'ORIGINS'
-    r = cc.row(align=True)
-    pcviv_prefs = context.scene.pcv_instavis
-    if(pcviv_prefs.quality == 'BASIC'):
-        r.prop(scp, 'origins_point_size')
-        r.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'origins_point_size'
-    else:
-        r.prop(scp, 'origins_point_size_f')
-        r.operator('pcviv.sc_apply_psys_prop', ).prop_name = 'origins_point_size_f'
-    
-    if(sc_prefs.A_instavis_influence == 'SELECTED'):
-        if(not len(scatter_selected)):
-            cdt.enabled = False
+    tab = wrapper.box()
+    h = tab.box()
+    h.operator("scatter.general_panel_toggle", emboss=False, text="Global Settings", icon='SETTINGS', ).pref = "addon_prefs.A_instavis_global_is_open"
+    if(sc_prefs.A_instavis_global_is_open):
+        c = tab.column()
+        pcviv_prefs = context.scene.pcv_instavis
+        c.prop(pcviv_prefs, 'quality')
+        c.prop(pcviv_prefs, 'update_method')
+        c.separator()
+        c.prop(pcviv_prefs, 'use_exit_display')
+        cc = c.column()
+        cc.prop(pcviv_prefs, 'exit_object_display_type')
+        cc.prop(pcviv_prefs, 'exit_psys_display_method')
+        cc.enabled = pcviv_prefs.use_exit_display
+        c.separator()
+        c.label(text="Auto Switch To Origins Only:")
+        c.prop(pcviv_prefs, 'switch_origins_only', text='Enabled', )
+        c.prop(pcviv_prefs, 'switch_origins_only_threshold')
 
 
 '''
@@ -444,8 +473,8 @@ class PCVIV_OT_sc_enable(PCVIV_OT_sc_base):
 
 class PCVIV_OT_sc_draw_type(PCVIV_OT_sc_base):
     bl_idname = "pcviv.sc_draw_type"
-    bl_label = "Draw Type"
-    bl_description = ""
+    bl_label = "Apply"
+    bl_description = "Apply draw type to all/selected particle systems"
     
     draw_type: EnumProperty(items=[('FULL', '', "", ), ('ORIGINS', '', "", ), ], default='FULL', options={'HIDDEN', 'SKIP_SAVE', }, )
     
@@ -457,7 +486,7 @@ class PCVIV_OT_sc_draw_type(PCVIV_OT_sc_base):
 class PCVIV_OT_sc_apply_psys_prop(PCVIV_OT_sc_base):
     bl_idname = "pcviv.sc_apply_psys_prop"
     bl_label = "Apply"
-    bl_description = ""
+    bl_description = "Apply property to all/selected particle systems"
     
     prop_name: StringProperty(default='', options={'HIDDEN', 'SKIP_SAVE', }, )
     
