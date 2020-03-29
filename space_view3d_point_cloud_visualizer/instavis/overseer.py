@@ -466,6 +466,7 @@ class PCVIV_OT_sc_apply_psys_prop(PCVIV_OT_sc_base):
         return {'FINISHED'}
 
 
+# NOTE: somehow it conflicts with Scatter, clouds are drawn twice, viewport display icon has no effect, msgbus notifications are lost (?) and deinit throws errors, like handlers were not set, disabling auto start and adding init() call into Start Operator.. will see in future how it goes..
 # @bpy.app.handlers.persistent
 # def auto_init(undefined):
 #     PCVIVOverseer.init()
@@ -474,10 +475,5 @@ class PCVIV_OT_sc_apply_psys_prop(PCVIV_OT_sc_base):
 # # auto initialize, this will be called once when blend file is loaded, even startup file
 # bpy.app.handlers.load_post.append(auto_init)
 
-classes = (
-           PCVIV_sc_properties,
-           PCVIV_OT_sc_enable,
-           PCVIV_OT_sc_draw_type,
-           PCVIV_OT_sc_apply_psys_prop,
-           )
+classes = (PCVIV_sc_properties, PCVIV_OT_sc_enable, PCVIV_OT_sc_draw_type, PCVIV_OT_sc_apply_psys_prop, )
 classes_debug = ()
