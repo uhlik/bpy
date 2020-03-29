@@ -20,6 +20,8 @@
 # author: Jakub Uhlik
 # (c) 2019, 2020 Jakub Uhlik
 
+import platform
+
 import bpy
 
 
@@ -28,6 +30,9 @@ def debug_mode():
 
 
 def log(msg, indent=0, prefix='>', ):
-    m = "{}{} {}".format("    " * indent, prefix, msg)
     if(debug_mode()):
+        if(platform.system() == 'Windows'):
+            m = "{}{} {}".format("    " * indent, prefix, msg, )
+        else:
+            m = "{}{}{} {}{}".format("    " * indent, "\033[42m\033[30m", prefix, msg, "\033[0m", )
         print(m)
