@@ -35,7 +35,7 @@ import math
 
 import bpy
 import bmesh
-from bpy.types import Operator, Panel
+from bpy.types import Operator, Panel, AddonPreferences
 from mathutils import Vector, Matrix
 from bpy.props import FloatProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup
@@ -1370,6 +1370,28 @@ class CARBON_PT_carbon_tools_conversions(Panel):
         c.enabled = CARBON_OT_two_meshes_difference_to_vertex_group.poll(context)
 
 
+def update_panel_bl_category(self, context, ):
+    _main_panel = CARBON_PT_carbon_tools
+    _sub_panels = (CARBON_PT_carbon_tools_utils, CARBON_PT_carbon_tools_conversions, )
+    bpy.utils.unregister_class(_main_panel)
+    for sp in _sub_panels:
+        bpy.utils.unregister_class(sp)
+    prefs = bpy.context.preferences.addons[__name__].preferences
+    _main_panel.bl_category = prefs.tab_name
+    bpy.utils.register_class(_main_panel)
+    for sp in _sub_panels:
+        bpy.utils.register_class(sp)
+
+
+class CARBON_preferences(AddonPreferences):
+    bl_idname = __name__
+    tab_name: StringProperty(name="Tab Name", default="Carbon Tools", description="Custom tab name", update=update_panel_bl_category, )
+    
+    def draw(self, context):
+        r = self.layout.row()
+        r.prop(self, "tab_name")
+
+
 classes = (
     CARBON_OT_quick_mesh_dyntopo_cleanup,
     CARBON_OT_extract_mesh_part,
@@ -1395,6 +1417,7 @@ classes = (
     CARBON_OT_two_meshes_difference_to_vertex_group,
     CARBON_OT_calc_active_uv_coverage,
     CARBON_properties,
+    CARBON_preferences,
     CARBON_PT_carbon_tools,
     CARBON_PT_carbon_tools_utils,
     CARBON_PT_carbon_tools_conversions,
@@ -1404,6 +1427,8 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    
+    update_panel_bl_category(None, bpy.context)
 
 
 def unregister():
