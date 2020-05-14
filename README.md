@@ -3,7 +3,7 @@
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/pcv.png)
 ![PCV](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/header-600px.gif)
 
-#[https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
+Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
 * 1.0.0
     * core completely rewritten
