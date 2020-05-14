@@ -16,25 +16,6 @@ Addons for **blender 2.7x** are here: [2.7x branch](https://github.com/uhlik/bpy
 ***
 ***
 
-## [Point Cloud Visualizer 1.0](https://www.blendermarket.com/products/pcv)
-
-![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/pcv.png)
-![PCV](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/header-600px.gif)
-
-#[https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
-
-* 1.0.0
-    * core completely rewritten
-    * takes less system memory
-    * better undo / redo handling
-    * partial ply loading - slice, evenly spaced or random strategies
-    * out of video memory crash prevention with maximum display points user setting
-    * more shader types and shader options (Phong, Billboard, Billboard Phong, Fresnel, Bounding Box, Position with scale and offset)
-    * render to image with any shader
-    * optional faster triangulated conversion to mesh
-    * many small fixes and optimizations
-
-
 ## [Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/master/space_view3d_point_cloud_visualizer.py) (for blender 2.80)
 
 **Display, edit, filter, render, convert, generate and export colored point cloud PLY files.**
