@@ -1,3 +1,24 @@
+## [Point Cloud Visualizer 1.0](https://www.blendermarket.com/products/pcv)
+
+![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/pcv.png)
+![PCV](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/header-600px.gif)
+
+#[https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
+
+* 1.0.0
+    * core completely rewritten
+    * takes less system memory
+    * better undo / redo handling
+    * partial ply loading - slice, evenly spaced or random strategies
+    * out of video memory crash prevention with maximum display points user setting
+    * more shader types and shader options (Phong, Billboard, Billboard Phong, Fresnel, Bounding Box, Position with scale and offset)
+    * render to image with any shader
+    * optional faster triangulated conversion to mesh
+    * many small fixes and optimizations
+
+***
+***
+
 # Addons for blender 2.80
 
 * [Point Cloud Visualizer](#point-cloud-visualizer-for-blender-280)
