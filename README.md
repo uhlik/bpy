@@ -5,6 +5,11 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
+* 1.1.0
+    * transfer colors from point cloud to mesh vertex colors or uv texture
+    * voxel simplification method
+    * generate points in mesh volume
+
 * 1.0.0
     * core completely rewritten
     * takes less system memory
