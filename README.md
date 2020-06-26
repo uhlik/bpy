@@ -1,4 +1,4 @@
-## [Point Cloud Visualizer 1.0](https://www.blendermarket.com/products/pcv)
+## [Point Cloud Visualizer 1.0+](https://www.blendermarket.com/products/pcv)
 
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/pcv.png)
 ![PCV](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/header-600px.gif)
