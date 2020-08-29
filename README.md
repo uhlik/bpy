@@ -5,6 +5,20 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
+* 1.3.0
+    * Remove Color numeric input with python expression and invert selection operator
+    * Convert use custom mesh as instance
+    * Project filter align projected point normal to target mesh surface normal
+    * fixed point generation on triangles with very small area when using Weighted Random In Triangle
+    * fixed Sequence not reseting when new blend is loaded
+
+* 1.2.0
+    * viewport menu to batch control PCV instances
+    * Height Colors, Depth Effects and Alpha shaders
+    * load alpha, export alpha
+    * render with manual depth sorting
+    * fixed sequence animation render
+
 * 1.1.0
     * transfer colors from point cloud to mesh vertex colors or uv texture
     * voxel simplification method
