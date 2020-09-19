@@ -187,8 +187,12 @@ class PSCSensor():
             # self.calibration['fx'] = float(cal.find("fx").text)
             # self.calibration['fy'] = float(cal.find("fy").text)
             self.calibration['f'] = float(cal.find("f").text)
-            self.calibration['cx'] = float(cal.find("cx").text)
-            self.calibration['cy'] = float(cal.find("cy").text)
+            try:
+                self.calibration['cx'] = float(cal.find("cx").text)
+                self.calibration['cy'] = float(cal.find("cy").text)
+            except:
+                self.calibration['cx'] = 0.0
+                self.calibration['cy'] = 0.0
             # self.calibration['k1'] = float(cal.find("k1").text)
             # self.calibration['k2'] = float(cal.find("k2").text)
             # self.calibration['k3'] = float(cal.find("k3").text)
