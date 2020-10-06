@@ -5,6 +5,12 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
+* 1.4.0
+    * MatCap and MatCap Billboard shaders
+    * Fast bounding box Crop points
+    * Open3D: Voxel Downsample, Estimate Normals and Surface Reconstruction
+    * fixed render transparency (blender 2.9x)
+
 * 1.3.0
     * Remove Color numeric input with python expression and invert selection operator
     * Convert use custom mesh as instance
