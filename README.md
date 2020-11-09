@@ -5,6 +5,9 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
+* 1.5.0
+    * Import points from text file formats
+
 * 1.4.0
     * MatCap and MatCap Billboard shaders
     * Fast bounding box Crop points
@@ -526,18 +529,25 @@ changelog:
 * 0.3.0 export implemented in cython
 * 0.2.0 ported to blender 2.80
 
-**requirements:**
+**installation on mac (win/linux should be similar) and blender 2.83.6 assuming you have blender in /Applications/Blender.app:**
 
-* python 3.7.0 (the same as shipped with blender 2.8)
-* Cython (install with pip)
+get pip and install cython using pip
 
-**installation on mac (win/linux should be very similar):**
+<pre>cd /Applications/Blender.app/Contents/Resources/2.83/python/bin/
+./python3.7m -m ensurepip
+./python3.7m -m pip install -U pip
+./pip3 install cython</pre>
 
-1. download repository and copy whole directory `io_mesh_fast_obj` to `/Users/*USERNAME*/Library/Application Support/Blender/2.80/scripts/addons/`
-2. in terminal cd to `/Users/*USERNAME*/Library/Application Support/Blender/2.80/scripts/addons/io_mesh_fast_obj/`
-    1. `$ git clone http://git.blender.org/blender.git`
-    2. `$ python3 setup.py build_ext --inplace`
-3. now delete `blender` directory, it is no longer needed until blender is updated, then you (might) need to repeat the process
+clone blender source
+
+<pre>cd ~/Library/Application Support/Blender/2.83/scripts/addons/io_mesh_fast_obj
+git clone git://git.blender.org/blender.git
+cd blender
+git checkout v2.83.6</pre>
+
+build cython extension
+
+<pre>/Applications/Blender.app/Contents/Resources/2.83/python/bin/python3.7m setup.py build_ext --inplace</pre>
 
 ***
 
