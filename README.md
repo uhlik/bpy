@@ -5,6 +5,20 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
+* 1.6.0
+    * point set registration with several global and local methods (using Open3D)
+    * normal estimation with normal orientation by direction or camera location (using Open3D)
+    * new `Fast` viewport shader
+    * new `File > Import` and `3D Viewport > Add` helper menu operators
+    * new center view on points operator
+    * new edit operators: points to origin, apply transformation
+    * edit mode enter, update and exit significantly faster
+    * faster render manual depth sorting
+    * compatibility with Blender 2.91 viewport drawing and rendering
+    * compatibility with Open3D 0.10.0
+    * fixed edit mode ui glitches
+    * fixed ascii import guess separator
+
 * 1.5.0
     * Import points from text file formats
 
