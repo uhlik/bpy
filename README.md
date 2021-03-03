@@ -5,59 +5,6 @@
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
-* 1.6.0
-    * point set registration with several global and local methods (using Open3D)
-    * normal estimation with normal orientation by direction or camera location (using Open3D)
-    * new `Fast` viewport shader
-    * new `File > Import` and `3D Viewport > Add` helper menu operators
-    * new center view on points operator
-    * new edit operators: points to origin, apply transformation
-    * edit mode enter, update and exit significantly faster
-    * faster render manual depth sorting
-    * compatibility with Blender 2.91 viewport drawing and rendering
-    * compatibility with Open3D 0.10.0
-    * fixed edit mode ui glitches
-    * fixed ascii import guess separator
-
-* 1.5.0
-    * Import points from text file formats
-
-* 1.4.0
-    * MatCap and MatCap Billboard shaders
-    * Fast bounding box Crop points
-    * Open3D: Voxel Downsample, Estimate Normals and Surface Reconstruction
-    * fixed render transparency (blender 2.9x)
-
-* 1.3.0
-    * Remove Color numeric input with python expression and invert selection operator
-    * Convert use custom mesh as instance
-    * Project filter align projected point normal to target mesh surface normal
-    * fixed point generation on triangles with very small area when using Weighted Random In Triangle
-    * fixed Sequence not reseting when new blend is loaded
-
-* 1.2.0
-    * viewport menu to batch control PCV instances
-    * Height Colors, Depth Effects and Alpha shaders
-    * load alpha, export alpha
-    * render with manual depth sorting
-    * fixed sequence animation render
-
-* 1.1.0
-    * transfer colors from point cloud to mesh vertex colors or uv texture
-    * voxel simplification method
-    * generate points in mesh volume
-
-* 1.0.0
-    * core completely rewritten
-    * takes less system memory
-    * better undo / redo handling
-    * partial ply loading - slice, evenly spaced or random strategies
-    * out of video memory crash prevention with maximum display points user setting
-    * more shader types and shader options (Phong, Billboard, Billboard Phong, Fresnel, Bounding Box, Position with scale and offset)
-    * render to image with any shader
-    * optional faster triangulated conversion to mesh
-    * many small fixes and optimizations
-
 ***
 ***
 
@@ -70,11 +17,6 @@ Available here: [https://www.blendermarket.com/products/pcv](https://www.blender
 * [Import Agisoft PhotoScan Cameras](#import-agisoft-photoscan-cameras)
 * [Carbon Tools](#carbon-tools)
 * [Time Tracker](#time-tracker-for-blender-280)
-
-***
-***
-
-Addons for **blender 2.7x** are here: [2.7x branch](https://github.com/uhlik/bpy/tree/2.7x)
 
 ***
 ***
