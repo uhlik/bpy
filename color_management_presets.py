@@ -16,6 +16,8 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# Copyright (c) 2023 Jakub Uhlik
+
 bl_info = {"name": "Color Management Presets",
            "description": "Presets support for Render > Color Management panel",
            "author": "Jakub Uhlik",

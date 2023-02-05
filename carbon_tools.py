@@ -16,6 +16,8 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# Copyright (c) 2023 Jakub Uhlik
+
 bl_info = {"name": "Carbon Tools",
            "description": "Ever-evolving set of small tools, workflows and shortcuts focused mainly on processing photogrammetry scans.",
            "author": "Jakub Uhlik",

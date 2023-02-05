@@ -16,6 +16,8 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# Copyright (c) 2023 Jakub Uhlik
+
 bl_info = {"name": "Time Tracker",
            "description": "Track time spent in blender. Writes data to .csv and provides summary sorted by project (directory name).",
            "author": "Jakub Uhlik",

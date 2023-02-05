@@ -16,6 +16,8 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# Copyright (c) 2023 Jakub Uhlik
+
 bl_info = {"name": "Tube UV Unwrap",
            "description": "UV unwrap tube-like meshes (all quads, no caps, fixed number of vertices in each ring)",
            "author": "Jakub Uhlik",

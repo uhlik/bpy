@@ -16,6 +16,8 @@
 #
 # ##### END GPL LICENSE BLOCK #####
 
+# Copyright (c) 2023 Jakub Uhlik
+
 bl_info = {"name": "Fast Wavefront^2 (.obj) (Cython)",
            "description": "Import/Export single mesh as Wavefront OBJ. Only active mesh is exported. Only single mesh is expected on import. Supported obj features: UVs, normals, vertex colors using MRGB format (ZBrush).",
            "author": "Jakub Uhlik",
