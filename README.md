@@ -3,7 +3,7 @@
 ![Point Cloud Visualizer](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/pcv.png)
 ![PCV](https://raw.githubusercontent.com/uhlik/bpy/media/pcv-1.0/header-600px.gif)
 
-**Supported, maintained and updated to work in latest Blender versions. Many, many more of features.**
+**Supported, maintained and updated to work in latest Blender versions. Many, many more features.**
 
 Available here: [https://www.blendermarket.com/products/pcv](https://www.blendermarket.com/products/pcv)
 
